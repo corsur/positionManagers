@@ -32,6 +32,17 @@
           }
         }
       }
+    },
+    {
+      "type": "object",
+      "required": [
+        "delta_neutral_invest"
+      ],
+      "properties": {
+        "delta_neutral_invest": {
+          "type": "object"
+        }
+      }
     }
   ]
 }

@@ -3,13 +3,21 @@
   "title": "State",
   "type": "object",
   "required": [
+    "anchor_ust_addr",
     "count",
+    "mirror_asset_addr",
     "owner"
   ],
   "properties": {
+    "anchor_ust_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
     "count": {
       "type": "integer",
       "format": "int32"
+    },
+    "mirror_asset_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
     },
     "owner": {
       "$ref": "#/definitions/CanonicalAddr"
