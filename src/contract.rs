@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError,
-    StdResult, Storage,
+    to_binary, Api, Binary, CosmosMsg, Decimal, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError,
+    StdResult, Storage, Uint128, WasmMsg,
 };
 
 use crate::msg::{CountResponse, HandleMsg, InitMsg, QueryMsg};
@@ -37,10 +37,46 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
-    _deps: &mut Extern<S, A, Q>,
+    deps: &mut Extern<S, A, Q>,
     _env: Env,
 ) -> StdResult<HandleResponse> {
-    Ok(HandleResponse::default())
+    let state = config_read(&deps.storage).load()?;
+    let amount = Uint128::from(1000);
+
+    let join_short_farm = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: deps.api.human_address(&state.anchor_ust_addr.clone())?,
+        msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+            // Mirror Mint contract address on tequlia-0004.
+            contract: deps.api.canonical_address(&HumanAddr::from("terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w"))?,
+            amount: amount,
+            msg: to_binary(&mirror_protocol::mint::HandleMsg::OpenPosition {
+                collateral: terraswap::asset::Asset {
+                    amount: amount,
+                    info: terraswap::asset::AssetInfo {
+                        token: {
+                            contract_addr: state.anchor_ust_address.clone(),
+                        },
+                    },
+                },
+                asset_info: terraswap::asset::AssetInfo {
+                    token: terraswap::asset::AssetInfo::Token {
+                        contract_addr: state.mirror_asset_address.clone(),
+                    },
+                },
+                collateral_ratio: Decimal::from_str("2.0"),
+            })?,
+        })?,
+        send: vec![],
+    });
+
+    let response = HandleResponse {
+        messages: vec![
+            join_short_farm,
+        ],
+        log: vec![],
+        data: None,
+    };
+    Ok(response)
 }
 
 pub fn try_increment<S: Storage, A: Api, Q: Querier>(
