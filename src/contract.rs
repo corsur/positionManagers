@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier, StdError,
+    to_binary, Api, Binary, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError,
     StdResult, Storage,
 };
 
@@ -14,6 +14,9 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let state = State {
         count: msg.count,
         owner: deps.api.canonical_address(&env.message.sender)?,
+        // Hardcoding testnet mAAPL's address for now.
+        mirror_asset_addr: deps.api.canonical_address(&HumanAddr::from("terra16vfxm98rxlc8erj4g0sj5932dvylgmdufnugk0"))?,
+        anchor_ust_addr: deps.api.canonical_address(&HumanAddr::from("terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl"))?,
     };
 
     config(&mut deps.storage).save(&state)?;
@@ -34,7 +37,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
+    _deps: &mut Extern<S, A, Q>,
     _env: Env,
 ) -> StdResult<HandleResponse> {
     Ok(HandleResponse::default())

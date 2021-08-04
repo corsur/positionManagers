@@ -10,6 +10,8 @@ pub static CONFIG_KEY: &[u8] = b"config";
 pub struct State {
     pub count: i32,
     pub owner: CanonicalAddr,
+    pub mirror_asset_addr: CanonicalAddr,
+    pub anchor_ust_addr: CanonicalAddr,
 }
 
 pub fn config<S: Storage>(storage: &mut S) -> Singleton<S, State> {
