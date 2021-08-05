@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    to_binary, Api, Binary, CosmosMsg, Decimal, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError,
+    to_binary, Api, Binary, Coin, CosmosMsg, Decimal, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError,
     StdResult, Storage, Uint128, WasmMsg,
 };
 
@@ -65,20 +65,22 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     _deps: &mut Extern<S, A, Q>,
     _env: Env,
 ) -> StdResult<HandleResponse> {
-    let amount = Uint128::from(1000u128);
-    let collateral_ratio = Decimal::percent(200);
+    // All hardcoded addresses are for the testnet.
+    let anchor_ust_cw20_addr = HumanAddr::from("terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl");
+    let mirror_mint_addr = HumanAddr::from("terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w");
+    let mirror_staking_addr = HumanAddr::from("terra1a06dgl27rhujjphsn4drl242ufws267qxypptx");
+    let mirror_aapl_cw20_addr = HumanAddr::from("terra16vfxm98rxlc8erj4g0sj5932dvylgmdufnugk0");
 
+    let anchor_ust_collateral_amount = Uint128::from(1000u128);
+    let collateral_ratio = Decimal::percent(200);
     let join_short_farm = CosmosMsg::Wasm(WasmMsg::Execute {
-        // aUST testnet address.
-        contract_addr: HumanAddr::from("terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl"),
+        contract_addr: anchor_ust_cw20_addr,
         msg: to_binary(&cw20::Cw20HandleMsg::Send {
-            // Mirror Mint testnet address.
-            contract: HumanAddr::from("terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w"),
-            amount: amount,
+            contract: mirror_mint_addr,
+            amount: anchor_ust_collateral_amount,
             msg: Some(to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
                 asset_info: terraswap::asset::AssetInfo::Token {
-                    // mAAPL testnet address.
-                    contract_addr: HumanAddr::from("terra16vfxm98rxlc8erj4g0sj5932dvylgmdufnugk0"),
+                    contract_addr: mirror_aapl_cw20_addr.clone(),
                 },
                 collateral_ratio: collateral_ratio,
                 short_params: None,
@@ -87,9 +89,44 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         send: vec![],
     });
 
+    // TODO: swap UST for mAsset.
+    // TODO: increase mAsset allowance for Mirror Staking.
+
+    let uusd_amount = Uint128::from(1000000000u128);
+    let mirror_asset_amount = Uint128::from(5u128);
+    let join_long_farm = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: mirror_staking_addr,
+        msg: to_binary(&mirror_protocol::staking::HandleMsg::AutoStake {
+            assets: [
+                terraswap::asset::Asset {
+                    info: terraswap::asset::AssetInfo::Token {
+                        contract_addr: mirror_aapl_cw20_addr,
+                    },
+                    amount: mirror_asset_amount,
+                },
+                terraswap::asset::Asset {
+                    info: terraswap::asset::AssetInfo::NativeToken {
+                        denom: String::from("uusd"),
+                    },
+                    amount: uusd_amount,
+                },
+            ],
+            slippage_tolerance: None,
+        })?,
+        send: vec![
+            Coin {
+                denom: String::from("uusd"),
+                amount: uusd_amount,
+            },
+        ],
+    });
+
     let response = HandleResponse {
         messages: vec![
             join_short_farm,
+            // swap_ust_for_masset,
+            // increase_masset_allowance,
+            join_long_farm,
         ],
         log: vec![],
         data: None,
