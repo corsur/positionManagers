@@ -89,7 +89,29 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         send: vec![],
     });
 
-    // TODO: swap UST for mAsset.
+    let uusd_swap_amount = Uint128::from(1000u128);
+    // TODO: Need to first query Terraswap factory for pair address.
+    let terraswap_masset_ust_pair_addr = HumanAddr::from("TODO");
+    let swap_ust_for_masset = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: terraswap_masset_ust_pair_addr,
+        msg: to_binary(&terraswap::pair::HandleMsg::Swap {
+            offer_asset: terraswap::asset::Asset {
+                info: terraswap::asset::AssetInfo::NativeToken {
+                    denom: String::from("uusd"),
+                },
+                amount: uusd_swap_amount,
+            },
+            max_spread: None,
+            belief_price: None,
+            to: None,
+        })?,
+        send: vec![
+            Coin {
+                denom: String::from("uusd"),
+                amount: uusd_swap_amount,
+            }
+        ],
+    });
 
     let mirror_asset_amount = Uint128::from(5u128);
     let increase_allowance = CosmosMsg::Wasm(WasmMsg::Execute {
@@ -133,7 +155,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let response = HandleResponse {
         messages: vec![
             join_short_farm,
-            // swap_ust_for_masset,
+            swap_ust_for_masset,
             increase_allowance,
             join_long_farm,
         ],
