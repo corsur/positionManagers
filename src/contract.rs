@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    to_binary, Api, Binary, Coin, CosmosMsg, Decimal, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError,
-    StdResult, Storage, Uint128, WasmMsg,
+    from_binary, to_binary, Api, Binary, Coin, CosmosMsg, Decimal, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, QueryRequest, StdError,
+    StdResult, Storage, Uint128, WasmMsg, WasmQuery,
 };
 
 use crate::msg::{CountResponse, HandleMsg, InitMsg, QueryMsg};
@@ -62,7 +62,7 @@ pub fn try_reset<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
-    _deps: &mut Extern<S, A, Q>,
+    deps: &mut Extern<S, A, Q>,
     _env: Env,
 ) -> StdResult<HandleResponse> {
     // All hardcoded addresses are for the testnet.
@@ -70,6 +70,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let mirror_mint_addr = HumanAddr::from("terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w");
     let mirror_staking_addr = HumanAddr::from("terra1a06dgl27rhujjphsn4drl242ufws267qxypptx");
     let mirror_aapl_cw20_addr = HumanAddr::from("terra16vfxm98rxlc8erj4g0sj5932dvylgmdufnugk0");
+    let terraswap_factory_addr = HumanAddr::from("terra18qpjm4zkvqnpjpw0zn0tdr8gdzvt8au35v45xf");
 
     let anchor_ust_collateral_amount = Uint128::from(1000u128);
     let collateral_ratio = Decimal::percent(200);
@@ -89,11 +90,25 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         send: vec![],
     });
 
+    let terraswap_pair_query_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+        contract_addr: terraswap_factory_addr,
+        msg: to_binary(&terraswap::factory::QueryMsg::Pair {
+            asset_infos: [
+                terraswap::asset::AssetInfo::Token {
+                    contract_addr: mirror_aapl_cw20_addr.clone(),
+                },
+                terraswap::asset::AssetInfo::NativeToken {
+                    denom: String::from("uusd"),
+                },
+            ],
+        })?,
+    }))?;
+    let terraswap_pair_info: terraswap::asset::PairInfo = from_binary(&terraswap_pair_query_result)?;
+    let terraswap_masset_ust_pair_addr = &terraswap_pair_info.contract_addr;
+
     let uusd_swap_amount = Uint128::from(1000u128);
-    // TODO: Need to first query Terraswap factory for pair address.
-    let terraswap_masset_ust_pair_addr = HumanAddr::from("TODO");
     let swap_ust_for_masset = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: terraswap_masset_ust_pair_addr,
+        contract_addr: terraswap_masset_ust_pair_addr.clone(),
         msg: to_binary(&terraswap::pair::HandleMsg::Swap {
             offer_asset: terraswap::asset::Asset {
                 info: terraswap::asset::AssetInfo::NativeToken {
