@@ -90,10 +90,19 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     });
 
     // TODO: swap UST for mAsset.
-    // TODO: increase mAsset allowance for Mirror Staking.
+
+    let mirror_asset_amount = Uint128::from(5u128);
+    let increase_allowance = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: mirror_aapl_cw20_addr.clone(),
+        msg: to_binary(&cw20::Cw20HandleMsg::IncreaseAllowance {
+            spender: mirror_staking_addr.clone(),
+            amount: mirror_asset_amount,
+            expires: None,
+        })?,
+        send: vec![],
+    });
 
     let uusd_amount = Uint128::from(1000000000u128);
-    let mirror_asset_amount = Uint128::from(5u128);
     let join_long_farm = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: mirror_staking_addr,
         msg: to_binary(&mirror_protocol::staking::HandleMsg::AutoStake {
@@ -125,7 +134,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         messages: vec![
             join_short_farm,
             // swap_ust_for_masset,
-            // increase_masset_allowance,
+            increase_allowance,
             join_long_farm,
         ],
         log: vec![],
