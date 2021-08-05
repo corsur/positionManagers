@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    to_binary, Api, Binary, CosmosMsg, Decimal, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, StdError,
+    to_binary, Addr, Api, Binary, CosmosMsg, Decimal, Deps, Env, Querier, Response, StdError,
     StdResult, Storage, Uint128, WasmMsg,
 };
 
@@ -7,28 +7,28 @@ use crate::msg::{CountResponse, HandleMsg, InitMsg, QueryMsg};
 use crate::state::{config, config_read, State};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
+    deps: &mut Deps<S, A, Q>,
     env: Env,
     msg: InitMsg,
-) -> StdResult<InitResponse> {
+) -> StdResult<Response> {
     let state = State {
         count: msg.count,
         owner: deps.api.canonical_address(&env.message.sender)?,
         // Hardcoding testnet mAAPL's address for now.
-        mirror_asset_addr: deps.api.canonical_address(&HumanAddr::from("terra16vfxm98rxlc8erj4g0sj5932dvylgmdufnugk0"))?,
-        anchor_ust_addr: deps.api.canonical_address(&HumanAddr::from("terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl"))?,
+        mirror_asset_addr: deps.api.addr_validate("terra16vfxm98rxlc8erj4g0sj5932dvylgmdufnugk0")?,
+        anchor_ust_addr: deps.api.addr_validate("terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl")?,
     };
 
     config(&mut deps.storage).save(&state)?;
 
-    Ok(InitResponse::default())
+    Ok(Response::default())
 }
 
 pub fn handle<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
+    deps: &mut Deps<S, A, Q>,
     env: Env,
     msg: HandleMsg,
-) -> StdResult<HandleResponse> {
+) -> StdResult<Response> {
     match msg {
         HandleMsg::Increment {} => try_increment(deps, env),
         HandleMsg::Reset { count } => try_reset(deps, env, count),
@@ -37,39 +37,36 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
+    deps: &mut Deps<S, A, Q>,
     _env: Env,
-) -> StdResult<HandleResponse> {
+) -> StdResult<Response> {
     let state = config_read(&deps.storage).load()?;
-    let amount = Uint128::from(1000);
+    let amount = Uint128::from(1000u128);
+    let collateral_ratio = Decimal::percent(200);
 
     let join_short_farm = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: deps.api.human_address(&state.anchor_ust_addr.clone())?,
+        contract_addr: state.anchor_ust_addr,
         msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
             // Mirror Mint contract address on tequlia-0004.
-            contract: deps.api.canonical_address(&HumanAddr::from("terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w"))?,
+            contract: String::from("terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w"),
             amount: amount,
             msg: to_binary(&mirror_protocol::mint::HandleMsg::OpenPosition {
                 collateral: terraswap::asset::Asset {
                     amount: amount,
-                    info: terraswap::asset::AssetInfo {
-                        token: {
-                            contract_addr: state.anchor_ust_address.clone(),
-                        },
+                    info: terraswap::asset::AssetInfo::Token {
+                        contract_addr: state.anchor_ust_addr,
                     },
                 },
-                asset_info: terraswap::asset::AssetInfo {
-                    token: terraswap::asset::AssetInfo::Token {
-                        contract_addr: state.mirror_asset_address.clone(),
-                    },
+                asset_info: terraswap::asset::AssetInfo::Token {
+                    contract_addr: state.mirror_asset_addr,
                 },
-                collateral_ratio: Decimal::from_str("2.0"),
+                collateral_ratio: collateral_ratio,
             })?,
         })?,
         send: vec![],
     });
 
-    let response = HandleResponse {
+    let response = Response {
         messages: vec![
             join_short_farm,
         ],
@@ -80,22 +77,22 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn try_increment<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
+    deps: &mut Deps<S, A, Q>,
     _env: Env,
-) -> StdResult<HandleResponse> {
+) -> StdResult<Response> {
     config(&mut deps.storage).update(|mut state| {
         state.count += 1;
         Ok(state)
     })?;
 
-    Ok(HandleResponse::default())
+    Ok(Response::default())
 }
 
 pub fn try_reset<S: Storage, A: Api, Q: Querier>(
-    deps: &mut Extern<S, A, Q>,
+    deps: &mut Deps<S, A, Q>,
     env: Env,
     count: i32,
-) -> StdResult<HandleResponse> {
+) -> StdResult<Response> {
     let api = &deps.api;
     config(&mut deps.storage).update(|mut state| {
         if api.canonical_address(&env.message.sender)? != state.owner {
@@ -104,11 +101,11 @@ pub fn try_reset<S: Storage, A: Api, Q: Querier>(
         state.count = count;
         Ok(state)
     })?;
-    Ok(HandleResponse::default())
+    Ok(Response::default())
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
+    deps: &Deps<S, A, Q>,
     msg: QueryMsg,
 ) -> StdResult<Binary> {
     match msg {
@@ -116,7 +113,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     }
 }
 
-fn query_count<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<CountResponse> {
+fn query_count<S: Storage, A: Api, Q: Querier>(deps: &Deps<S, A, Q>) -> StdResult<CountResponse> {
     let state = config_read(&deps.storage).load()?;
     Ok(CountResponse { count: state.count })
 }
