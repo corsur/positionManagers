@@ -19,6 +19,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         mirror_collateral_oracle_addr: deps.api.canonical_address(&msg.mirror_collateral_oracle_addr)?,
         mirror_lock_addr: deps.api.canonical_address(&msg.mirror_lock_addr)?,
         mirror_mint_addr: deps.api.canonical_address(&msg.mirror_mint_addr)?,
+        mirror_oracle_addr: deps.api.canonical_address(&msg.mirror_oracle_addr)?,
         mirror_staking_addr: deps.api.canonical_address(&msg.mirror_staking_addr)?,
         terraswap_factory_addr: deps.api.canonical_address(&msg.terraswap_factory_addr)?,
     };

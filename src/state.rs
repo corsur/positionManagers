@@ -14,6 +14,7 @@ pub struct State {
     pub mirror_collateral_oracle_addr: CanonicalAddr,
     pub mirror_lock_addr: CanonicalAddr,
     pub mirror_mint_addr: CanonicalAddr,
+    pub mirror_oracle_addr: CanonicalAddr,
     pub mirror_staking_addr: CanonicalAddr,
     pub terraswap_factory_addr: CanonicalAddr,
 }

@@ -9,6 +9,7 @@ pub struct InitMsg {
     pub mirror_collateral_oracle_addr: HumanAddr,
     pub mirror_lock_addr: HumanAddr,
     pub mirror_mint_addr: HumanAddr,
+    pub mirror_oracle_addr: HumanAddr,
     pub mirror_staking_addr: HumanAddr,
     pub terraswap_factory_addr: HumanAddr,
 }
