@@ -84,6 +84,17 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let collateral_ust_value: Decimal = decimal_multiplication(Decimal::from_ratio(collateral_asset_amount, 1u128), collateral_price_response.rate);
     let ust_value_to_mint_masset: Decimal = decimal_division(collateral_ust_value, collateral_ratio);
 
+    let mirror_asset_oracle_price_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+        contract_addr: deps.api.human_address(&state.mirror_oracle_addr)?,
+        msg: to_binary(&mirror_protocol::oracle::QueryMsg::Price {
+            base_asset: deps.api.human_address(&state.mirror_asset_cw20_addr)?.to_string(),
+            quote_asset: String::from("uusd"),
+        })?,
+    }))?;
+    let mirror_asset_oracle_price_response: mirror_protocol::oracle::PriceResponse =
+        from_binary(&mirror_asset_oracle_price_result)?;
+    let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
+
     let join_short_farm = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.anchor_ust_cw20_addr)?,
         msg: to_binary(&cw20::Cw20HandleMsg::Send {
