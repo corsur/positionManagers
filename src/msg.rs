@@ -1,4 +1,4 @@
-use cosmwasm_std::{HumanAddr, WasmMsg};
+use cosmwasm_std::{Decimal, HumanAddr, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +14,14 @@ pub struct InitMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
-    DeltaNeutralInvest {},
+    DeltaNeutralInvest {
+        collateral_ratio: Decimal,
+    },
     Do {
         wasm_msg: WasmMsg,
+    },
+    Receive {
+        cw20_receive_msg: cw20::Cw20ReceiveMsg,
     },
 }
 
@@ -24,3 +29,4 @@ pub enum HandleMsg {
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
 }
+

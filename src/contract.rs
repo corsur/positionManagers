@@ -33,9 +33,19 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::unauthorized());
     }
     match msg {
-        HandleMsg::DeltaNeutralInvest {} => try_delta_neutral_invest(deps, env),
+        HandleMsg::DeltaNeutralInvest {collateral_ratio} => try_delta_neutral_invest(deps, env, collateral_ratio),
         HandleMsg::Do {wasm_msg} => try_to_do(deps, env, wasm_msg),
+        HandleMsg::Receive {cw20_receive_msg} => receive_cw20(deps, env, cw20_receive_msg),
     }
+}
+
+pub fn receive_cw20<S: Storage, A: Api, Q: Querier>(
+    _deps: &mut Extern<S, A, Q>,
+    _env: Env,
+    _cw20_receive_msg: cw20::Cw20ReceiveMsg,
+) -> StdResult<HandleResponse> {
+    // TODO: Implement a couple of hook messages for delta_neutral and deposit.
+    Ok(HandleResponse::default())
 }
 
 pub fn try_to_do<S: Storage, A: Api, Q: Querier>(
@@ -53,11 +63,11 @@ pub fn try_to_do<S: Storage, A: Api, Q: Querier>(
 pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     _env: Env,
+    collateral_ratio: Decimal,
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
 
     let anchor_ust_collateral_amount = Uint128::from(1000u128);
-    let collateral_ratio = Decimal::percent(200);
     let join_short_farm = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.anchor_ust_cw20_addr)?,
         msg: to_binary(&cw20::Cw20HandleMsg::Send {
