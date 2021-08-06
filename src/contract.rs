@@ -34,7 +34,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     }
     match msg {
         HandleMsg::DeltaNeutralInvest {collateral_ratio} => try_delta_neutral_invest(deps, env, collateral_ratio),
-        HandleMsg::Do {wasm_msg} => try_to_do(deps, env, wasm_msg),
+        HandleMsg::Do {cosmos_messages} => try_to_do(deps, env, cosmos_messages),
         HandleMsg::Receive {cw20_receive_msg} => receive_cw20(deps, env, cw20_receive_msg),
     }
 }
@@ -51,10 +51,10 @@ pub fn receive_cw20<S: Storage, A: Api, Q: Querier>(
 pub fn try_to_do<S: Storage, A: Api, Q: Querier>(
     _deps: &mut Extern<S, A, Q>,
     _env: Env,
-    wasm_msg: WasmMsg,
+    cosmos_messages: Vec<CosmosMsg>,
 ) -> StdResult<HandleResponse> {
     Ok(HandleResponse {
-        messages: vec![CosmosMsg::Wasm(wasm_msg)],
+        messages: cosmos_messages,
         log: vec![],
         data: None,
     })

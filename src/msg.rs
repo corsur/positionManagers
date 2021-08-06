@@ -1,4 +1,4 @@
-use cosmwasm_std::{Decimal, HumanAddr, WasmMsg};
+use cosmwasm_std::{CosmosMsg, Decimal, HumanAddr};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ pub enum HandleMsg {
         collateral_ratio: Decimal,
     },
     Do {
-        wasm_msg: WasmMsg,
+        cosmos_messages: Vec<CosmosMsg>,
     },
     Receive {
         cw20_receive_msg: cw20::Cw20ReceiveMsg,
