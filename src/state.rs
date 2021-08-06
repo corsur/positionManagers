@@ -11,6 +11,7 @@ pub struct State {
     pub owner: CanonicalAddr,
     pub anchor_ust_cw20_addr: CanonicalAddr,
     pub mirror_asset_cw20_addr: CanonicalAddr,
+    pub mirror_collateral_oracle_addr: CanonicalAddr,
     pub mirror_lock_addr: CanonicalAddr,
     pub mirror_mint_addr: CanonicalAddr,
     pub mirror_staking_addr: CanonicalAddr,

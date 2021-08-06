@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct InitMsg {
     pub anchor_ust_cw20_addr: HumanAddr,
     pub mirror_asset_cw20_addr: HumanAddr,
+    pub mirror_collateral_oracle_addr: HumanAddr,
     pub mirror_lock_addr: HumanAddr,
     pub mirror_mint_addr: HumanAddr,
     pub mirror_staking_addr: HumanAddr,
