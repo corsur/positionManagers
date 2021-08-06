@@ -15,6 +15,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         owner: deps.api.canonical_address(&env.message.sender)?,
         anchor_ust_cw20_addr: deps.api.canonical_address(&msg.anchor_ust_cw20_addr)?,
         mirror_asset_cw20_addr: deps.api.canonical_address(&msg.mirror_asset_cw20_addr)?,
+        mirror_lock_addr: deps.api.canonical_address(&msg.mirror_lock_addr)?,
         mirror_mint_addr: deps.api.canonical_address(&msg.mirror_mint_addr)?,
         mirror_staking_addr: deps.api.canonical_address(&msg.mirror_staking_addr)?,
         terraswap_factory_addr: deps.api.canonical_address(&msg.terraswap_factory_addr)?,
