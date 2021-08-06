@@ -9,6 +9,11 @@ pub static CONFIG_KEY: &[u8] = b"config";
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct State {
     pub owner: CanonicalAddr,
+    pub anchor_ust_cw20_addr: CanonicalAddr,
+    pub mirror_asset_cw20_addr: CanonicalAddr,
+    pub mirror_mint_addr: CanonicalAddr,
+    pub mirror_staking_addr: CanonicalAddr,
+    pub terraswap_factory_addr: CanonicalAddr,
 }
 
 pub fn config<S: Storage>(storage: &mut S) -> Singleton<S, State> {
