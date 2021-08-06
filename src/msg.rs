@@ -1,4 +1,4 @@
-use cosmwasm_std::HumanAddr;
+use cosmwasm_std::{HumanAddr, WasmMsg};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,9 @@ pub struct InitMsg {
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     DeltaNeutralInvest {},
+    Do {
+        wasm_msg: WasmMsg,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

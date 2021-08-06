@@ -34,7 +34,20 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     }
     match msg {
         HandleMsg::DeltaNeutralInvest {} => try_delta_neutral_invest(deps, env),
+        HandleMsg::Do {wasm_msg} => try_to_do(deps, env, wasm_msg),
     }
+}
+
+pub fn try_to_do<S: Storage, A: Api, Q: Querier>(
+    _deps: &mut Extern<S, A, Q>,
+    _env: Env,
+    wasm_msg: WasmMsg,
+) -> StdResult<HandleResponse> {
+    Ok(HandleResponse {
+        messages: vec![CosmosMsg::Wasm(wasm_msg)],
+        log: vec![],
+        data: None,
+    })
 }
 
 pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
