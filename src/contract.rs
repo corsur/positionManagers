@@ -37,20 +37,11 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::unauthorized());
     }
     match msg {
+        HandleMsg::ClaimShortSaleProceedsAndStake {cdp_idx} => claim_short_sale_proceeds_and_stake(deps, env, cdp_idx),
         HandleMsg::DeltaNeutralInvest {collateral_asset_amount, collateral_ratio_in_percentage} =>
             try_delta_neutral_invest(deps, env, collateral_asset_amount, collateral_ratio_in_percentage),
         HandleMsg::Do {cosmos_messages} => try_to_do(deps, env, cosmos_messages),
-        HandleMsg::Receive {cw20_receive_msg} => receive_cw20(deps, env, cw20_receive_msg),
     }
-}
-
-pub fn receive_cw20<S: Storage, A: Api, Q: Querier>(
-    _deps: &mut Extern<S, A, Q>,
-    _env: Env,
-    _cw20_receive_msg: cw20::Cw20ReceiveMsg,
-) -> StdResult<HandleResponse> {
-    // TODO: Implement a couple of hook messages for delta_neutral and deposit.
-    Ok(HandleResponse::default())
 }
 
 pub fn try_to_do<S: Storage, A: Api, Q: Querier>(
@@ -150,7 +141,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     Ok(response)
 }
 
-pub fn claim_uusd_and_stake<S: Storage, A: Api, Q: Querier>(
+pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     env: Env,
     cdp_idx: Uint128,

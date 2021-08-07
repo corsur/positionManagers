@@ -17,15 +17,15 @@ pub struct InitMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
+    ClaimShortSaleProceedsAndStake {
+        cdp_idx: Uint128,
+    },
     DeltaNeutralInvest {
         collateral_asset_amount: Uint128,
         collateral_ratio_in_percentage: u64,
     },
     Do {
         cosmos_messages: Vec<CosmosMsg>,
-    },
-    Receive {
-        cw20_receive_msg: cw20::Cw20ReceiveMsg,
     },
 }
 
