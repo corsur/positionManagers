@@ -1,4 +1,4 @@
-use cosmwasm_std::{CosmosMsg, Decimal, HumanAddr, Uint128};
+use cosmwasm_std::{CosmosMsg, HumanAddr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ pub struct InitMsg {
 pub enum HandleMsg {
     DeltaNeutralInvest {
         collateral_asset_amount: Uint128,
-        collateral_ratio: Decimal,
+        collateral_ratio_in_percentage: u64,
     },
     Do {
         cosmos_messages: Vec<CosmosMsg>,

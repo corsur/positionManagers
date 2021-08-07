@@ -37,8 +37,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::unauthorized());
     }
     match msg {
-        HandleMsg::DeltaNeutralInvest {collateral_asset_amount, collateral_ratio} =>
-            try_delta_neutral_invest(deps, env, collateral_asset_amount, collateral_ratio),
+        HandleMsg::DeltaNeutralInvest {collateral_asset_amount, collateral_ratio_in_percentage} =>
+            try_delta_neutral_invest(deps, env, collateral_asset_amount, collateral_ratio_in_percentage),
         HandleMsg::Do {cosmos_messages} => try_to_do(deps, env, cosmos_messages),
         HandleMsg::Receive {cw20_receive_msg} => receive_cw20(deps, env, cw20_receive_msg),
     }
@@ -69,9 +69,11 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     _env: Env,
     collateral_asset_amount: Uint128,
-    collateral_ratio: Decimal,
+    collateral_ratio_in_percentage: u64,
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
+    let collateral_ratio = Decimal::percent(collateral_ratio_in_percentage);
+    let inverse_collateral_ratio = Decimal::from_ratio(100u128, collateral_ratio_in_percentage);
 
     let collateral_price_query_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: deps.api.human_address(&state.mirror_collateral_oracle_addr)?,
@@ -81,8 +83,8 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     }))?;
     let collateral_price_response: mirror_protocol::collateral_oracle::CollateralPriceResponse =
         from_binary(&collateral_price_query_result)?;
-    let collateral_value_in_uusd: Decimal = decimal_multiplication(Decimal::from_ratio(collateral_asset_amount, 1u128), collateral_price_response.rate);
-    let minted_mirror_asset_value_in_uusd: Decimal = decimal_division(collateral_value_in_uusd, collateral_ratio);
+    let collateral_value_in_uusd: Uint128 = collateral_asset_amount * collateral_price_response.rate;
+    let minted_mirror_asset_value_in_uusd: Uint128 = collateral_value_in_uusd * inverse_collateral_ratio;
 
     let mirror_asset_oracle_price_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: deps.api.human_address(&state.mirror_oracle_addr)?,
@@ -94,7 +96,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let mirror_asset_oracle_price_response: mirror_protocol::oracle::PriceResponse =
         from_binary(&mirror_asset_oracle_price_result)?;
     let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
-    let minted_mirror_asset_amount: Uint128 = decimal_division(minted_mirror_asset_value_in_uusd, mirror_asset_oracle_price_in_uusd) * Uint128::from(1_000_000u128);
+    let minted_mirror_asset_amount: Uint128 = minted_mirror_asset_value_in_uusd * inverse_decimal(mirror_asset_oracle_price_in_uusd);
 
     let uusd_asset_info = terraswap::asset::AssetInfo::NativeToken {
         denom: String::from("uusd"),
