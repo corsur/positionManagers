@@ -161,6 +161,23 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         ],
     });
 
+    let response = HandleResponse {
+        messages: vec![
+            open_cdp,
+            swap_ust_for_masset,
+        ],
+        log: vec![],
+        data: None,
+    };
+    Ok(response)
+}
+
+pub fn provide_liquidity<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>
+) -> StdResult<HandleResponse> {
+    let state = config_read(&deps.storage).load()?;
+
+    // TODO: Obtain current mirror_asset balance.
     let mirror_asset_amount = Uint128::from(5u128);
     let increase_allowance = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
@@ -172,8 +189,9 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         send: vec![],
     });
 
+    // TODO: Calculate uusd amount from the current pool state.
     let uusd_amount = Uint128::from(1000000000u128);
-    let join_long_farm = CosmosMsg::Wasm(WasmMsg::Execute {
+    let stake = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.mirror_staking_addr)?,
         msg: to_binary(&mirror_protocol::staking::HandleMsg::AutoStake {
             assets: [
@@ -199,18 +217,11 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
             },
         ],
     });
-
-    let response = HandleResponse {
-        messages: vec![
-            open_cdp,
-            swap_ust_for_masset,
-            increase_allowance,
-            join_long_farm,
-        ],
+    Ok(HandleResponse {
+        messages: vec![increase_allowance, stake],
         log: vec![],
         data: None,
-    };
-    Ok(response)
+    })
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
