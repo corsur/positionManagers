@@ -155,19 +155,31 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     Ok(response)
 }
 
-pub fn provide_liquidity<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>
+pub fn claim_uusd_and_stake<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    env: Env,
+    cdp_idx: Uint128,
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
 
-    // TODO: Obtain current mirror_asset balance.
-    let mirror_asset_amount = Uint128::from(5u128);
+    let mirror_asset_cw20_info = terraswap::asset::AssetInfo::Token {
+        contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
+    };
+    let mirror_asset_amount = mirror_asset_cw20_info.query_pool(deps, &env.contract.address)?;
     let increase_allowance = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
         msg: to_binary(&cw20::Cw20HandleMsg::IncreaseAllowance {
             spender: deps.api.human_address(&state.mirror_staking_addr)?,
             amount: mirror_asset_amount,
             expires: None,
+        })?,
+        send: vec![],
+    });
+
+    let unlock_position_funds = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: deps.api.human_address(&state.mirror_lock_addr)?,
+        msg: to_binary(&mirror_protocol::lock::HandleMsg::UnlockPositionFunds {
+            positions_idx: vec![cdp_idx],
         })?,
         send: vec![],
     });
@@ -201,7 +213,7 @@ pub fn provide_liquidity<S: Storage, A: Api, Q: Querier>(
         ],
     });
     Ok(HandleResponse {
-        messages: vec![increase_allowance, stake],
+        messages: vec![unlock_position_funds, increase_allowance, stake],
         log: vec![],
         data: None,
     })
