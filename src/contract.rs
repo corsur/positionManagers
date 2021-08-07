@@ -96,32 +96,16 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
     let minted_mirror_asset_amount: Uint128 = decimal_division(minted_mirror_asset_value_in_uusd, mirror_asset_oracle_price_in_uusd) * Uint128::from(1_000_000u128);
 
-    let terraswap_pair_query_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-        contract_addr: deps.api.human_address(&state.terraswap_factory_addr)?,
-        msg: to_binary(&terraswap::factory::QueryMsg::Pair {
-            asset_infos: [
-                terraswap::asset::AssetInfo::Token {
-                    contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
-                },
-                terraswap::asset::AssetInfo::NativeToken {
-                    denom: String::from("uusd"),
-                },
-            ],
-        })?,
-    }))?;
-    let terraswap_pair_info: terraswap::asset::PairInfo = from_binary(&terraswap_pair_query_result)?;
-
-    let terraswap_simulation_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-        contract_addr: terraswap_pair_info.contract_addr.clone(),
-        msg: to_binary(&terraswap::pair::QueryMsg::Simulation {
-            offer_asset: terraswap::asset::Asset {
-                info: terraswap::asset::AssetInfo::Token {
-                    contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
-                },
-                amount: minted_mirror_asset_amount,
-            },
-        })?,
-    }))?;
+    let uusd_asset_info = terraswap::asset::AssetInfo::NativeToken {
+        denom: String::from("uusd"),
+    };
+    let mirror_asset_info = terraswap::asset::AssetInfo::Token {
+        contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
+    };
+    let terraswap_pair_info = terraswap::querier::query_pair_info(
+        deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &[uusd_asset_info.clone(), mirror_asset_info])?;
+    // TODO: Simulate two swaps and find the amount of uusd to offer for the long position.
+    let uusd_swap_amount = Uint128::from(1000u128);
 
     let open_cdp = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.anchor_ust_cw20_addr)?,
@@ -139,14 +123,11 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         send: vec![],
     });
 
-    let uusd_swap_amount = Uint128::from(1000u128);
-    let swap_ust_for_masset = CosmosMsg::Wasm(WasmMsg::Execute {
+    let swap_uusd_for_mirror_asset = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: terraswap_pair_info.contract_addr,
         msg: to_binary(&terraswap::pair::HandleMsg::Swap {
             offer_asset: terraswap::asset::Asset {
-                info: terraswap::asset::AssetInfo::NativeToken {
-                    denom: String::from("uusd"),
-                },
+                info: uusd_asset_info,
                 amount: uusd_swap_amount,
             },
             max_spread: None,
@@ -164,7 +145,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let response = HandleResponse {
         messages: vec![
             open_cdp,
-            swap_ust_for_masset,
+            swap_uusd_for_mirror_asset,
         ],
         log: vec![],
         data: None,
@@ -228,6 +209,5 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     _deps: &Extern<S, A, Q>,
     msg: QueryMsg,
 ) -> StdResult<Binary> {
-    match msg {
-    }
+    match msg {}
 }
