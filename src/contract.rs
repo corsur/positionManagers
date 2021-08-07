@@ -5,7 +5,7 @@ use cosmwasm_std::{
 
 use crate::msg::{HandleMsg, InitMsg, QueryMsg};
 use crate::state::{config, config_read, State};
-use crate::util::{decimal_division, decimal_multiplication};
+use crate::util::{*};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -103,9 +103,9 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
     };
     let terraswap_pair_info = terraswap::querier::query_pair_info(
-        deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &[uusd_asset_info.clone(), mirror_asset_info])?;
-    // TODO: Simulate two swaps and find the amount of uusd to offer for the long position.
-    let uusd_swap_amount = Uint128::from(1000u128);
+        deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &[uusd_asset_info.clone(), mirror_asset_info.clone()])?;
+    let uusd_swap_amount = get_uusd_amount_to_swap_for_long_position(
+        deps, &terraswap_pair_info.contract_addr, &mirror_asset_info, &uusd_asset_info, minted_mirror_asset_amount)?;
 
     let open_cdp = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.anchor_ust_cw20_addr)?,

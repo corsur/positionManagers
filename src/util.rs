@@ -1,4 +1,5 @@
-use cosmwasm_std::{Api, Decimal, Extern, Querier, StdResult, Storage, Uint128};
+use cosmwasm_std::{Api, Decimal, Extern, HumanAddr, Querier, StdResult, Storage, Uint128};
+use terraswap::asset::AssetInfo;
 
 const DECIMAL_FRACTIONAL: Uint128 = Uint128(1_000_000_000u128);
 
@@ -16,4 +17,33 @@ pub fn get_tax_cap_in_uusd<S: Storage, A: Api, Q: Querier>(
         Ok(response) => Ok(response.cap),
         Err(err) => Err(err),
     }
+}
+
+pub fn get_uusd_amount_to_swap_for_long_position<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    terraswap_pair_addr: &HumanAddr,
+    mirror_asset_info: &AssetInfo,
+    uusd_asset_info: &AssetInfo,
+    minted_mirror_asset_amount: Uint128) -> StdResult<Uint128> {
+    let one_minus_commission_rate = Decimal::from_ratio(997u128, 1000u128);
+    let reverse_one_minus_commission_rate = Decimal::from_ratio(1000u128, 997u128);
+
+    // Initial pool balances.
+    let mut balance_mirror_asset = mirror_asset_info.query_pool(deps, terraswap_pair_addr)?;
+    let mut balance_uusd = uusd_asset_info.query_pool(deps, terraswap_pair_addr)?;
+
+    // Simulate short sale (mirror_asset -> uusd).
+    let cp = Uint128(balance_mirror_asset.u128() * balance_uusd.u128());
+    let uusd_amount_before_fee = (balance_uusd - cp.multiply_ratio(1u128, balance_mirror_asset + minted_mirror_asset_amount))?;
+    let uusd_amount_after_fee = uusd_amount_before_fee * one_minus_commission_rate;
+    balance_mirror_asset += minted_mirror_asset_amount;
+    balance_uusd = (balance_uusd - uusd_amount_after_fee).unwrap();
+
+    // Simulate long buy (uusd -> mirror_asset).
+    let cp = Uint128(balance_mirror_asset.u128() * balance_uusd.u128());
+    let uusd_amount_to_swap_without_tax: Uint128 = (cp.multiply_ratio(
+            1u128, (balance_uusd - minted_mirror_asset_amount * reverse_one_minus_commission_rate)?) - balance_mirror_asset)?;
+    // For simplicity, we assume that the amount is large enough to hit the tax cap.
+    let uusd_amount_to_swap_with_tax = uusd_amount_to_swap_without_tax + get_tax_cap_in_uusd(deps)?;
+    Ok(uusd_amount_to_swap_with_tax)
 }
