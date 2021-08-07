@@ -98,16 +98,11 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
     let minted_mirror_asset_amount: Uint128 = minted_mirror_asset_value_in_uusd * inverse_decimal(mirror_asset_oracle_price_in_uusd);
 
-    let uusd_asset_info = terraswap::asset::AssetInfo::NativeToken {
-        denom: String::from("uusd"),
-    };
-    let mirror_asset_info = terraswap::asset::AssetInfo::Token {
-        contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
-    };
+    let terraswap_pair_asset_info = get_terraswap_pair_asset_info(deps.api.human_address(&state.mirror_asset_cw20_addr)?);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
-        deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &[uusd_asset_info.clone(), mirror_asset_info.clone()])?;
+        deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &terraswap_pair_asset_info)?;
     let uusd_swap_amount = get_uusd_amount_to_swap_for_long_position(
-        deps, &terraswap_pair_info.contract_addr, &mirror_asset_info, &uusd_asset_info, minted_mirror_asset_amount)?;
+        deps, &terraswap_pair_info.contract_addr, &terraswap_pair_asset_info[0], &terraswap_pair_asset_info[1], minted_mirror_asset_amount)?;
 
     let open_cdp = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.anchor_ust_cw20_addr)?,
@@ -129,7 +124,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         contract_addr: terraswap_pair_info.contract_addr,
         msg: to_binary(&terraswap::pair::HandleMsg::Swap {
             offer_asset: terraswap::asset::Asset {
-                info: uusd_asset_info,
+                info: terraswap_pair_asset_info[1].clone(),
                 amount: uusd_swap_amount,
             },
             max_spread: None,
@@ -184,8 +179,12 @@ pub fn claim_uusd_and_stake<S: Storage, A: Api, Q: Querier>(
         send: vec![],
     });
 
-    // TODO: Calculate uusd amount from the current pool state.
-    let uusd_amount = Uint128::from(1000000000u128);
+    let terraswap_pair_asset_info = get_terraswap_pair_asset_info(deps.api.human_address(&state.mirror_asset_cw20_addr)?);
+    let terraswap_pair_info = terraswap::querier::query_pair_info(
+        deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &terraswap_pair_asset_info)?;
+    let pool_mirror_asset_balance = terraswap_pair_asset_info[0].query_pool(deps, &terraswap_pair_info.contract_addr)?;
+    let pool_uusd_balance = terraswap_pair_asset_info[1].query_pool(deps, &terraswap_pair_info.contract_addr)?;
+    let uusd_amount_to_provide_liquidity = mirror_asset_amount.multiply_ratio(pool_uusd_balance, pool_mirror_asset_balance);
     let stake = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps.api.human_address(&state.mirror_staking_addr)?,
         msg: to_binary(&mirror_protocol::staking::HandleMsg::AutoStake {
@@ -200,7 +199,7 @@ pub fn claim_uusd_and_stake<S: Storage, A: Api, Q: Querier>(
                     info: terraswap::asset::AssetInfo::NativeToken {
                         denom: String::from("uusd"),
                     },
-                    amount: uusd_amount,
+                    amount: uusd_amount_to_provide_liquidity,
                 },
             ],
             slippage_tolerance: None,
@@ -208,7 +207,7 @@ pub fn claim_uusd_and_stake<S: Storage, A: Api, Q: Querier>(
         send: vec![
             Coin {
                 denom: String::from("uusd"),
-                amount: uusd_amount,
+                amount: uusd_amount_to_provide_liquidity,
             },
         ],
     });

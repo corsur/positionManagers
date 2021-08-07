@@ -15,6 +15,17 @@ pub fn get_tax_cap_in_uusd<S: Storage, A: Api, Q: Querier>(
     }
 }
 
+pub fn get_terraswap_pair_asset_info(mirror_asset_cw20_addr: HumanAddr) -> [AssetInfo; 2] {
+    return [
+        terraswap::asset::AssetInfo::Token {
+            contract_addr: mirror_asset_cw20_addr,
+        },
+        terraswap::asset::AssetInfo::NativeToken {
+            denom: String::from("uusd"),
+        },
+    ];
+}
+
 pub fn get_uusd_amount_to_swap_for_long_position<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     terraswap_pair_addr: &HumanAddr,
