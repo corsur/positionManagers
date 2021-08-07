@@ -3,9 +3,9 @@ use cosmwasm_std::{
     StdResult, Storage, Uint128, WasmMsg, WasmQuery,
 };
 
-use crate::math::{decimal_division, decimal_multiplication};
 use crate::msg::{HandleMsg, InitMsg, QueryMsg};
 use crate::state::{config, config_read, State};
+use crate::util::{decimal_division, decimal_multiplication};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -81,8 +81,8 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     }))?;
     let collateral_price_response: mirror_protocol::collateral_oracle::CollateralPriceResponse =
         from_binary(&collateral_price_query_result)?;
-    let collateral_ust_value: Decimal = decimal_multiplication(Decimal::from_ratio(collateral_asset_amount, 1u128), collateral_price_response.rate);
-    let ust_value_to_mint_masset: Decimal = decimal_division(collateral_ust_value, collateral_ratio);
+    let collateral_value_in_uusd: Decimal = decimal_multiplication(Decimal::from_ratio(collateral_asset_amount, 1u128), collateral_price_response.rate);
+    let minted_mirror_asset_value_in_uusd: Decimal = decimal_division(collateral_value_in_uusd, collateral_ratio);
 
     let mirror_asset_oracle_price_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: deps.api.human_address(&state.mirror_oracle_addr)?,
@@ -94,22 +94,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let mirror_asset_oracle_price_response: mirror_protocol::oracle::PriceResponse =
         from_binary(&mirror_asset_oracle_price_result)?;
     let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
-
-    let join_short_farm = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: deps.api.human_address(&state.anchor_ust_cw20_addr)?,
-        msg: to_binary(&cw20::Cw20HandleMsg::Send {
-            contract: deps.api.human_address(&state.mirror_mint_addr)?,
-            amount: collateral_asset_amount,
-            msg: Some(to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
-                asset_info: terraswap::asset::AssetInfo::Token {
-                    contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
-                },
-                collateral_ratio: collateral_ratio,
-                short_params: None,
-            })?),
-        })?,
-        send: vec![],
-    });
+    let minted_mirror_asset_amount: Uint128 = decimal_division(minted_mirror_asset_value_in_uusd, mirror_asset_oracle_price_in_uusd) * Uint128::from(1_000_000u128);
 
     let terraswap_pair_query_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: deps.api.human_address(&state.terraswap_factory_addr)?,
@@ -126,8 +111,6 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     }))?;
     let terraswap_pair_info: terraswap::asset::PairInfo = from_binary(&terraswap_pair_query_result)?;
 
-    // TODO: Query Mirror Oracle for mAsset price and calculate this.
-    let minted_mirror_asset_amount: Uint128 = Uint128::from(1000u128);
     let terraswap_simulation_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: terraswap_pair_info.contract_addr.clone(),
         msg: to_binary(&terraswap::pair::QueryMsg::Simulation {
@@ -139,6 +122,22 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
             },
         })?,
     }))?;
+
+    let open_cdp = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: deps.api.human_address(&state.anchor_ust_cw20_addr)?,
+        msg: to_binary(&cw20::Cw20HandleMsg::Send {
+            contract: deps.api.human_address(&state.mirror_mint_addr)?,
+            amount: collateral_asset_amount,
+            msg: Some(to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
+                asset_info: terraswap::asset::AssetInfo::Token {
+                    contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
+                },
+                collateral_ratio: collateral_ratio,
+                short_params: None,
+            })?),
+        })?,
+        send: vec![],
+    });
 
     let uusd_swap_amount = Uint128::from(1000u128);
     let swap_ust_for_masset = CosmosMsg::Wasm(WasmMsg::Execute {
@@ -203,7 +202,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
 
     let response = HandleResponse {
         messages: vec![
-            join_short_farm,
+            open_cdp,
             swap_ust_for_masset,
             increase_allowance,
             join_long_farm,
