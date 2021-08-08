@@ -102,7 +102,10 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
                     contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
                 },
                 collateral_ratio: collateral_ratio,
-                short_params: None,
+                short_params: Some(mirror_protocol::mint::ShortParams {
+                    belief_price: None,
+                    max_spread: None,
+                }),
             })?),
         })?,
         send: vec![],
