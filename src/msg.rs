@@ -22,7 +22,7 @@ pub enum HandleMsg {
     },
     DeltaNeutralInvest {
         collateral_asset_amount: Uint128,
-        collateral_ratio_in_percentage: u64,
+        collateral_ratio_in_percentage: Uint128,
     },
     Do {
         cosmos_messages: Vec<CosmosMsg>,

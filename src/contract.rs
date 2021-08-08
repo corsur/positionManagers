@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    from_binary, to_binary, Api, Binary, Coin, CosmosMsg, Decimal, Env, Extern, HandleResponse, InitResponse, Querier, QueryRequest, StdError,
+    to_binary, Api, Binary, Coin, CosmosMsg, Decimal, Env, Extern, HandleResponse, InitResponse, LogAttribute, Querier, QueryRequest, StdError,
     StdResult, Storage, Uint128, WasmMsg, WasmQuery,
 };
 
@@ -60,34 +60,31 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     _env: Env,
     collateral_asset_amount: Uint128,
-    collateral_ratio_in_percentage: u64,
+    collateral_ratio_in_percentage: Uint128,
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
-    let collateral_ratio = Decimal::percent(collateral_ratio_in_percentage);
+    let collateral_ratio = Decimal::from_ratio(collateral_ratio_in_percentage, 100u128);
     let inverse_collateral_ratio = Decimal::from_ratio(100u128, collateral_ratio_in_percentage);
 
-    let collateral_price_query_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-        contract_addr: deps.api.human_address(&state.mirror_collateral_oracle_addr)?,
-        msg: to_binary(&mirror_protocol::collateral_oracle::QueryMsg::CollateralPrice {
-            asset: deps.api.human_address(&state.anchor_ust_cw20_addr)?.to_string(),
-        })?,
-    }))?;
     let collateral_price_response: mirror_protocol::collateral_oracle::CollateralPriceResponse =
-        from_binary(&collateral_price_query_result)?;
+        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: deps.api.human_address(&state.mirror_collateral_oracle_addr)?,
+            msg: to_binary(&mirror_protocol::collateral_oracle::QueryMsg::CollateralPrice {
+                asset: deps.api.human_address(&state.anchor_ust_cw20_addr)?.to_string(),
+            })?,
+        }))?;
     let collateral_value_in_uusd: Uint128 = collateral_asset_amount * collateral_price_response.rate;
     let minted_mirror_asset_value_in_uusd: Uint128 = collateral_value_in_uusd * inverse_collateral_ratio;
 
-    let mirror_asset_oracle_price_result: Binary = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+    let mirror_asset_oracle_price_response: mirror_protocol::oracle::PriceResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: deps.api.human_address(&state.mirror_oracle_addr)?,
         msg: to_binary(&mirror_protocol::oracle::QueryMsg::Price {
             base_asset: deps.api.human_address(&state.mirror_asset_cw20_addr)?.to_string(),
             quote_asset: String::from("uusd"),
         })?,
     }))?;
-    let mirror_asset_oracle_price_response: mirror_protocol::oracle::PriceResponse =
-        from_binary(&mirror_asset_oracle_price_result)?;
     let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
-    let minted_mirror_asset_amount: Uint128 = minted_mirror_asset_value_in_uusd * inverse_decimal(mirror_asset_oracle_price_in_uusd);
+    let minted_mirror_asset_amount: Uint128 = minted_mirror_asset_value_in_uusd * million_divided_by_decimal(mirror_asset_oracle_price_in_uusd);
 
     let terraswap_pair_asset_info = get_terraswap_pair_asset_info(deps.api.human_address(&state.mirror_asset_cw20_addr)?);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
@@ -135,7 +132,19 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
             open_cdp,
             swap_uusd_for_mirror_asset,
         ],
-        log: vec![],
+        log: vec![LogAttribute {
+            key: String::from("mirror_asset_oracle_price_in_uusd"),
+            value: mirror_asset_oracle_price_in_uusd.to_string(),
+        }, LogAttribute {
+            key: String::from("minted_mirror_asset_value_in_uusd"),
+            value: minted_mirror_asset_value_in_uusd.to_string(),
+        }, LogAttribute {
+            key: String::from("uusd_swap_amount"),
+            value: uusd_swap_amount.to_string(),
+        }, LogAttribute {
+            key: String::from("minted_mirror_asset_amount"),
+            value: minted_mirror_asset_amount.to_string(),
+        }],
         data: None,
     };
     Ok(response)

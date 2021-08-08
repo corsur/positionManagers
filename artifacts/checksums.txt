@@ -1,1 +1,1 @@
-2a27b61db6bdf79b72ab75fabc21c2fb0aa11ffa63d1780dec332d46d45b7cfa  amadeus.wasm
+b5462c1c287bd9353bc687b580962d4f0d26f299afd9209dc6bcf2f50ce7435c  amadeus.wasm

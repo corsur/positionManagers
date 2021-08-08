@@ -3,8 +3,8 @@ use terraswap::asset::AssetInfo;
 
 const DECIMAL_FRACTIONAL: Uint128 = Uint128(1_000_000_000u128);
 
-pub fn inverse_decimal(decimal: Decimal) -> Decimal {
-    Decimal::from_ratio(DECIMAL_FRACTIONAL, decimal * DECIMAL_FRACTIONAL)
+pub fn million_divided_by_decimal(decimal: Decimal) -> Decimal {
+    Decimal::from_ratio(DECIMAL_FRACTIONAL, decimal * Uint128(1_000u128))
 }
 
 pub fn get_tax_cap_in_uusd<S: Storage, A: Api, Q: Querier>(

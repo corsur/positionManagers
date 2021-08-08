@@ -38,9 +38,7 @@
               "$ref": "#/definitions/Uint128"
             },
             "collateral_ratio_in_percentage": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
+              "$ref": "#/definitions/Uint128"
             }
           }
         }
