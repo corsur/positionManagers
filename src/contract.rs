@@ -84,7 +84,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         })?,
     }))?;
     let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
-    let minted_mirror_asset_amount: Uint128 = minted_mirror_asset_value_in_uusd * million_divided_by_decimal(mirror_asset_oracle_price_in_uusd);
+    let minted_mirror_asset_amount: Uint128 = minted_mirror_asset_value_in_uusd * inverse_decimal(mirror_asset_oracle_price_in_uusd);
 
     let terraswap_pair_asset_info = get_terraswap_pair_asset_info(deps.api.human_address(&state.mirror_asset_cw20_addr)?);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
@@ -136,14 +136,17 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
             key: String::from("mirror_asset_oracle_price_in_uusd"),
             value: mirror_asset_oracle_price_in_uusd.to_string(),
         }, LogAttribute {
+            key: String::from("collateral_value_in_uusd"),
+            value: collateral_value_in_uusd.to_string(),
+        }, LogAttribute {
             key: String::from("minted_mirror_asset_value_in_uusd"),
             value: minted_mirror_asset_value_in_uusd.to_string(),
         }, LogAttribute {
-            key: String::from("uusd_swap_amount"),
-            value: uusd_swap_amount.to_string(),
-        }, LogAttribute {
             key: String::from("minted_mirror_asset_amount"),
             value: minted_mirror_asset_amount.to_string(),
+        }, LogAttribute {
+            key: String::from("uusd_swap_amount"),
+            value: uusd_swap_amount.to_string(),
         }],
         data: None,
     };

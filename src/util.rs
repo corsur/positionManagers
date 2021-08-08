@@ -3,8 +3,8 @@ use terraswap::asset::AssetInfo;
 
 const DECIMAL_FRACTIONAL: Uint128 = Uint128(1_000_000_000u128);
 
-pub fn million_divided_by_decimal(decimal: Decimal) -> Decimal {
-    Decimal::from_ratio(DECIMAL_FRACTIONAL, decimal * Uint128(1_000u128))
+pub fn inverse_decimal(decimal: Decimal) -> Decimal {
+    Decimal::from_ratio(DECIMAL_FRACTIONAL, decimal * DECIMAL_FRACTIONAL)
 }
 
 pub fn get_tax_cap_in_uusd<S: Storage, A: Api, Q: Querier>(
@@ -49,7 +49,7 @@ pub fn get_uusd_amount_to_swap_for_long_position<S: Storage, A: Api, Q: Querier>
     // Simulate long buy (uusd -> mirror_asset).
     let cp = Uint128(balance_mirror_asset.u128() * balance_uusd.u128());
     let uusd_amount_to_swap_without_tax: Uint128 = (cp.multiply_ratio(
-            1u128, (balance_uusd - minted_mirror_asset_amount * reverse_one_minus_commission_rate)?) - balance_mirror_asset)?;
+            1u128, (balance_mirror_asset - minted_mirror_asset_amount * reverse_one_minus_commission_rate)?) - balance_uusd)?;
     // For simplicity, we assume that the amount is large enough to hit the tax cap.
     let uusd_amount_to_swap_with_tax = uusd_amount_to_swap_without_tax + get_tax_cap_in_uusd(deps)?;
     Ok(uusd_amount_to_swap_with_tax)
