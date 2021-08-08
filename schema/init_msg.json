@@ -3,12 +3,44 @@
   "title": "InitMsg",
   "type": "object",
   "required": [
-    "count"
+    "anchor_ust_cw20_addr",
+    "mirror_asset_cw20_addr",
+    "mirror_collateral_oracle_addr",
+    "mirror_lock_addr",
+    "mirror_mint_addr",
+    "mirror_oracle_addr",
+    "mirror_staking_addr",
+    "terraswap_factory_addr"
   ],
   "properties": {
-    "count": {
-      "type": "integer",
-      "format": "int32"
+    "anchor_ust_cw20_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "mirror_asset_cw20_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "mirror_collateral_oracle_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "mirror_lock_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "mirror_mint_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "mirror_oracle_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "mirror_staking_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "terraswap_factory_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    }
+  },
+  "definitions": {
+    "HumanAddr": {
+      "type": "string"
     }
   }
 }

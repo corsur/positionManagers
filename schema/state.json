@@ -3,15 +3,42 @@
   "title": "State",
   "type": "object",
   "required": [
-    "count",
-    "owner"
+    "anchor_ust_cw20_addr",
+    "mirror_asset_cw20_addr",
+    "mirror_collateral_oracle_addr",
+    "mirror_lock_addr",
+    "mirror_mint_addr",
+    "mirror_oracle_addr",
+    "mirror_staking_addr",
+    "owner",
+    "terraswap_factory_addr"
   ],
   "properties": {
-    "count": {
-      "type": "integer",
-      "format": "int32"
+    "anchor_ust_cw20_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "mirror_asset_cw20_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "mirror_collateral_oracle_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "mirror_lock_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "mirror_mint_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "mirror_oracle_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "mirror_staking_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
     },
     "owner": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "terraswap_factory_addr": {
       "$ref": "#/definitions/CanonicalAddr"
     }
   },
