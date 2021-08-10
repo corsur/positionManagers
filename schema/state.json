@@ -4,7 +4,6 @@
   "type": "object",
   "required": [
     "anchor_ust_cw20_addr",
-    "mirror_asset_cw20_addr",
     "mirror_collateral_oracle_addr",
     "mirror_lock_addr",
     "mirror_mint_addr",
@@ -15,9 +14,6 @@
   ],
   "properties": {
     "anchor_ust_cw20_addr": {
-      "$ref": "#/definitions/CanonicalAddr"
-    },
-    "mirror_asset_cw20_addr": {
       "$ref": "#/definitions/CanonicalAddr"
     },
     "mirror_collateral_oracle_addr": {

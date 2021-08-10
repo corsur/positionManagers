@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    to_binary, Api, Binary, Coin, CosmosMsg, Decimal, Env, Extern, HandleResponse, InitResponse, LogAttribute, Querier, QueryRequest, StdError,
-    StdResult, Storage, Uint128, WasmMsg, WasmQuery,
+    to_binary, Api, Binary, Coin, CosmosMsg, Decimal, Env, Extern, HandleResponse, HumanAddr, InitResponse, Querier, QueryRequest,
+    StdError, StdResult, Storage, Uint128, WasmMsg, WasmQuery,
 };
 
 use crate::msg::{HandleMsg, InitMsg, QueryMsg};
@@ -15,7 +15,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     let state = State {
         owner: deps.api.canonical_address(&env.message.sender)?,
         anchor_ust_cw20_addr: deps.api.canonical_address(&msg.anchor_ust_cw20_addr)?,
-        mirror_asset_cw20_addr: deps.api.canonical_address(&msg.mirror_asset_cw20_addr)?,
         mirror_collateral_oracle_addr: deps.api.canonical_address(&msg.mirror_collateral_oracle_addr)?,
         mirror_lock_addr: deps.api.canonical_address(&msg.mirror_lock_addr)?,
         mirror_mint_addr: deps.api.canonical_address(&msg.mirror_mint_addr)?,
@@ -37,9 +36,10 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::unauthorized());
     }
     match msg {
-        HandleMsg::ClaimShortSaleProceedsAndStake {cdp_idx} => claim_short_sale_proceeds_and_stake(deps, env, cdp_idx),
-        HandleMsg::DeltaNeutralInvest {collateral_asset_amount, collateral_ratio_in_percentage} =>
-            try_delta_neutral_invest(deps, env, collateral_asset_amount, collateral_ratio_in_percentage),
+        HandleMsg::ClaimShortSaleProceedsAndStake {cdp_idx, mirror_asset_amount} =>
+            claim_short_sale_proceeds_and_stake(deps, cdp_idx, mirror_asset_amount),
+        HandleMsg::DeltaNeutralInvest {collateral_asset_amount, collateral_ratio_in_percentage, mirror_asset_to_mint_cw20_addr} =>
+            try_delta_neutral_invest(deps, collateral_asset_amount, collateral_ratio_in_percentage, mirror_asset_to_mint_cw20_addr),
         HandleMsg::Do {cosmos_messages} => try_to_do(deps, env, cosmos_messages),
     }
 }
@@ -58,9 +58,9 @@ pub fn try_to_do<S: Storage, A: Api, Q: Querier>(
 
 pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    _env: Env,
     collateral_asset_amount: Uint128,
     collateral_ratio_in_percentage: Uint128,
+    mirror_asset_to_mint_cw20_addr: HumanAddr,
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
     let collateral_ratio = Decimal::from_ratio(collateral_ratio_in_percentage, 100u128);
@@ -79,14 +79,14 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
     let mirror_asset_oracle_price_response: mirror_protocol::oracle::PriceResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
         contract_addr: deps.api.human_address(&state.mirror_oracle_addr)?,
         msg: to_binary(&mirror_protocol::oracle::QueryMsg::Price {
-            base_asset: deps.api.human_address(&state.mirror_asset_cw20_addr)?.to_string(),
+            base_asset: mirror_asset_to_mint_cw20_addr.to_string(),
             quote_asset: String::from("uusd"),
         })?,
     }))?;
     let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
     let minted_mirror_asset_amount: Uint128 = minted_mirror_asset_value_in_uusd * inverse_decimal(mirror_asset_oracle_price_in_uusd);
 
-    let terraswap_pair_asset_info = get_terraswap_pair_asset_info(deps.api.human_address(&state.mirror_asset_cw20_addr)?);
+    let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_to_mint_cw20_addr);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
         deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &terraswap_pair_asset_info)?;
     let uusd_swap_amount = get_uusd_amount_to_swap_for_long_position(
@@ -99,7 +99,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
             amount: collateral_asset_amount,
             msg: Some(to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
                 asset_info: terraswap::asset::AssetInfo::Token {
-                    contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
+                    contract_addr: mirror_asset_to_mint_cw20_addr,
                 },
                 collateral_ratio: collateral_ratio,
                 short_params: Some(mirror_protocol::mint::ShortParams {
@@ -135,22 +135,7 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
             open_cdp,
             swap_uusd_for_mirror_asset,
         ],
-        log: vec![LogAttribute {
-            key: String::from("mirror_asset_oracle_price_in_uusd"),
-            value: mirror_asset_oracle_price_in_uusd.to_string(),
-        }, LogAttribute {
-            key: String::from("collateral_value_in_uusd"),
-            value: collateral_value_in_uusd.to_string(),
-        }, LogAttribute {
-            key: String::from("minted_mirror_asset_value_in_uusd"),
-            value: minted_mirror_asset_value_in_uusd.to_string(),
-        }, LogAttribute {
-            key: String::from("minted_mirror_asset_amount"),
-            value: minted_mirror_asset_amount.to_string(),
-        }, LogAttribute {
-            key: String::from("uusd_swap_amount"),
-            value: uusd_swap_amount.to_string(),
-        }],
+        log: vec![],
         data: None,
     };
     Ok(response)
@@ -158,17 +143,21 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
 
 pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    env: Env,
     cdp_idx: Uint128,
+    mirror_asset_amount: Uint128,
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
 
-    let mirror_asset_cw20_info = terraswap::asset::AssetInfo::Token {
-        contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
-    };
-    let mirror_asset_amount = mirror_asset_cw20_info.query_pool(deps, &env.contract.address)?;
+    let position_response: mirror_protocol::mint::PositionResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+        contract_addr: deps.api.human_address(&state.mirror_mint_addr)?,
+        msg: to_binary(&mirror_protocol::mint::QueryMsg::Position {
+            position_idx: cdp_idx,
+        })?,
+    }))?;
+    let mirror_asset_cw20_addr =
+        if let terraswap::asset::AssetInfo::Token {contract_addr: addr} = position_response.asset.info { addr } else { unreachable!() };
     let increase_allowance = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
+        contract_addr: mirror_asset_cw20_addr.clone(),
         msg: to_binary(&cw20::Cw20HandleMsg::IncreaseAllowance {
             spender: deps.api.human_address(&state.mirror_staking_addr)?,
             amount: mirror_asset_amount,
@@ -185,7 +174,7 @@ pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(
         send: vec![],
     });
 
-    let terraswap_pair_asset_info = get_terraswap_pair_asset_info(deps.api.human_address(&state.mirror_asset_cw20_addr)?);
+    let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_cw20_addr);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
         deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &terraswap_pair_asset_info)?;
     let pool_mirror_asset_balance = terraswap_pair_asset_info[0].query_pool(deps, &terraswap_pair_info.contract_addr)?;
@@ -197,7 +186,7 @@ pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(
             assets: [
                 terraswap::asset::Asset {
                     info: terraswap::asset::AssetInfo::Token {
-                        contract_addr: deps.api.human_address(&state.mirror_asset_cw20_addr)?,
+                        contract_addr: mirror_asset_cw20_addr,
                     },
                     amount: mirror_asset_amount,
                 },

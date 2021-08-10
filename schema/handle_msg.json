@@ -11,10 +11,14 @@
         "claim_short_sale_proceeds_and_stake": {
           "type": "object",
           "required": [
-            "cdp_idx"
+            "cdp_idx",
+            "mirror_asset_amount"
           ],
           "properties": {
             "cdp_idx": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "mirror_asset_amount": {
               "$ref": "#/definitions/Uint128"
             }
           }
@@ -31,7 +35,8 @@
           "type": "object",
           "required": [
             "collateral_asset_amount",
-            "collateral_ratio_in_percentage"
+            "collateral_ratio_in_percentage",
+            "mirror_asset_to_mint_cw20_addr"
           ],
           "properties": {
             "collateral_asset_amount": {
@@ -39,6 +44,9 @@
             },
             "collateral_ratio_in_percentage": {
               "$ref": "#/definitions/Uint128"
+            },
+            "mirror_asset_to_mint_cw20_addr": {
+              "$ref": "#/definitions/HumanAddr"
             }
           }
         }

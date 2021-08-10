@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
     pub anchor_ust_cw20_addr: HumanAddr,
-    pub mirror_asset_cw20_addr: HumanAddr,
     pub mirror_collateral_oracle_addr: HumanAddr,
     pub mirror_lock_addr: HumanAddr,
     pub mirror_mint_addr: HumanAddr,
@@ -19,10 +18,12 @@ pub struct InitMsg {
 pub enum HandleMsg {
     ClaimShortSaleProceedsAndStake {
         cdp_idx: Uint128,
+        mirror_asset_amount: Uint128,
     },
     DeltaNeutralInvest {
         collateral_asset_amount: Uint128,
         collateral_ratio_in_percentage: Uint128,
+        mirror_asset_to_mint_cw20_addr: HumanAddr,
     },
     Do {
         cosmos_messages: Vec<CosmosMsg>,
