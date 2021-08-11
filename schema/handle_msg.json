@@ -28,6 +28,25 @@
     {
       "type": "object",
       "required": [
+        "close_short_position"
+      ],
+      "properties": {
+        "close_short_position": {
+          "type": "object",
+          "required": [
+            "cdp_idx"
+          ],
+          "properties": {
+            "cdp_idx": {
+              "$ref": "#/definitions/Uint128"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
         "delta_neutral_invest"
       ],
       "properties": {

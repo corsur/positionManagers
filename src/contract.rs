@@ -38,6 +38,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     match msg {
         HandleMsg::ClaimShortSaleProceedsAndStake {cdp_idx, mirror_asset_amount} =>
             claim_short_sale_proceeds_and_stake(deps, cdp_idx, mirror_asset_amount),
+        HandleMsg::CloseShortPosition {cdp_idx} => close_short_position(deps, env, cdp_idx),
         HandleMsg::DeltaNeutralInvest {collateral_asset_amount, collateral_ratio_in_percentage, mirror_asset_to_mint_cw20_addr} =>
             try_delta_neutral_invest(deps, collateral_asset_amount, collateral_ratio_in_percentage, mirror_asset_to_mint_cw20_addr),
         HandleMsg::Do {cosmos_messages} => try_to_do(deps, env, cosmos_messages),
@@ -139,6 +140,84 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
         data: None,
     };
     Ok(response)
+}
+
+pub fn close_short_position<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    env: Env,
+    cdp_idx: Uint128,
+) -> StdResult<HandleResponse> {
+    let state = config_read(&deps.storage).load()?;
+
+    let position_response: mirror_protocol::mint::PositionResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+        contract_addr: deps.api.human_address(&state.mirror_mint_addr)?,
+        msg: to_binary(&mirror_protocol::mint::QueryMsg::Position {
+            position_idx: cdp_idx,
+        })?,
+    }))?;
+    let mirror_asset_cw20_addr =
+        if let terraswap::asset::AssetInfo::Token {contract_addr: addr} = position_response.asset.info { addr } else { unreachable!() };
+    let mirror_asset_cw20_amount = position_response.asset.amount;
+    let mirror_asset_cw20_balance = terraswap::querier::query_token_balance(deps, &mirror_asset_cw20_addr, &env.contract.address)?;
+
+    let mut messages: Vec<CosmosMsg> = vec![];
+    if mirror_asset_cw20_balance < mirror_asset_cw20_amount {
+        let mirror_asset_cw20_ask_amount = (mirror_asset_cw20_amount - mirror_asset_cw20_balance)?;
+        let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_cw20_addr);
+        let terraswap_pair_info = terraswap::querier::query_pair_info(
+            deps, &deps.api.human_address(&state.terraswap_factory_addr)?, &terraswap_pair_asset_info)?;
+        let reverse_simulation_response: terraswap::pair::ReverseSimulationResponse = deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: terraswap_pair_info.contract_addr.clone(),
+            msg: to_binary(&terraswap::pair::QueryMsg::ReverseSimulation {
+                ask_asset: terraswap::asset::Asset {
+                    amount: mirror_asset_cw20_ask_amount,
+                    info: terraswap::asset::AssetInfo::Token {
+                        contract_addr: mirror_asset_cw20_addr,
+                    },
+                },
+            })?,
+        }))?;
+        let swap_uusd_for_mirror_asset = CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: terraswap_pair_info.contract_addr,
+            msg: to_binary(&terraswap::pair::HandleMsg::Swap {
+                offer_asset: terraswap::asset::Asset {
+                    amount: reverse_simulation_response.offer_amount,
+                    info: terraswap::asset::AssetInfo::NativeToken {
+                        denom: String::from("uusd"),
+                    },
+                },
+                belief_price: None,
+                max_spread: None,
+                to: None,
+            })?,
+            send: vec![
+                Coin {
+                    denom: String::from("uusd"),
+                    amount: reverse_simulation_response.offer_amount,
+                },
+            ],
+        });
+        messages.push(swap_uusd_for_mirror_asset);
+    }
+
+    let close_cdp = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: deps.api.human_address(&state.anchor_ust_cw20_addr)?,
+        msg: to_binary(&cw20::Cw20HandleMsg::Send {
+            contract: deps.api.human_address(&state.mirror_mint_addr)?,
+            amount: position_response.asset.amount,
+            msg: Some(to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
+                position_idx: cdp_idx,
+            })?),
+        })?,
+        send: vec![],
+    });
+    messages.push(close_cdp);
+
+    Ok(HandleResponse {
+        messages: messages,
+        log: vec![],
+        data: None,
+    })
 }
 
 pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(

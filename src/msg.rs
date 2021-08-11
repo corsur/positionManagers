@@ -20,6 +20,9 @@ pub enum HandleMsg {
         cdp_idx: Uint128,
         mirror_asset_amount: Uint128,
     },
+    CloseShortPosition {
+        cdp_idx: Uint128,
+    },
     DeltaNeutralInvest {
         collateral_asset_amount: Uint128,
         collateral_ratio_in_percentage: Uint128,
