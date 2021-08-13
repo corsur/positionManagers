@@ -116,9 +116,8 @@ pub fn try_delta_neutral_invest<S: Storage, A: Api, Q: Querier>(
                 quote_asset: String::from("uusd"),
             })?,
         }))?;
-    let mirror_asset_oracle_price_in_uusd: Decimal = mirror_asset_oracle_price_response.rate;
-    let minted_mirror_asset_amount: Uint128 =
-        minted_mirror_asset_value_in_uusd * inverse_decimal(mirror_asset_oracle_price_in_uusd);
+    let minted_mirror_asset_amount: Uint128 = minted_mirror_asset_value_in_uusd
+        * inverse_decimal(mirror_asset_oracle_price_response.rate);
 
     let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_to_mint_cw20_addr);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
