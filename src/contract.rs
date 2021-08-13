@@ -238,10 +238,11 @@ pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(
     }))?;
     let mirror_asset_cw20_addr =
         if let terraswap::asset::AssetInfo::Token {contract_addr: addr} = position_response.asset.info { addr } else { unreachable!() };
+    let staking_contract_addr = deps.api.human_address(if stake_via_spectrum { &state.spectrum_staker_addr } else { &state.mirror_staking_addr })?;
     let increase_allowance = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: mirror_asset_cw20_addr.clone(),
         msg: to_binary(&cw20::Cw20HandleMsg::IncreaseAllowance {
-            spender: deps.api.human_address(&state.mirror_staking_addr)?,
+            spender: staking_contract_addr,
             amount: mirror_asset_amount,
             expires: None,
         })?,
