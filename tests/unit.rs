@@ -1,9 +1,9 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env};
 use cosmwasm_std::{
-    coins, from_binary, HandleResponse, HandleResult, HumanAddr, InitResponse, StdError,
+    coins, from_binary, HandleResponse, HandleResult, HumanAddr, StdError,
 };
 
-use amadeus::contract::init;
+use amadeus::contract::{handle, init};
 use amadeus::msg::{HandleMsg, InitMsg};
 
 fn mock_init_msg() -> InitMsg {
@@ -20,12 +20,25 @@ fn mock_init_msg() -> InitMsg {
     }
 }
 
+fn mock_do_msg() -> HandleMsg {
+    HandleMsg::Do {
+        cosmos_messages: vec![],
+    }
+}
+
 #[test]
 fn authorization() {
     let mut deps = mock_dependencies(/*canonical_length=*/ 30, &[]);
     let env = mock_env(/*sender=*/ "owner", &[]);
 
     // We can just call .unwrap() to assert this was a success.
-    let res: InitResponse = init(&mut deps, env, mock_init_msg()).unwrap();
+    let res = init(&mut deps, env, mock_init_msg()).unwrap();
     assert_eq!(0, res.messages.len());
+
+    let unauthorized_env = mock_env(/*sender=*/ "anyone", &[]);
+    let res = handle(&mut deps, unauthorized_env, mock_do_msg());
+    match res {
+        Err(StdError::Unauthorized { .. }) => {}
+        _ => panic!("Must return StdError::Unauthorized."),
+    }
 }
