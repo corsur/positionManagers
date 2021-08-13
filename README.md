@@ -31,6 +31,11 @@ cargo install cargo-run-script
 
 ### Testnet (tequila-0004)
 
+Upload contract code:
+```
+terracli tx wasm store artifacts/amadeus.wasm --from test --chain-id=tequila-0004 --gas=auto --fees=300000uluna
+```
+
 ```json
 InitMsg {
   "anchor_ust_cw20_addr": "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
