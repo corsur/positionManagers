@@ -29,6 +29,7 @@ dependencies = [
  "schemars",
  "serde",
  "snafu",
+ "spectrum-protocol",
  "terra-cosmwasm",
  "terraswap",
 ]
@@ -315,6 +316,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "spectrum-protocol"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-std",
+ "cosmwasm-storage",
+ "cw20",
+ "schemars",
+ "serde",
+ "terraswap",
 ]
 
 [[package]]
