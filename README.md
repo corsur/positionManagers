@@ -1,5 +1,26 @@
 # Aperture Finance - Amadeus
 
+## Development
+
+To build:
+```
+cargo wasm
+```
+
+To run tests:
+```
+cargo test
+```
+
+To produce optimized build for deployment:
+```
+cargo run-script optimize
+```
+This requires installation of cargo-run-script. One-time installation:
+```
+cargo install cargo-run-script
+```
+
 ## Deployment
 
 ### Testnet (tequila-0004)
