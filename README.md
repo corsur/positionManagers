@@ -12,6 +12,7 @@ InitMsg {
   "mirror_mint_addr": "terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w",
   "mirror_oracle_addr": "terra1uvxhec74deupp47enh7z5pk55f3cvcz8nj4ww9",
   "mirror_staking_addr": "terra1a06dgl27rhujjphsn4drl242ufws267qxypptx",
+  "spectrum_staker_addr": "terra15nwqmmmza9y643apneg0ddwt0ekk38qdevnnjt",
   "terraswap_factory_addr": "terra18qpjm4zkvqnpjpw0zn0tdr8gdzvt8au35v45xf",
 }
 ```
@@ -26,6 +27,7 @@ InitMsg {
   "mirror_mint_addr": "terra1wfz7h3aqf4cjmjcvc6s8lxdhh7k30nkczyf0mj",
   "mirror_oracle_addr": "terra1t6xe0txzywdg85n6k8c960cuwgh6l8esw6lau9",
   "mirror_staking_addr": "terra17f7zu97865jmknk7p2glqvxzhduk78772ezac5",
+  "spectrum_staker_addr": "terra1fxwelge6mf5l6z0rjpylzcfq9w9tw2q7tewaf5",
   "terraswap_factory_addr": "terra1ulgw0td86nvs4wtpsc80thv6xelk76ut7a7apj",
 }
 ```
