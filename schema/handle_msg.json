@@ -12,7 +12,8 @@
           "type": "object",
           "required": [
             "cdp_idx",
-            "mirror_asset_amount"
+            "mirror_asset_amount",
+            "stake_via_spectrum"
           ],
           "properties": {
             "cdp_idx": {
@@ -20,6 +21,9 @@
             },
             "mirror_asset_amount": {
               "$ref": "#/definitions/Uint128"
+            },
+            "stake_via_spectrum": {
+              "type": "boolean"
             }
           }
         }

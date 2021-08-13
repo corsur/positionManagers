@@ -20,6 +20,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         mirror_mint_addr: deps.api.canonical_address(&msg.mirror_mint_addr)?,
         mirror_oracle_addr: deps.api.canonical_address(&msg.mirror_oracle_addr)?,
         mirror_staking_addr: deps.api.canonical_address(&msg.mirror_staking_addr)?,
+        spectrum_mirror_farms_addr: deps.api.canonical_address(&msg.spectrum_mirror_farms_addr)?,
         spectrum_staker_addr: deps.api.canonical_address(&msg.spectrum_staker_addr)?,
         terraswap_factory_addr: deps.api.canonical_address(&msg.terraswap_factory_addr)?,
     };
@@ -37,8 +38,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::unauthorized());
     }
     match msg {
-        HandleMsg::ClaimShortSaleProceedsAndStake {cdp_idx, mirror_asset_amount} =>
-            claim_short_sale_proceeds_and_stake(deps, cdp_idx, mirror_asset_amount),
+        HandleMsg::ClaimShortSaleProceedsAndStake {cdp_idx, mirror_asset_amount, stake_via_spectrum} =>
+            claim_short_sale_proceeds_and_stake(deps, cdp_idx, mirror_asset_amount, stake_via_spectrum),
         HandleMsg::CloseShortPosition {cdp_idx} => close_short_position(deps, env, cdp_idx),
         HandleMsg::DeltaNeutralInvest {collateral_asset_amount, collateral_ratio_in_percentage, mirror_asset_to_mint_cw20_addr} =>
             try_delta_neutral_invest(deps, collateral_asset_amount, collateral_ratio_in_percentage, mirror_asset_to_mint_cw20_addr),
@@ -225,6 +226,7 @@ pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     cdp_idx: Uint128,
     mirror_asset_amount: Uint128,
+    stake_via_spectrum: bool,
 ) -> StdResult<HandleResponse> {
     let state = config_read(&deps.storage).load()?;
 
@@ -260,32 +262,66 @@ pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(
     let pool_mirror_asset_balance = terraswap_pair_asset_info[0].query_pool(deps, &terraswap_pair_info.contract_addr)?;
     let pool_uusd_balance = terraswap_pair_asset_info[1].query_pool(deps, &terraswap_pair_info.contract_addr)?;
     let uusd_amount_to_provide_liquidity = mirror_asset_amount.multiply_ratio(pool_uusd_balance, pool_mirror_asset_balance);
-    let stake = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: deps.api.human_address(&state.mirror_staking_addr)?,
-        msg: to_binary(&mirror_protocol::staking::HandleMsg::AutoStake {
-            assets: [
-                terraswap::asset::Asset {
-                    info: terraswap::asset::AssetInfo::Token {
-                        contract_addr: mirror_asset_cw20_addr,
-                    },
-                    amount: mirror_asset_amount,
-                },
-                terraswap::asset::Asset {
-                    info: terraswap::asset::AssetInfo::NativeToken {
+    let uusd_amount_to_provide_liquidity_plus_tax_cap = uusd_amount_to_provide_liquidity + get_tax_cap_in_uusd(deps)?;
+
+    let stake =
+        if stake_via_spectrum {
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: deps.api.human_address(&state.spectrum_staker_addr)?,
+                msg: to_binary(&spectrum_protocol::staker::HandleMsg::bond {
+                    contract: deps.api.human_address(&state.spectrum_mirror_farms_addr)?,
+                    assets: [
+                        terraswap::asset::Asset {
+                            info: terraswap::asset::AssetInfo::Token {
+                                contract_addr: mirror_asset_cw20_addr,
+                            },
+                            amount: mirror_asset_amount,
+                        },
+                        terraswap::asset::Asset {
+                            info: terraswap::asset::AssetInfo::NativeToken {
+                                denom: String::from("uusd"),
+                            },
+                            amount: uusd_amount_to_provide_liquidity_plus_tax_cap,
+                        },
+                    ],
+                    slippage_tolerance: None,
+                    compound_rate: Some(Decimal::one()),
+                })?,
+                send: vec![
+                    Coin {
                         denom: String::from("uusd"),
+                        amount: uusd_amount_to_provide_liquidity_plus_tax_cap,
                     },
-                    amount: uusd_amount_to_provide_liquidity,
-                },
-            ],
-            slippage_tolerance: None,
-        })?,
-        send: vec![
-            Coin {
-                denom: String::from("uusd"),
-                amount: uusd_amount_to_provide_liquidity,
-            },
-        ],
-    });
+                ],
+            })
+        } else {
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: deps.api.human_address(&state.mirror_staking_addr)?,
+                msg: to_binary(&mirror_protocol::staking::HandleMsg::AutoStake {
+                    assets: [
+                        terraswap::asset::Asset {
+                            info: terraswap::asset::AssetInfo::Token {
+                                contract_addr: mirror_asset_cw20_addr,
+                            },
+                            amount: mirror_asset_amount,
+                        },
+                        terraswap::asset::Asset {
+                            info: terraswap::asset::AssetInfo::NativeToken {
+                                denom: String::from("uusd"),
+                            },
+                            amount: uusd_amount_to_provide_liquidity,
+                        },
+                    ],
+                    slippage_tolerance: None,
+                })?,
+                send: vec![
+                    Coin {
+                        denom: String::from("uusd"),
+                        amount: uusd_amount_to_provide_liquidity,
+                    },
+                ],
+            })
+        };
     Ok(HandleResponse {
         messages: vec![unlock_position_funds, increase_allowance, stake],
         log: vec![],
@@ -296,6 +332,6 @@ pub fn claim_short_sale_proceeds_and_stake<S: Storage, A: Api, Q: Querier>(
 pub fn query<S: Storage, A: Api, Q: Querier>(
     _deps: &Extern<S, A, Q>,
     msg: QueryMsg,
-) -> StdResult<Binary> {
+    ) -> StdResult<Binary> {
     match msg {}
 }

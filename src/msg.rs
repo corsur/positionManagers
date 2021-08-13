@@ -10,6 +10,7 @@ pub struct InitMsg {
     pub mirror_mint_addr: HumanAddr,
     pub mirror_oracle_addr: HumanAddr,
     pub mirror_staking_addr: HumanAddr,
+    pub spectrum_mirror_farms_addr: HumanAddr,
     pub spectrum_staker_addr: HumanAddr,
     pub terraswap_factory_addr: HumanAddr,
 }
@@ -20,6 +21,7 @@ pub enum HandleMsg {
     ClaimShortSaleProceedsAndStake {
         cdp_idx: Uint128,
         mirror_asset_amount: Uint128,
+        stake_via_spectrum: bool,
     },
     CloseShortPosition {
         cdp_idx: Uint128,

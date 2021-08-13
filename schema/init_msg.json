@@ -9,6 +9,8 @@
     "mirror_mint_addr",
     "mirror_oracle_addr",
     "mirror_staking_addr",
+    "spectrum_mirror_farms_addr",
+    "spectrum_staker_addr",
     "terraswap_factory_addr"
   ],
   "properties": {
@@ -28,6 +30,12 @@
       "$ref": "#/definitions/HumanAddr"
     },
     "mirror_staking_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "spectrum_mirror_farms_addr": {
+      "$ref": "#/definitions/HumanAddr"
+    },
+    "spectrum_staker_addr": {
       "$ref": "#/definitions/HumanAddr"
     },
     "terraswap_factory_addr": {

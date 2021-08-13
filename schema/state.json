@@ -10,6 +10,8 @@
     "mirror_oracle_addr",
     "mirror_staking_addr",
     "owner",
+    "spectrum_mirror_farms_addr",
+    "spectrum_staker_addr",
     "terraswap_factory_addr"
   ],
   "properties": {
@@ -32,6 +34,12 @@
       "$ref": "#/definitions/CanonicalAddr"
     },
     "owner": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "spectrum_mirror_farms_addr": {
+      "$ref": "#/definitions/CanonicalAddr"
+    },
+    "spectrum_staker_addr": {
       "$ref": "#/definitions/CanonicalAddr"
     },
     "terraswap_factory_addr": {
