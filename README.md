@@ -12,6 +12,12 @@ To run tests:
 cargo test
 ```
 
+Useful code-health tools:
+```
+cargo fmt
+cargo clippy -- -D warnings
+```
+
 To produce optimized build for deployment:
 ```
 cargo run-script optimize

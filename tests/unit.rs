@@ -1,13 +1,15 @@
-use cosmwasm_std::{coins, from_binary, HandleResponse, HandleResult, HumanAddr, InitResponse, StdError};
 use cosmwasm_std::testing::{mock_dependencies, mock_env};
+use cosmwasm_std::{
+    coins, from_binary, HandleResponse, HandleResult, HumanAddr, InitResponse, StdError,
+};
 
-use amadeus::contract::{init};
+use amadeus::contract::init;
 use amadeus::msg::{HandleMsg, InitMsg};
 
 #[test]
 fn proper_initialization() {
-    let mut deps = mock_dependencies(/*canonical_length=*/30, &[]);
-    let env = mock_env(/*sender=*/"creator", &[]);
+    let mut deps = mock_dependencies(/*canonical_length=*/ 30, &[]);
+    let env = mock_env(/*sender=*/ "creator", &[]);
     let mock_init_msg = InitMsg {
         anchor_ust_cw20_addr: HumanAddr::from("anchor_ust_cw20"),
         mirror_collateral_oracle_addr: HumanAddr::from("mirror_collateral_oracle"),
@@ -24,4 +26,3 @@ fn proper_initialization() {
     let res: InitResponse = init(&mut deps, env, mock_init_msg).unwrap();
     assert_eq!(0, res.messages.len());
 }
-
