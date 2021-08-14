@@ -1,6 +1,7 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env};
 use cosmwasm_std::{
-    BankMsg, Binary, Coin, CosmosMsg, HandleResponse, HumanAddr, StdError, StdResult, Uint128, WasmMsg,
+    BankMsg, Binary, Coin, CosmosMsg, HandleResponse, HumanAddr, StdError, StdResult, Uint128,
+    WasmMsg,
 };
 
 use amadeus::contract::{handle, init};
@@ -43,9 +44,7 @@ fn mock_delta_neutral_invest() -> HandleMsg {
 }
 
 fn mock_do_msg(cosmos_messages: Vec<CosmosMsg>) -> HandleMsg {
-    HandleMsg::Do {
-        cosmos_messages,
-    }
+    HandleMsg::Do { cosmos_messages }
 }
 
 fn assert_unauthorized_error(res: StdResult<HandleResponse>) {
@@ -65,9 +64,21 @@ fn authorization() {
     assert_eq!(0, res.messages.len());
 
     let unauthorized_env = mock_env(/*sender=*/ "anyone", &[]);
-    assert_unauthorized_error(handle(&mut deps, unauthorized_env.clone(), mock_claim_short_sale_proceeds_and_stake(false)));
-    assert_unauthorized_error(handle(&mut deps, unauthorized_env.clone(), mock_close_short_position()));
-    assert_unauthorized_error(handle(&mut deps, unauthorized_env.clone(), mock_delta_neutral_invest()));
+    assert_unauthorized_error(handle(
+        &mut deps,
+        unauthorized_env.clone(),
+        mock_claim_short_sale_proceeds_and_stake(false),
+    ));
+    assert_unauthorized_error(handle(
+        &mut deps,
+        unauthorized_env.clone(),
+        mock_close_short_position(),
+    ));
+    assert_unauthorized_error(handle(
+        &mut deps,
+        unauthorized_env.clone(),
+        mock_delta_neutral_invest(),
+    ));
     assert_unauthorized_error(handle(&mut deps, unauthorized_env, mock_do_msg(vec![])));
 
     // Assert that owner can successfully execute an empty Do call.
@@ -80,20 +91,21 @@ fn execute_do() {
     let env = mock_env(/*sender=*/ "owner", &[]);
     let _res = init(&mut deps, env.clone(), mock_init_msg()).unwrap();
 
-    let messages = vec![CosmosMsg::Bank(BankMsg::Send {
-        from_address: env.contract.address.clone(),
-        to_address: env.message.sender.clone(),
-        amount: vec![
-            Coin {
+    let messages = vec![
+        CosmosMsg::Bank(BankMsg::Send {
+            from_address: env.contract.address.clone(),
+            to_address: env.message.sender.clone(),
+            amount: vec![Coin {
                 amount: Uint128::from(30u128),
                 denom: String::from("moon"),
-            },
-        ],
-    }), CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: HumanAddr::from("some_contract"),
-        msg: Binary::from_base64("TW9vbg==").unwrap(),
-        send: vec![],
-    })];
+            }],
+        }),
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: HumanAddr::from("some_contract"),
+            msg: Binary::from_base64("TW9vbg==").unwrap(),
+            send: vec![],
+        }),
+    ];
 
     let res = handle(&mut deps, env, mock_do_msg(messages.clone())).unwrap();
     assert_eq!(res.messages, messages);

@@ -8,7 +8,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::math::decimal_division;
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use mirror_protocol::oracle::PriceResponse;
 use terra_cosmwasm::{TaxCapResponse, TaxRateResponse, TerraQuery, TerraQueryWrapper, TerraRoute};
@@ -392,4 +391,9 @@ impl WasmMockQuerier {
     pub fn with_terraswap_pair(&mut self, pairs: &[(&String, &String, &HumanAddr)]) {
         self.terraswap_pair_querier = TerraswapPairQuerier::new(pairs);
     }
+}
+
+const DECIMAL_FRACTIONAL: Uint128 = Uint128(1_000_000_000u128);
+pub fn decimal_division(a: Decimal, b: Decimal) -> Decimal {
+    Decimal::from_ratio(DECIMAL_FRACTIONAL * a, b * DECIMAL_FRACTIONAL)
 }
