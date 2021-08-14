@@ -1,6 +1,6 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env};
 use cosmwasm_std::{
-    coins, from_binary, HandleResponse, HandleResult, HumanAddr, StdError, StdResult, Uint128,
+    BankMsg, Binary, Coin, CosmosMsg, HandleResponse, HumanAddr, StdError, StdResult, Uint128, WasmMsg,
 };
 
 use amadeus::contract::{handle, init};
@@ -42,9 +42,9 @@ fn mock_delta_neutral_invest() -> HandleMsg {
     }
 }
 
-fn mock_do_msg() -> HandleMsg {
+fn mock_do_msg(cosmos_messages: Vec<CosmosMsg>) -> HandleMsg {
     HandleMsg::Do {
-        cosmos_messages: vec![],
+        cosmos_messages,
     }
 }
 
@@ -68,8 +68,33 @@ fn authorization() {
     assert_unauthorized_error(handle(&mut deps, unauthorized_env.clone(), mock_claim_short_sale_proceeds_and_stake(false)));
     assert_unauthorized_error(handle(&mut deps, unauthorized_env.clone(), mock_close_short_position()));
     assert_unauthorized_error(handle(&mut deps, unauthorized_env.clone(), mock_delta_neutral_invest()));
-    assert_unauthorized_error(handle(&mut deps, unauthorized_env, mock_do_msg()));
+    assert_unauthorized_error(handle(&mut deps, unauthorized_env, mock_do_msg(vec![])));
 
     // Assert that owner can successfully execute an empty Do call.
-    let _res = handle(&mut deps, env, mock_do_msg()).unwrap();
+    let _res = handle(&mut deps, env, mock_do_msg(vec![])).unwrap();
+}
+
+#[test]
+fn execute_do() {
+    let mut deps = mock_dependencies(/*canonical_length=*/ 30, &[]);
+    let env = mock_env(/*sender=*/ "owner", &[]);
+    let _res = init(&mut deps, env.clone(), mock_init_msg()).unwrap();
+
+    let messages = vec![CosmosMsg::Bank(BankMsg::Send {
+        from_address: env.contract.address.clone(),
+        to_address: env.message.sender.clone(),
+        amount: vec![
+            Coin {
+                amount: Uint128::from(30u128),
+                denom: String::from("moon"),
+            },
+        ],
+    }), CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: HumanAddr::from("some_contract"),
+        msg: Binary::from_base64("TW9vbg==").unwrap(),
+        send: vec![],
+    })];
+
+    let res = handle(&mut deps, env, mock_do_msg(messages.clone())).unwrap();
+    assert_eq!(res.messages, messages);
 }
