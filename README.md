@@ -55,7 +55,7 @@ InitMsg {
 ```json
 InitMsg {
   "anchor_ust_cw20_addr": "terra1hzh9vpxhsk8253se0vv5jj6etdvxu3nv8z07zu",
-  "mirror_collateral_addr": "terra1pmlh0j5gpzh2wsmyd3cuk39cgh2gfwk6h5wy9j",
+  "mirror_collateral_oracle_addr": "terra1pmlh0j5gpzh2wsmyd3cuk39cgh2gfwk6h5wy9j",
   "mirror_lock_addr": "terra169urmlm8wcltyjsrn7gedheh7dker69ujmerv2",
   "mirror_mint_addr": "terra1wfz7h3aqf4cjmjcvc6s8lxdhh7k30nkczyf0mj",
   "mirror_oracle_addr": "terra1t6xe0txzywdg85n6k8c960cuwgh6l8esw6lau9",
