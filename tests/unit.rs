@@ -1,11 +1,11 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env};
 use cosmwasm_std::{
-    BankMsg, Binary, Coin, CosmosMsg, HandleResponse, HumanAddr, StdError, StdResult, Uint128,
+    BankMsg, Binary, Coin, CosmosMsg, Response, HumanAddr, StdError, StdResult, Uint128,
     WasmMsg,
 };
 
-use amadeus::contract::{handle, init};
-use amadeus::msg::{HandleMsg, InitMsg};
+use amadeus::contract::{execute, instantiate};
+use amadeus::msg::{ExecuteMsg, InstantiateMsg};
 
 fn mock_init_msg() -> InitMsg {
     InitMsg {
@@ -82,14 +82,14 @@ fn authorization() {
     assert_unauthorized_error(handle(&mut deps, unauthorized_env, mock_do_msg(vec![])));
 
     // Assert that owner can successfully execute an empty Do call.
-    let _res = handle(&mut deps, env, mock_do_msg(vec![])).unwrap();
+    let _res = execute(&mut deps, env, mock_do_msg(vec![])).unwrap();
 }
 
 #[test]
 fn execute_do() {
     let mut deps = mock_dependencies(/*canonical_length=*/ 30, &[]);
     let env = mock_env(/*sender=*/ "owner", &[]);
-    let _res = init(&mut deps, env.clone(), mock_init_msg()).unwrap();
+    let _res = instantiate(&mut deps, env.clone(), mock_init_msg()).unwrap();
 
     let messages = vec![
         CosmosMsg::Bank(BankMsg::Send {
@@ -103,7 +103,7 @@ fn execute_do() {
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: HumanAddr::from("some_contract"),
             msg: Binary::from_base64("TW9vbg==").unwrap(),
-            send: vec![],
+            funds: vec![],
         }),
     ];
 
