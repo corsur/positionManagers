@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "InitMsg",
+  "title": "InstantiateMsg",
   "type": "object",
   "required": [
     "anchor_ust_cw20_addr",
@@ -15,35 +15,30 @@
   ],
   "properties": {
     "anchor_ust_cw20_addr": {
-      "$ref": "#/definitions/HumanAddr"
+      "type": "string"
     },
     "mirror_collateral_oracle_addr": {
-      "$ref": "#/definitions/HumanAddr"
+      "type": "string"
     },
     "mirror_lock_addr": {
-      "$ref": "#/definitions/HumanAddr"
+      "type": "string"
     },
     "mirror_mint_addr": {
-      "$ref": "#/definitions/HumanAddr"
+      "type": "string"
     },
     "mirror_oracle_addr": {
-      "$ref": "#/definitions/HumanAddr"
+      "type": "string"
     },
     "mirror_staking_addr": {
-      "$ref": "#/definitions/HumanAddr"
+      "type": "string"
     },
     "spectrum_mirror_farms_addr": {
-      "$ref": "#/definitions/HumanAddr"
+      "type": "string"
     },
     "spectrum_staker_addr": {
-      "$ref": "#/definitions/HumanAddr"
+      "type": "string"
     },
     "terraswap_factory_addr": {
-      "$ref": "#/definitions/HumanAddr"
-    }
-  },
-  "definitions": {
-    "HumanAddr": {
       "type": "string"
     }
   }

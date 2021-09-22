@@ -1,23 +1,23 @@
-use cosmwasm_std::{CosmosMsg, HumanAddr, Uint128};
+use cosmwasm_std::{CosmosMsg, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct InitMsg {
-    pub anchor_ust_cw20_addr: HumanAddr,
-    pub mirror_collateral_oracle_addr: HumanAddr,
-    pub mirror_lock_addr: HumanAddr,
-    pub mirror_mint_addr: HumanAddr,
-    pub mirror_oracle_addr: HumanAddr,
-    pub mirror_staking_addr: HumanAddr,
-    pub spectrum_mirror_farms_addr: HumanAddr,
-    pub spectrum_staker_addr: HumanAddr,
-    pub terraswap_factory_addr: HumanAddr,
+pub struct InstantiateMsg {
+    pub anchor_ust_cw20_addr: String,
+    pub mirror_collateral_oracle_addr: String,
+    pub mirror_lock_addr: String,
+    pub mirror_mint_addr: String,
+    pub mirror_oracle_addr: String,
+    pub mirror_staking_addr: String,
+    pub spectrum_mirror_farms_addr: String,
+    pub spectrum_staker_addr: String,
+    pub terraswap_factory_addr: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum HandleMsg {
+pub enum ExecuteMsg {
     ClaimShortSaleProceedsAndStake {
         cdp_idx: Uint128,
         mirror_asset_amount: Uint128,
@@ -29,7 +29,7 @@ pub enum HandleMsg {
     DeltaNeutralInvest {
         collateral_asset_amount: Uint128,
         collateral_ratio_in_percentage: Uint128,
-        mirror_asset_to_mint_cw20_addr: HumanAddr,
+        mirror_asset_to_mint_cw20_addr: String,
     },
     Do {
         cosmos_messages: Vec<CosmosMsg>,
