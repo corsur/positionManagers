@@ -1,7 +1,6 @@
 use cosmwasm_std::testing::{mock_dependencies, mock_env};
 use cosmwasm_std::{
-    BankMsg, Binary, Coin, CosmosMsg, Response, HumanAddr, StdError, StdResult, Uint128,
-    WasmMsg,
+    BankMsg, Binary, Coin, CosmosMsg, HumanAddr, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 
 use amadeus::contract::{execute, instantiate};

@@ -44,17 +44,20 @@ pub fn get_uusd_amount_to_swap_for_long_position(
 
     // Simulate short sale (mirror_asset -> uusd).
     let cp = Uint128::new(balance_mirror_asset.u128() * balance_uusd.u128());
-    let uusd_amount_before_fee =
-        balance_uusd - cp.multiply_ratio(1u128, balance_mirror_asset + minted_mirror_asset_amount);
+    let uusd_amount_before_fee = balance_uusd
+        .checked_sub(cp.multiply_ratio(1u128, balance_mirror_asset + minted_mirror_asset_amount))?;
     let uusd_amount_after_fee = uusd_amount_before_fee * one_minus_commission_rate;
     balance_mirror_asset += minted_mirror_asset_amount;
-    balance_uusd -= uusd_amount_after_fee;
+    balance_uusd = balance_uusd.checked_sub(uusd_amount_after_fee)?;
 
     // Simulate long buy (uusd -> mirror_asset).
     let cp = Uint128::new(balance_mirror_asset.u128() * balance_uusd.u128());
-    let uusd_amount_to_swap_without_tax: Uint128 = cp.multiply_ratio(
-        1u128,
-        balance_mirror_asset - minted_mirror_asset_amount * reverse_one_minus_commission_rate,
-    ) - balance_uusd;
+    let uusd_amount_to_swap_without_tax: Uint128 = cp
+        .multiply_ratio(
+            1u128,
+            balance_mirror_asset
+                .checked_sub(minted_mirror_asset_amount * reverse_one_minus_commission_rate)?,
+        )
+        .checked_sub(balance_uusd)?;
     Ok(uusd_amount_to_swap_without_tax)
 }

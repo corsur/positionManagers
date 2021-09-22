@@ -216,7 +216,8 @@ pub fn close_short_position(deps: DepsMut, env: Env, cdp_idx: Uint128) -> StdRes
 
     let mut response = Response::new();
     if mirror_asset_cw20_balance < mirror_asset_cw20_amount {
-        let mirror_asset_cw20_ask_amount = mirror_asset_cw20_amount - mirror_asset_cw20_balance;
+        let mirror_asset_cw20_ask_amount =
+            mirror_asset_cw20_amount.checked_sub(mirror_asset_cw20_balance)?;
         let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_cw20_addr);
         let terraswap_pair_info = terraswap::querier::query_pair_info(
             &deps.querier,

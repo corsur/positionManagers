@@ -29,15 +29,11 @@ cargo install cargo-run-script
 
 ## Deployment
 
-### Testnet (tequila-0004)
+### Testnet (bombay-11)
 
-Upload contract code:
-```
-terracli tx wasm store artifacts/amadeus.wasm --from test --chain-id=tequila-0004 --gas=auto --fees=300000uluna
-```
-
+The addresses below are for tequila-0004; the addresses for bombay-11 are unknown.
 ```json
-InitMsg {
+{
   "anchor_ust_cw20_addr": "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
   "mirror_collateral_oracle_addr": "terra1q3ls6u2glsazdeu7dxggk8d04elnvmsg0ung6n",
   "mirror_lock_addr": "terra1pcxghd4dyf950mcs0kmlp7lvnrjsnl6qlfldwj",
@@ -50,10 +46,12 @@ InitMsg {
 }
 ```
 
-### Mainnet (columbus-0004)
+### Mainnet (columbus-5)
+
+These contract addresses should be identical to Columbus-4; we just need to wait for contract owners to migrate.
 
 ```json
-InitMsg {
+{
   "anchor_ust_cw20_addr": "terra1hzh9vpxhsk8253se0vv5jj6etdvxu3nv8z07zu",
   "mirror_collateral_oracle_addr": "terra1pmlh0j5gpzh2wsmyd3cuk39cgh2gfwk6h5wy9j",
   "mirror_lock_addr": "terra169urmlm8wcltyjsrn7gedheh7dker69ujmerv2",
