@@ -36,8 +36,8 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
-    let state = read_config(deps.storage)?;
-    if deps.api.addr_canonicalize(&info.sender.to_string())? != state.owner {
+    let config = read_config(deps.storage)?;
+    if deps.api.addr_canonicalize(&info.sender.to_string())? != config.owner {
         return Err(StdError::GenericErr {
             msg: "unauthorized".to_string(),
         });
@@ -91,7 +91,7 @@ pub fn try_delta_neutral_invest(
     collateral_ratio_in_percentage: Uint128,
     mirror_asset_to_mint_cw20_addr: String,
 ) -> StdResult<Response> {
-    let state = read_config(deps.storage)?;
+    let config = read_config(deps.storage)?;
     let collateral_ratio = Decimal::from_ratio(collateral_ratio_in_percentage, 100u128);
     let inverse_collateral_ratio = Decimal::from_ratio(100u128, collateral_ratio_in_percentage);
 
@@ -99,13 +99,13 @@ pub fn try_delta_neutral_invest(
         deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: deps
                 .api
-                .addr_humanize(&state.mirror_collateral_oracle_addr)?
+                .addr_humanize(&config.mirror_collateral_oracle_addr)?
                 .to_string(),
             msg: to_binary(
                 &mirror_protocol::collateral_oracle::QueryMsg::CollateralPrice {
                     asset: deps
                         .api
-                        .addr_humanize(&state.anchor_ust_cw20_addr)?
+                        .addr_humanize(&config.anchor_ust_cw20_addr)?
                         .to_string(),
                     block_height: None,
                 },
@@ -120,7 +120,7 @@ pub fn try_delta_neutral_invest(
         deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: deps
                 .api
-                .addr_humanize(&state.mirror_oracle_addr)?
+                .addr_humanize(&config.mirror_oracle_addr)?
                 .to_string(),
             msg: to_binary(&mirror_protocol::oracle::QueryMsg::Price {
                 base_asset: mirror_asset_to_mint_cw20_addr.to_string(),
@@ -133,7 +133,7 @@ pub fn try_delta_neutral_invest(
     let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_to_mint_cw20_addr);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
         &deps.querier,
-        deps.api.addr_humanize(&state.terraswap_factory_addr)?,
+        deps.api.addr_humanize(&config.terraswap_factory_addr)?,
         &terraswap_pair_asset_info,
     )?;
     let uusd_swap_amount = get_uusd_amount_to_swap_for_long_position(
@@ -148,10 +148,10 @@ pub fn try_delta_neutral_invest(
     let open_cdp = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: deps
             .api
-            .addr_humanize(&state.anchor_ust_cw20_addr)?
+            .addr_humanize(&config.anchor_ust_cw20_addr)?
             .to_string(),
         msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-            contract: deps.api.addr_humanize(&state.mirror_mint_addr)?.to_string(),
+            contract: deps.api.addr_humanize(&config.mirror_mint_addr)?.to_string(),
             amount: collateral_asset_amount,
             msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
                 asset_info: terraswap::asset::AssetInfo::Token {
@@ -190,11 +190,11 @@ pub fn try_delta_neutral_invest(
 }
 
 pub fn close_short_position(deps: DepsMut, env: Env, cdp_idx: Uint128) -> StdResult<Response> {
-    let state = read_config(deps.storage)?;
+    let config = read_config(deps.storage)?;
 
     let position_response: mirror_protocol::mint::PositionResponse =
         deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: deps.api.addr_humanize(&state.mirror_mint_addr)?.to_string(),
+            contract_addr: deps.api.addr_humanize(&config.mirror_mint_addr)?.to_string(),
             msg: to_binary(&mirror_protocol::mint::QueryMsg::Position {
                 position_idx: cdp_idx,
             })?,
@@ -221,7 +221,7 @@ pub fn close_short_position(deps: DepsMut, env: Env, cdp_idx: Uint128) -> StdRes
         let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_cw20_addr);
         let terraswap_pair_info = terraswap::querier::query_pair_info(
             &deps.querier,
-            deps.api.addr_humanize(&state.terraswap_factory_addr)?,
+            deps.api.addr_humanize(&config.terraswap_factory_addr)?,
             &terraswap_pair_asset_info,
         )?;
         let reverse_simulation_response: terraswap::pair::ReverseSimulationResponse =
@@ -260,7 +260,7 @@ pub fn close_short_position(deps: DepsMut, env: Env, cdp_idx: Uint128) -> StdRes
     let close_cdp = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: mirror_asset_cw20_addr,
         msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-            contract: deps.api.addr_humanize(&state.mirror_mint_addr)?.to_string(),
+            contract: deps.api.addr_humanize(&config.mirror_mint_addr)?.to_string(),
             amount: position_response.asset.amount,
             msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
                 position_idx: cdp_idx,
@@ -279,11 +279,11 @@ pub fn claim_short_sale_proceeds_and_stake(
     mirror_asset_amount: Uint128,
     stake_via_spectrum: bool,
 ) -> StdResult<Response> {
-    let state = read_config(deps.storage)?;
+    let config = read_config(deps.storage)?;
 
     let position_response: mirror_protocol::mint::PositionResponse =
         deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: deps.api.addr_humanize(&state.mirror_mint_addr)?.to_string(),
+            contract_addr: deps.api.addr_humanize(&config.mirror_mint_addr)?.to_string(),
             msg: to_binary(&mirror_protocol::mint::QueryMsg::Position {
                 position_idx: cdp_idx,
             })?,
@@ -297,9 +297,9 @@ pub fn claim_short_sale_proceeds_and_stake(
         unreachable!()
     };
     let staking_contract_addr = deps.api.addr_humanize(if stake_via_spectrum {
-        &state.spectrum_staker_addr
+        &config.spectrum_staker_addr
     } else {
-        &state.mirror_staking_addr
+        &config.mirror_staking_addr
     })?;
     let increase_allowance = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: mirror_asset_cw20_addr.clone(),
@@ -312,7 +312,7 @@ pub fn claim_short_sale_proceeds_and_stake(
     });
 
     let unlock_position_funds = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: deps.api.addr_humanize(&state.mirror_lock_addr)?.to_string(),
+        contract_addr: deps.api.addr_humanize(&config.mirror_lock_addr)?.to_string(),
         msg: to_binary(&mirror_protocol::lock::ExecuteMsg::UnlockPositionFunds {
             positions_idx: vec![cdp_idx],
         })?,
@@ -322,7 +322,7 @@ pub fn claim_short_sale_proceeds_and_stake(
     let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_cw20_addr);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
         &deps.querier,
-        deps.api.addr_humanize(&state.terraswap_factory_addr)?,
+        deps.api.addr_humanize(&config.terraswap_factory_addr)?,
         &terraswap_pair_asset_info,
     )?;
     let pool_mirror_asset_balance = terraswap_pair_asset_info[0].query_pool(
@@ -344,12 +344,12 @@ pub fn claim_short_sale_proceeds_and_stake(
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: deps
                 .api
-                .addr_humanize(&state.spectrum_staker_addr)?
+                .addr_humanize(&config.spectrum_staker_addr)?
                 .to_string(),
             msg: to_binary(&spectrum_protocol::staker::ExecuteMsg::bond {
                 contract: deps
                     .api
-                    .addr_humanize(&state.spectrum_mirror_farms_addr)?
+                    .addr_humanize(&config.spectrum_mirror_farms_addr)?
                     .to_string(),
                 assets: [
                     terraswap::asset::Asset {
@@ -378,7 +378,7 @@ pub fn claim_short_sale_proceeds_and_stake(
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: deps
                 .api
-                .addr_humanize(&state.mirror_staking_addr)?
+                .addr_humanize(&config.mirror_staking_addr)?
                 .to_string(),
             msg: to_binary(&mirror_protocol::staking::ExecuteMsg::AutoStake {
                 assets: [
