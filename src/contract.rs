@@ -102,6 +102,7 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
     }
 
     let mut response = Response::new();
+    let mut reward_uusd = Uint128::zero();
     if spec_reward > Uint128::zero() {
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.spectrum_gov_addr.to_string(),
@@ -112,6 +113,41 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
             contract_addr: config.spectrum_mirror_farms_addr.to_string(),
             msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::withdraw {
                 asset_token: None,
+            })?,
+            funds: vec![],
+        }));
+
+        // Find amount of uusd that SPEC reward can be swapped into.
+        let spec_uusd_terraswap_pair_addr = terraswap::querier::query_pair_info(
+            &deps.querier,
+            config.terraswap_factory_addr,
+            &get_terraswap_pair_asset_info(&config.spectrum_cw20_addr.as_str()),
+        )?.contract_addr;
+        let simulation_response: terraswap::pair::SimulationResponse =
+            deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+                contract_addr: spec_uusd_terraswap_pair_addr.clone(),
+                msg: to_binary(&terraswap::pair::QueryMsg::Simulation {
+                    offer_asset: terraswap::asset::Asset {
+                        amount: spec_reward,
+                        info: terraswap::asset::AssetInfo::Token {
+                            contract_addr: config.spectrum_cw20_addr.to_string(),
+                        },
+                    },
+                })?,
+            }))?;
+        reward_uusd += simulation_response.return_amount;
+
+        // Swap SPEC for uusd.
+        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config.spectrum_cw20_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: spec_uusd_terraswap_pair_addr,
+                amount: spec_reward,
+                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
+                    belief_price: None,
+                    max_spread: None,
+                    to: None,
+                })?,
             })?,
             funds: vec![],
         }));
