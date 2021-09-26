@@ -9,6 +9,7 @@ static CONFIG_KEY: &[u8] = b"config";
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
     pub owner: Addr,
+    pub controller: Addr,
     pub anchor_ust_cw20_addr: Addr,
     pub mirror_cw20_addr: Addr,
     pub spectrum_cw20_addr: Addr,

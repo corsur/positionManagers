@@ -112,6 +112,26 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "set_controller"
+      ],
+      "properties": {
+        "set_controller": {
+          "type": "object",
+          "required": [
+            "controller"
+          ],
+          "properties": {
+            "controller": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {

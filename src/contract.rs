@@ -17,6 +17,7 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     let config = Config {
         owner: info.sender,
+        controller: deps.api.addr_validate(&msg.controller)?,
         anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
         mirror_cw20_addr: deps.api.addr_validate(&msg.mirror_cw20_addr)?,
         spectrum_cw20_addr: deps.api.addr_validate(&msg.spectrum_cw20_addr)?,
@@ -40,7 +41,11 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let config = read_config(deps.storage)?;
-    if info.sender != config.owner {
+    let is_authorized = match msg {
+        ExecuteMsg::Reinvest {} => info.sender == config.owner || info.sender == config.controller,
+        _ => info.sender == config.owner,
+    };
+    if !is_authorized {
         return Err(StdError::GenericErr {
             msg: "unauthorized".to_string(),
         });
@@ -69,7 +74,15 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ),
         ExecuteMsg::Do { cosmos_messages } => try_to_do(cosmos_messages),
         ExecuteMsg::Reinvest {} => reinvest(deps, env),
+        ExecuteMsg::SetController { controller } => set_controller(deps, controller),
     }
+}
+
+pub fn set_controller(deps: DepsMut, controller: String) -> StdResult<Response> {
+    let mut config = read_config(deps.storage)?;
+    config.controller = deps.api.addr_validate(&controller)?;
+    write_config(deps.storage, &config).unwrap();
+    Ok(Response::default())
 }
 
 pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {

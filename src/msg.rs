@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
+    pub controller: String,
     pub anchor_ust_cw20_addr: String,
     pub mirror_cw20_addr: String,
     pub spectrum_cw20_addr: String,
@@ -39,6 +40,9 @@ pub enum ExecuteMsg {
         cosmos_messages: Vec<CosmosMsg>,
     },
     Reinvest {},
+    SetController {
+        controller: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

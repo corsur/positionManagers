@@ -5,6 +5,7 @@
   "required": [
     "anchor_market_addr",
     "anchor_ust_cw20_addr",
+    "controller",
     "mirror_collateral_oracle_addr",
     "mirror_cw20_addr",
     "mirror_lock_addr",
@@ -22,6 +23,9 @@
       "type": "string"
     },
     "anchor_ust_cw20_addr": {
+      "type": "string"
+    },
+    "controller": {
       "type": "string"
     },
     "mirror_collateral_oracle_addr": {
