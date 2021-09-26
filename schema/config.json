@@ -3,6 +3,7 @@
   "title": "Config",
   "type": "object",
   "required": [
+    "anchor_market_addr",
     "anchor_ust_cw20_addr",
     "mirror_collateral_oracle_addr",
     "mirror_cw20_addr",
@@ -18,6 +19,9 @@
     "terraswap_factory_addr"
   ],
   "properties": {
+    "anchor_market_addr": {
+      "$ref": "#/definitions/Addr"
+    },
     "anchor_ust_cw20_addr": {
       "$ref": "#/definitions/Addr"
     },

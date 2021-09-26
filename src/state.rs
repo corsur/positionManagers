@@ -12,6 +12,7 @@ pub struct Config {
     pub anchor_ust_cw20_addr: Addr,
     pub mirror_cw20_addr: Addr,
     pub spectrum_cw20_addr: Addr,
+    pub anchor_market_addr: Addr,
     pub mirror_collateral_oracle_addr: Addr,
     pub mirror_lock_addr: Addr,
     pub mirror_mint_addr: Addr,

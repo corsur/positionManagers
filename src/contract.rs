@@ -1,6 +1,7 @@
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
-    QueryRequest, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg, WasmQuery,
+    QueryRequest, Reply, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
+    WasmQuery,
 };
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
@@ -19,6 +20,7 @@ pub fn instantiate(
         anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
         mirror_cw20_addr: deps.api.addr_validate(&msg.mirror_cw20_addr)?,
         spectrum_cw20_addr: deps.api.addr_validate(&msg.spectrum_cw20_addr)?,
+        anchor_market_addr: deps.api.addr_validate(&msg.anchor_market_addr)?,
         mirror_collateral_oracle_addr: deps
             .api
             .addr_validate(&msg.mirror_collateral_oracle_addr)?,
@@ -89,13 +91,13 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
 
     // Find claimable MIR reward.
     let mir_reward_info_response: mirror_protocol::staking::RewardInfoResponse =
-    deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-        contract_addr: config.mirror_staking_addr.to_string(),
-        msg: to_binary(&mirror_protocol::staking::QueryMsg::RewardInfo {
-            staker_addr: env.contract.address.to_string(),
-            asset_token: None,
-        })?,
-    }))?;
+        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: config.mirror_staking_addr.to_string(),
+            msg: to_binary(&mirror_protocol::staking::QueryMsg::RewardInfo {
+                staker_addr: env.contract.address.to_string(),
+                asset_token: None,
+            })?,
+        }))?;
     let mut mir_reward = Uint128::zero();
     for reward_info in mir_reward_info_response.reward_infos.iter() {
         mir_reward += reward_info.pending_reward;
@@ -117,12 +119,12 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
             funds: vec![],
         }));
 
-        // Find amount of uusd that SPEC reward can be swapped into.
         let spec_uusd_terraswap_pair_addr = terraswap::querier::query_pair_info(
             &deps.querier,
-            config.terraswap_factory_addr,
+            config.terraswap_factory_addr.clone(),
             &get_terraswap_pair_asset_info(&config.spectrum_cw20_addr.as_str()),
-        )?.contract_addr;
+        )?
+        .contract_addr;
         let simulation_response: terraswap::pair::SimulationResponse =
             deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
                 contract_addr: spec_uusd_terraswap_pair_addr.clone(),
@@ -155,14 +157,70 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
     if mir_reward > Uint128::zero() {
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.mirror_staking_addr.to_string(),
-            msg: to_binary(&mirror_protocol::staking::ExecuteMsg::Withdraw {
-                asset_token: None,
+            msg: to_binary(&mirror_protocol::staking::ExecuteMsg::Withdraw { asset_token: None })?,
+            funds: vec![],
+        }));
+
+        let mir_uusd_terraswap_pair_addr = terraswap::querier::query_pair_info(
+            &deps.querier,
+            config.terraswap_factory_addr,
+            &get_terraswap_pair_asset_info(&config.mirror_cw20_addr.as_str()),
+        )?
+        .contract_addr;
+        let simulation_response: terraswap::pair::SimulationResponse =
+            deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+                contract_addr: mir_uusd_terraswap_pair_addr.clone(),
+                msg: to_binary(&terraswap::pair::QueryMsg::Simulation {
+                    offer_asset: terraswap::asset::Asset {
+                        amount: mir_reward,
+                        info: terraswap::asset::AssetInfo::Token {
+                            contract_addr: config.mirror_cw20_addr.to_string(),
+                        },
+                    },
+                })?,
+            }))?;
+        reward_uusd += simulation_response.return_amount;
+
+        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config.mirror_cw20_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: mir_uusd_terraswap_pair_addr,
+                amount: mir_reward,
+                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
+                    belief_price: None,
+                    max_spread: None,
+                    to: None,
+                })?,
             })?,
             funds: vec![],
         }));
     }
 
+    response = response.add_submessage(SubMsg {
+        id: 1,
+        msg: CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config.anchor_market_addr.to_string(),
+            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: reward_uusd,
+            }],
+        }),
+        reply_on: ReplyOn::Success,
+        gas_limit: None,
+    });
     Ok(response)
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
+    if msg.id != 1 {
+        return Err(StdError::GenericErr {
+            msg: "unexpected_reply_id".to_string(),
+        });
+    }
+    // TODO: add aUST to collateral.
+    Ok(Response::default())
 }
 
 pub fn try_to_do(cosmos_messages: Vec<CosmosMsg>) -> StdResult<Response> {

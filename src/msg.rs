@@ -7,6 +7,7 @@ pub struct InstantiateMsg {
     pub anchor_ust_cw20_addr: String,
     pub mirror_cw20_addr: String,
     pub spectrum_cw20_addr: String,
+    pub anchor_market_addr: String,
     pub mirror_collateral_oracle_addr: String,
     pub mirror_lock_addr: String,
     pub mirror_mint_addr: String,
