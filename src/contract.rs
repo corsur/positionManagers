@@ -26,9 +26,8 @@ pub fn instantiate(
         mirror_mint_addr: deps.api.addr_validate(&msg.mirror_mint_addr)?,
         mirror_oracle_addr: deps.api.addr_validate(&msg.mirror_oracle_addr)?,
         mirror_staking_addr: deps.api.addr_validate(&msg.mirror_staking_addr)?,
-        spectrum_mirror_farms_addr: deps
-            .api
-            .addr_validate(&msg.spectrum_mirror_farms_addr)?,
+        spectrum_gov_addr: deps.api.addr_validate(&msg.spectrum_gov_addr)?,
+        spectrum_mirror_farms_addr: deps.api.addr_validate(&msg.spectrum_mirror_farms_addr)?,
         spectrum_staker_addr: deps.api.addr_validate(&msg.spectrum_staker_addr)?,
         terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
     };
@@ -90,7 +89,11 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
 
     let mut response = Response::new();
     if spec_reward > Uint128::zero() {
-        // TODO: call Spectrum Gov contract's mint call.
+        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config.spectrum_gov_addr.to_string(),
+            msg: to_binary(&spectrum_protocol::gov::ExecuteMsg::mint {})?,
+            funds: vec![],
+        }));
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.spectrum_mirror_farms_addr.to_string(),
             msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::withdraw {

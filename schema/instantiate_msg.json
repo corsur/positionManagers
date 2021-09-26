@@ -5,10 +5,13 @@
   "required": [
     "anchor_ust_cw20_addr",
     "mirror_collateral_oracle_addr",
+    "mirror_cw20_addr",
     "mirror_lock_addr",
     "mirror_mint_addr",
     "mirror_oracle_addr",
     "mirror_staking_addr",
+    "spectrum_cw20_addr",
+    "spectrum_gov_addr",
     "spectrum_mirror_farms_addr",
     "spectrum_staker_addr",
     "terraswap_factory_addr"
@@ -18,6 +21,9 @@
       "type": "string"
     },
     "mirror_collateral_oracle_addr": {
+      "type": "string"
+    },
+    "mirror_cw20_addr": {
       "type": "string"
     },
     "mirror_lock_addr": {
@@ -30,6 +36,12 @@
       "type": "string"
     },
     "mirror_staking_addr": {
+      "type": "string"
+    },
+    "spectrum_cw20_addr": {
+      "type": "string"
+    },
+    "spectrum_gov_addr": {
       "type": "string"
     },
     "spectrum_mirror_farms_addr": {

@@ -17,6 +17,7 @@ pub struct Config {
     pub mirror_mint_addr: Addr,
     pub mirror_oracle_addr: Addr,
     pub mirror_staking_addr: Addr,
+    pub spectrum_gov_addr: Addr,
     pub spectrum_mirror_farms_addr: Addr,
     pub spectrum_staker_addr: Addr,
     pub terraswap_factory_addr: Addr,

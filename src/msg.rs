@@ -12,6 +12,7 @@ pub struct InstantiateMsg {
     pub mirror_mint_addr: String,
     pub mirror_oracle_addr: String,
     pub mirror_staking_addr: String,
+    pub spectrum_gov_addr: String,
     pub spectrum_mirror_farms_addr: String,
     pub spectrum_staker_addr: String,
     pub terraswap_factory_addr: String,
