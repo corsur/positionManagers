@@ -87,6 +87,20 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
         spec_reward += reward_info.pending_farm_reward;
     }
 
+    // Find claimable MIR reward.
+    let mir_reward_info_response: mirror_protocol::staking::RewardInfoResponse =
+    deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+        contract_addr: config.mirror_staking_addr.to_string(),
+        msg: to_binary(&mirror_protocol::staking::QueryMsg::RewardInfo {
+            staker_addr: env.contract.address.to_string(),
+            asset_token: None,
+        })?,
+    }))?;
+    let mut mir_reward = Uint128::zero();
+    for reward_info in mir_reward_info_response.reward_infos.iter() {
+        mir_reward += reward_info.pending_reward;
+    }
+
     let mut response = Response::new();
     if spec_reward > Uint128::zero() {
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
@@ -97,6 +111,15 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.spectrum_mirror_farms_addr.to_string(),
             msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::withdraw {
+                asset_token: None,
+            })?,
+            funds: vec![],
+        }));
+    }
+    if mir_reward > Uint128::zero() {
+        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config.mirror_staking_addr.to_string(),
+            msg: to_binary(&mirror_protocol::staking::ExecuteMsg::Withdraw {
                 asset_token: None,
             })?,
             funds: vec![],
