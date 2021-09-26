@@ -10,6 +10,8 @@ static CONFIG_KEY: &[u8] = b"config";
 pub struct Config {
     pub owner: CanonicalAddr,
     pub anchor_ust_cw20_addr: CanonicalAddr,
+    pub mirror_cw20_addr: CanonicalAddr,
+    pub spectrum_cw20_addr: CanonicalAddr,
     pub mirror_collateral_oracle_addr: CanonicalAddr,
     pub mirror_lock_addr: CanonicalAddr,
     pub mirror_mint_addr: CanonicalAddr,

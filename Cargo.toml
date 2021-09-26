@@ -1,7 +1,7 @@
 [package]
 name = "amadeus"
-version = "0.1.0"
-authors = ["Peiqian Li <peiqian@aperture.finance>"]
+version = "0.2.0"
+authors = ["Aperture Finance"]
 edition = "2018"
 
 exclude = [

@@ -17,6 +17,8 @@ pub fn instantiate(
     let config = Config {
         owner: deps.api.addr_canonicalize(&info.sender.to_string())?,
         anchor_ust_cw20_addr: deps.api.addr_canonicalize(&msg.anchor_ust_cw20_addr)?,
+        mirror_cw20_addr: deps.api.addr_canonicalize(&msg.mirror_cw20_addr)?,
+        spectrum_cw20_addr: deps.api.addr_canonicalize(&msg.spectrum_cw20_addr)?,
         mirror_collateral_oracle_addr: deps
             .api
             .addr_canonicalize(&msg.mirror_collateral_oracle_addr)?,
@@ -64,15 +66,44 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             collateral_ratio_in_percentage,
             mirror_asset_to_mint_cw20_addr,
         ),
-        ExecuteMsg::Do { cosmos_messages } => try_to_do(deps, env, cosmos_messages),
+        ExecuteMsg::Do { cosmos_messages } => try_to_do(cosmos_messages),
+        ExecuteMsg::Reinvest {} => reinvest(deps, env),
     }
 }
 
-pub fn try_to_do(
-    _deps: DepsMut,
-    _env: Env,
-    cosmos_messages: Vec<CosmosMsg>,
-) -> StdResult<Response> {
+pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
+    let config = read_config(deps.storage)?;
+
+    // Find claimable SPEC reward.
+    let spec_reward_info_response: spectrum_protocol::mirror_farm::RewardInfoResponse =
+        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: deps.api.addr_humanize(&config.spectrum_mirror_farms_addr)?.to_string(),
+            msg: to_binary(&spectrum_protocol::mirror_farm::QueryMsg::reward_info {
+                staker_addr: env.contract.address.to_string(),
+                asset_token: None,
+            })?,
+        }))?;
+    let mut spec_reward = Uint128::zero();
+    for reward_info in spec_reward_info_response.reward_infos.iter() {
+        spec_reward += reward_info.pending_farm_reward;
+    }
+
+    let mut response = Response::new();
+    if spec_reward > Uint128::zero() {
+        // TODO: call Spectrum Gov contract's mint call.
+        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: deps.api.addr_humanize(&config.spectrum_mirror_farms_addr)?.to_string(),
+            msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::withdraw {
+                asset_token: None,
+            })?,
+            funds: vec![],
+        }));
+    }
+
+    Ok(response)
+}
+
+pub fn try_to_do(cosmos_messages: Vec<CosmosMsg>) -> StdResult<Response> {
     let mut response = Response::new();
     for message in cosmos_messages.iter() {
         response.messages.push(SubMsg {
@@ -257,8 +288,8 @@ pub fn close_short_position(deps: DepsMut, env: Env, cdp_idx: Uint128) -> StdRes
         response = response.add_message(swap_uusd_for_mirror_asset);
     }
 
-    let close_cdp = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: mirror_asset_cw20_addr,
+    let burn_minted_mirror_asset = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: mirror_asset_cw20_addr.clone(),
         msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
             contract: deps.api.addr_humanize(&config.mirror_mint_addr)?.to_string(),
             amount: position_response.asset.amount,
@@ -268,7 +299,17 @@ pub fn close_short_position(deps: DepsMut, env: Env, cdp_idx: Uint128) -> StdRes
         })?,
         funds: vec![],
     });
-    response = response.add_message(close_cdp);
+    response = response.add_message(burn_minted_mirror_asset);
+
+    let withdraw_collateral = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: mirror_asset_cw20_addr,
+        msg: to_binary(&mirror_protocol::mint::ExecuteMsg::Withdraw {
+            collateral: None,
+            position_idx: cdp_idx,
+        })?,
+        funds: vec![],
+    });
+    response = response.add_message(withdraw_collateral);
 
     Ok(response)
 }
