@@ -521,7 +521,7 @@ pub fn claim_short_sale_proceeds_and_stake(
                         amount: uusd_amount_to_provide_liquidity_plus_tax_cap,
                     },
                 ],
-                slippage_tolerance: None,
+                slippage_tolerance: Decimal::percent(50u64),
                 compound_rate: Some(Decimal::one()),
                 staker_addr: None,
             })?,
