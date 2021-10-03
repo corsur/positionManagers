@@ -226,14 +226,51 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
-    if msg.id != 1 {
-        return Err(StdError::GenericErr {
-            msg: "unexpected_reply_id".to_string(),
-        });
+pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> StdResult<Response> {
+    if msg.id == 1 {
+        return add_aust_to_collateral(deps, env);
     }
-    // TODO: add aUST to collateral.
-    Ok(Response::default())
+    Err(StdError::GenericErr {
+        msg: "unexpected_reply_id".to_string(),
+    })
+}
+
+fn get_first_position_index(deps: DepsMut, env: Env) -> StdResult<Uint128> {
+    let config = read_config(deps.storage)?;
+    let positions_response: mirror_protocol::mint::PositionsResponse =
+        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
+            contract_addr: config.mirror_mint_addr.to_string(),
+            msg: to_binary(&mirror_protocol::mint::QueryMsg::Positions {
+                owner_addr: Some(env.contract.address.to_string()),
+                asset_token: None,
+                start_after: None,
+                limit: None,
+                order_by: None,
+            })?,
+        }))?;
+    Ok(positions_response.positions[0].idx)
+}
+
+fn add_aust_to_collateral(deps: DepsMut, env: Env) -> StdResult<Response> {
+    let config = read_config(deps.storage)?;
+    let aust_amount = terraswap::querier::query_token_balance(
+        &deps.querier,
+        config.anchor_ust_cw20_addr.clone(),
+        env.contract.address.clone(),
+    )?;
+    Ok(
+        Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: config.anchor_ust_cw20_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: config.mirror_mint_addr.to_string(),
+                amount: aust_amount,
+                msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Deposit {
+                    position_idx: get_first_position_index(deps, env)?,
+                })?,
+            })?,
+            funds: vec![],
+        })),
+    )
 }
 
 pub fn try_to_do(cosmos_messages: Vec<CosmosMsg>) -> StdResult<Response> {
