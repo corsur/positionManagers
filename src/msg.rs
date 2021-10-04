@@ -32,9 +32,8 @@ pub enum ExecuteMsg {
         cdp_idx: Uint128,
     },
     DeltaNeutralInvest {
-        collateral_asset_amount: Uint128,
         collateral_ratio_in_percentage: Uint128,
-        mirror_asset_to_mint_cw20_addr: String,
+        mirror_asset_cw20_addr: String,
     },
     Do {
         cosmos_messages: Vec<CosmosMsg>,

@@ -1,10 +1,11 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, StdResult, Storage};
+use cosmwasm_std::{Addr, StdResult, Storage, Uint128};
 use cosmwasm_storage::{singleton, singleton_read};
 
 static CONFIG_KEY: &[u8] = b"config";
+static DELTA_NEUTRAL_INVEST_REQUEST_KEY: &[u8] = b"delta_neutral_invest_request";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
@@ -31,4 +32,23 @@ pub fn write_config(storage: &mut dyn Storage, config: &Config) -> StdResult<()>
 
 pub fn read_config(storage: &dyn Storage) -> StdResult<Config> {
     singleton_read(storage, CONFIG_KEY).load()
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct DeltaNeutralInvestRequest {
+    pub collateral_ratio_in_percentage: Uint128,
+    pub mirror_asset_cw20_addr: String,
+}
+
+pub fn write_delta_neutral_invest_request(
+    storage: &mut dyn Storage,
+    request: &DeltaNeutralInvestRequest,
+) -> StdResult<()> {
+    singleton(storage, DELTA_NEUTRAL_INVEST_REQUEST_KEY).save(request)
+}
+
+pub fn read_delta_neutral_invest_request(
+    storage: &dyn Storage,
+) -> StdResult<DeltaNeutralInvestRequest> {
+    singleton_read(storage, DELTA_NEUTRAL_INVEST_REQUEST_KEY).load()
 }
