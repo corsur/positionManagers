@@ -31,9 +31,11 @@ cargo install cargo-run-script
 
 ### Testnet (bombay-12)
 
+Test controller address "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g" is generated from the seed phrase in "seed.txt".
+
 ```json
 {
-  "controller": "terra...",
+  "controller": "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g",
   "anchor_ust_cw20_addr": "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
   "mirror_cw20_addr": "terra10llyp6v3j3her8u3ce66ragytu45kcmd9asj3u",
   "spectrum_cw20_addr": "terra1kvsxd94ue6f4rtchv2l6me5k07uh26s7637cza",
@@ -46,7 +48,7 @@ cargo install cargo-run-script
   "spectrum_gov_addr": "terra1x3l2tkkwzzr0qsnrpy3lf2cm005zxv7pun26x4",
   "spectrum_mirror_farms_addr": "terra1hasdl7l6xtegnch8mjyw2g7mfh9nt3gtdtmpfu",
   "spectrum_staker_addr": "terra15nwqmmmza9y643apneg0ddwt0ekk38qdevnnjt",
-  "terraswap_factory_addr": "terra18qpjm4zkvqnpjpw0zn0tdr8gdzvt8au35v45xf",
+  "terraswap_factory_addr": "terra18qpjm4zkvqnpjpw0zn0tdr8gdzvt8au35v45xf"
 }
 ```
 
@@ -67,6 +69,6 @@ cargo install cargo-run-script
   "spectrum_gov_addr": "terra1dpe4fmcz2jqk6t50plw0gqa2q3he2tj6wex5cl",
   "spectrum_mirror_farms_addr": "terra1kehar0l76kzuvrrcwj5um72u3pjq2uvp62aruf",
   "spectrum_staker_addr": "terra1fxwelge6mf5l6z0rjpylzcfq9w9tw2q7tewaf5",
-  "terraswap_factory_addr": "terra1ulgw0td86nvs4wtpsc80thv6xelk76ut7a7apj",
+  "terraswap_factory_addr": "terra1ulgw0td86nvs4wtpsc80thv6xelk76ut7a7apj"
 }
 ```
