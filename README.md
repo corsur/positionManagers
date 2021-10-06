@@ -72,3 +72,14 @@ Test controller address "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g" is genera
   "terraswap_factory_addr": "terra1ulgw0td86nvs4wtpsc80thv6xelk76ut7a7apj"
 }
 ```
+
+## Testing with terrad
+
+### Testnet (bombay-12)
+mETH cw20 address: "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"
+
+A test contract has been instantiated at "terra1zcdpycechzx0l7x7yyg2f5tpg3pkszepnhm4ha".
+
+```console
+terrad tx wasm execute terra1zcdpycechzx0l7x7yyg2f5tpg3pkszepnhm4ha '{"delta_neutral_invest":{"collateral_ratio_in_percentage":"250","mirror_asset_cw20_addr":"terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"}}' "10000000000uusd" --from test --chain-id=bombay-12 --gas=auto --fees=2000000uusd --gas-adjustment=2
+```
