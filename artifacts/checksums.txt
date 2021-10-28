@@ -1,1 +1,2 @@
 95f2915da0c39302d764e5b5d21ccfac16700b6b9f8d51c138ca45c1aadec38e  aperture_amadeus.wasm
+6ba489710c633700b56a86acdcfba8a3cb90cc7d39a9d67e27bee56fc1d0f3c4  aperture_demo.wasm
