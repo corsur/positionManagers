@@ -3,7 +3,7 @@ use cosmwasm_std::{
     MessageInfo, Response, StdResult, Uint128, WasmMsg,
 };
 
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WormholeTokenBridgeSubmitVaaMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, WormholeTokenBridgeExecuteMsg};
 use crate::state::*;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -85,7 +85,7 @@ pub fn claims_tokens_from_wormhole_and_delta_neutral_invest(
     let config = read_config(deps.storage)?;
     Ok(Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.wormhole_token_bridge_addr.to_string(),
-            msg: to_binary(&WormholeTokenBridgeSubmitVaaMsg {
+            msg: to_binary(&WormholeTokenBridgeExecuteMsg::SubmitVaa {
                 data: vaa,
             })?,
             funds: vec![],

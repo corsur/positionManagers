@@ -123,3 +123,11 @@ A test contract has been instantiated at "terra1zcdpycechzx0l7x7yyg2f5tpg3pkszep
 ```console
 terrad tx wasm execute terra1zcdpycechzx0l7x7yyg2f5tpg3pkszepnhm4ha '{"delta_neutral_invest":{"collateral_ratio_in_percentage":"250","mirror_asset_cw20_addr":"terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"}}' "10000000000uusd" --from test --chain-id=bombay-12 --gas=auto --fees=2000000uusd --gas-adjustment=2
 ```
+
+## Demo
+```json
+{
+    "amadeus_addr": "terra1swqh6222zdcze7utq8avzmqm4as762j04s29n5",
+    "wormhole_token_bridge_addr": "terra1dq03ugtd40zu9hcgdzrsq6z2z4hwhc9tqk2uy5"
+}
+```
