@@ -127,7 +127,7 @@ terrad tx wasm execute terra1zcdpycechzx0l7x7yyg2f5tpg3pkszepnhm4ha '{"delta_neu
 ## Demo
 ```json
 {
-    "amadeus_addr": "terra1swqh6222zdcze7utq8avzmqm4as762j04s29n5",
-    "wormhole_token_bridge_addr": "terra1dq03ugtd40zu9hcgdzrsq6z2z4hwhc9tqk2uy5"
+    "amadeus_addr": "terra1czsy798tyws9lh0a8rpx340625ety23vy5v4ml",
+    "wormhole_token_bridge_addr": "terra10nmmwe8r3g99a9newtqa7a75xfgs2e8z87r2sf"
 }
 ```
