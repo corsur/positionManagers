@@ -10,9 +10,9 @@ pub struct ConfigInfo {
     pub terraswap_factory: String,
     pub spectrum_token: String,
     pub spectrum_gov: String,
-    pub mirror_token: String,
-    pub mirror_staking: String,
-    pub mirror_gov: String,
+    pub terraworld_token: String,
+    pub terraworld_staking: String,
+    pub terraworld_gov: String,
     pub platform: String,
     pub controller: String,
     pub base_denom: String,
@@ -51,12 +51,11 @@ pub enum ExecuteMsg {
         spec_amount: Option<Uint128>,
         farm_amount: Option<Uint128>,
     },
-    harvest_all {},
-    re_invest {
-        asset_token: String,
-    },
     stake {
         asset_token: String,
+    },
+    compound {
+        threshold_compound_gov: Uint128
     },
     update_bond {
         asset_token: String,
@@ -76,13 +75,10 @@ pub enum Cw20HookMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum QueryMsg {
-    config {}, // get config
-    // get all vault settings
+    config {},
     pools {},
-    // get deposited balances
     reward_info {
         staker_addr: String,
-        asset_token: Option<String>,
     },
     state {},
 }
@@ -100,7 +96,7 @@ pub struct PoolItem {
     pub total_stake_bond_share: Uint128,
     pub total_stake_bond_amount: Uint128, // amount stake
     pub weight: u32,
-    pub farm_share: Uint128, // MIR share
+    pub farm_share: Uint128, // MINE share
     pub state_spec_share_index: Decimal,
     pub farm_share_index: Decimal,       // per stake bond share
     pub stake_spec_share_index: Decimal, // per stake bond share

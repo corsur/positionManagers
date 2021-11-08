@@ -2,6 +2,7 @@ use cosmwasm_std::{Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use terraswap::asset::{Asset, AssetInfo};
+use cw20::Cw20ReceiveMsg;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ConfigInfo {
@@ -12,6 +13,7 @@ pub struct ConfigInfo {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum ExecuteMsg {
+    receive(Cw20ReceiveMsg),
     bond {
         contract: String,
         assets: [Asset; 2],
@@ -48,6 +50,23 @@ pub enum ExecuteMsg {
         insert_allowlist: Option<Vec<String>>,
         remove_allowlist: Option<Vec<String>>,
     },
+    zap_to_unbond_hook {
+        staker_addr: String,
+        prev_sell_asset: Asset,
+        prev_target_asset: Asset,
+        belief_price: Option<Decimal>,
+        max_spread: Decimal,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum Cw20HookMsg {
+    zap_to_unbond {
+        sell_asset: AssetInfo,
+        target_asset: AssetInfo,
+        belief_price: Option<Decimal>,
+        max_spread: Decimal,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -56,8 +75,4 @@ pub enum QueryMsg {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct MigrateMsg {
-    pub owner: String,
-    pub terraswap_factory: String,
-    pub allowlist: Vec<String>,
-}
+pub struct MigrateMsg {}

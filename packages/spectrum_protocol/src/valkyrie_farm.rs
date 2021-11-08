@@ -10,9 +10,9 @@ pub struct ConfigInfo {
     pub terraswap_factory: String,
     pub spectrum_token: String,
     pub spectrum_gov: String,
-    pub mirror_token: String,
-    pub mirror_staking: String,
-    pub mirror_gov: String,
+    pub valkyrie_token: String,
+    pub valkyrie_staking: String,
+    pub valkyrie_gov: String,
     pub platform: String,
     pub controller: String,
     pub base_denom: String,
@@ -51,13 +51,10 @@ pub enum ExecuteMsg {
         spec_amount: Option<Uint128>,
         farm_amount: Option<Uint128>,
     },
-    harvest_all {},
-    re_invest {
-        asset_token: String,
-    },
     stake {
         asset_token: String,
     },
+    compound {},
     update_bond {
         asset_token: String,
         amount_to_stake: Uint128,
@@ -82,7 +79,6 @@ pub enum QueryMsg {
     // get deposited balances
     reward_info {
         staker_addr: String,
-        asset_token: Option<String>,
     },
     state {},
 }

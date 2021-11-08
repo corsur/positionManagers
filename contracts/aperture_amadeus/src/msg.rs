@@ -1,4 +1,4 @@
-use cosmwasm_std::{CosmosMsg, Uint128};
+use cosmwasm_std::{CosmosMsg, Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -22,9 +22,30 @@ pub struct InstantiateMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+pub enum InternalExecuteMsg {
+    DepositUusdBalanceToAnchor {},
+    AddAnchorUstBalanceToCollateral {},
+    OpenCdpWithAnchorUstBalanceAsCollateral {
+        collateral_ratio: Decimal,
+        mirror_asset_cw20_addr: String,
+    },
+    SwapUusdForMintedMirrorAsset {},
+    StakeTerraswapLpTokens {
+        lp_token_cw20_addr: String,
+        stake_via_spectrum: bool,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ControllerExecuteMsg {
+    ClaimRewardAndAddToAnchorCollateral {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     ClaimShortSaleProceedsAndStake {
-        cdp_idx: Uint128,
         mirror_asset_amount: Uint128,
         stake_via_spectrum: bool,
     },
@@ -38,10 +59,11 @@ pub enum ExecuteMsg {
     Do {
         cosmos_messages: Vec<CosmosMsg>,
     },
-    Reinvest {},
     SetController {
         controller: String,
     },
+    Controller(ControllerExecuteMsg),
+    Internal(InternalExecuteMsg),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -50,4 +72,6 @@ pub struct MigrateMsg {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum QueryMsg {}
+pub enum QueryMsg {
+    GetPositionInfo {},
+}
