@@ -286,6 +286,7 @@ dependencies = [
 name = "delta-neutral-strategy-manager"
 version = "0.2.0"
 dependencies = [
+ "aperture-common",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cosmwasm-storage",

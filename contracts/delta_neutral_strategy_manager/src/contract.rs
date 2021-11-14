@@ -18,6 +18,7 @@ pub fn instantiate(
     Ok(Response::default())
 }
 
+/// Dispatch enum message to its corresponding functions.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let config = read_config(deps.storage)?;
@@ -29,10 +30,18 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     }
     // Updates to the internal is privileged.
     match msg {
-        ExecuteMsg::OpenPosition {} => open_position(),
-        ExecuteMsg::IncreasePosition {} => increase_position(),
-        ExecuteMsg::DecreasePosition {} => decrease_position(),
-        ExecuteMsg::ClosePosition {} => close_position(),
+        ExecuteMsg::Action(aperture_common::common::StrategyAction::OpenPosition {}) => {
+            open_position()
+        }
+        ExecuteMsg::Action(aperture_common::common::StrategyAction::IncreasePosition {}) => {
+            increase_position()
+        }
+        ExecuteMsg::Action(aperture_common::common::StrategyAction::DecreasePosition {}) => {
+            decrease_position()
+        }
+        ExecuteMsg::Action(aperture_common::common::StrategyAction::ClosePosition {}) => {
+            close_position()
+        }
     }
 }
 
@@ -55,9 +64,7 @@ pub fn close_position() -> StdResult<Response> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetPositionInfo { position_id } => {
-            to_binary(&(read_config(deps.storage)?))
-        }
+        QueryMsg::GetPositionInfo { position_id } => to_binary(&(read_config(deps.storage)?)),
     }
 }
 
