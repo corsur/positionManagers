@@ -1,11 +1,13 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
-    QueryRequest, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg, WasmQuery,
+    entry_point, to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdError,
+    StdResult,
 };
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::state::*;
 
+/// Instantiate the contract with basic configuration persisted in the storage.
+/// Note that owner is set at this time.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -18,6 +20,10 @@ pub fn instantiate(
     Ok(Response::default())
 }
 
+/// Dispatch message to its corresponding function call.
+/// Operations in this block is privileged. Only owner can modify the internal
+/// state of the contract. Other caller wishes to get information should be
+/// query against this contract. 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let config = read_config(deps.storage)?;
@@ -32,10 +38,12 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::RegisterInvestment {
             strategy_index,
             strategy_manager_addr,
-        } => register_investment(deps, strategy_index, strategy_manager_addr)
+        } => register_investment(deps, strategy_index, strategy_manager_addr),
     }
 }
 
+/// Owner only. Register strategy_index and the corresponding strategy manager's
+/// address into storage.
 pub fn register_investment(
     deps: DepsMut,
     strategy_index: u64,
@@ -45,6 +53,7 @@ pub fn register_investment(
     Ok(Response::default())
 }
 
+/// Query method to return information related to strategy contract.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
