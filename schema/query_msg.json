@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QueryMsg",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "get_strategy_manager_addr"
+      ],
+      "properties": {
+        "get_strategy_manager_addr": {
+          "type": "object",
+          "required": [
+            "strategy_index"
+          ],
+          "properties": {
+            "strategy_index": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}
