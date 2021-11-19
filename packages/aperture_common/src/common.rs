@@ -1,3 +1,4 @@
+use cosmwasm_std::{Addr, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -20,4 +21,16 @@ pub enum StrategyAction {
 pub enum StrategyType {
     Anchor {},
     DeltaNeutral {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum TokenType {
+    Native {denom: String},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct TokenInfo {
+    pub addr: Addr,
+    pub token_type: TokenType,
+    pub amount: Uint128,
 }
