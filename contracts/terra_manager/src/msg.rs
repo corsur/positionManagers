@@ -13,6 +13,12 @@ pub struct InstantiateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
+    /// `RegisterInvestment` - Owner only. Message to write the pair
+    /// <strategy_index, strategy_manager_addr> into storage.
+    RegisterInvestment {
+        strategy_index: u64,
+        strategy_manager_addr: Addr,
+    },
     /// First time initiate a new strategy. A position id will be created.
     InitStrategy {
         strategy_type: StrategyType,
@@ -34,4 +40,5 @@ pub struct MigrateMsg {}
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     GetPositionInfo { position_id: u64 },
+    GetStrategyManagerAddr {strategy_index: u64},
 }

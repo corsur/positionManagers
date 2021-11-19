@@ -49,23 +49,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aperture-registry"
-version = "0.2.0"
-dependencies = [
- "cosmwasm-schema",
- "cosmwasm-std",
- "cosmwasm-storage",
- "cw20 0.9.1",
- "mirror-protocol",
- "moneymarket",
- "schemars",
- "serde",
- "spectrum-protocol",
- "terra-cosmwasm",
- "terraswap",
-]
-
-[[package]]
 name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

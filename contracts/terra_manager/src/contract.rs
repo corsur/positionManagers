@@ -29,6 +29,10 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     }
     // Updates to the internal is privileged.
     match msg {
+        ExecuteMsg::RegisterInvestment {
+            strategy_index,
+            strategy_manager_addr,
+        } => register_investment(deps, strategy_index, strategy_manager_addr),
         ExecuteMsg::InitStrategy {
             strategy_type,
             action_type,
@@ -39,6 +43,17 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             position_id,
         } => update_strategy(),
     }
+}
+
+/// Owner only. Register strategy_index and the corresponding strategy manager's
+/// address into storage.
+pub fn register_investment(
+    deps: DepsMut,
+    strategy_index: u64,
+    strategy_manager_addr: Addr,
+) -> StdResult<Response> {
+    write_investment_registry(deps.storage, strategy_index, &strategy_manager_addr);
+    Ok(Response::default())
 }
 
 pub fn init_strategy() -> StdResult<Response> {
@@ -52,6 +67,9 @@ pub fn update_strategy() -> StdResult<Response> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
+        QueryMsg::GetStrategyManagerAddr { strategy_index } => {
+            to_binary(&(read_investment_registry(deps.storage, strategy_index)?))
+        }
         QueryMsg::GetPositionInfo { position_id } => to_binary(&(read_config(deps.storage)?)),
     }
 }
