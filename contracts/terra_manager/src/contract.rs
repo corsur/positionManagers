@@ -6,6 +6,8 @@ use cosmwasm_std::{
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use crate::state::*;
 
+use aperture_common::common::{StrategyAction, StrategyType};
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
@@ -22,17 +24,20 @@ pub fn instantiate(
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let config = read_config(deps.storage)?;
     let is_authorized = info.sender == config.owner;
-    if !is_authorized {
-        return Err(StdError::GenericErr {
-            msg: "Unauthorized".to_string(),
-        });
-    }
-    // Updates to the internal is privileged.
+
     match msg {
+        // Owner only: updates investment strategy bucket is priviledged.
         ExecuteMsg::RegisterInvestment {
             strategy_index,
             strategy_manager_addr,
-        } => register_investment(deps, strategy_index, strategy_manager_addr),
+        } => {
+            if !is_authorized {
+                return Err(StdError::GenericErr {
+                    msg: "Unauthorized".to_string(),
+                });
+            }
+            register_investment(deps, strategy_index, strategy_manager_addr)
+        },
         ExecuteMsg::InitStrategy {
             strategy_type,
             action_type,
@@ -49,17 +54,23 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
 /// address into storage.
 pub fn register_investment(
     deps: DepsMut,
-    strategy_index: u64,
+    strategy_index: StrategyType,
     strategy_manager_addr: Addr,
 ) -> StdResult<Response> {
     write_investment_registry(deps.storage, strategy_index, &strategy_manager_addr);
     Ok(Response::default())
 }
 
+/// Look up the contract address for the associated strategy. Then delegate any
+/// necessary information to that contract for execution.
+/// Specifically it does the following:
+///   * Look up strategy address
+///   * Delegate action and tokens received from caller to strategy contract.
 pub fn init_strategy() -> StdResult<Response> {
     Ok(Response::default())
 }
 
+/// Same as `init_strategy` but for existing positions.
 pub fn update_strategy() -> StdResult<Response> {
     Ok(Response::default())
 }
