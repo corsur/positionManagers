@@ -90,7 +90,7 @@ pub fn open_position(
                 spectrum_staker_addr: "terra1fxwelge6mf5l6z0rjpylzcfq9w9tw2q7tewaf5".to_string(),
                 terraswap_factory_addr: "terra1ulgw0td86nvs4wtpsc80thv6xelk76ut7a7apj".to_string(),
             })?,
-            funds: vec![Coin::new(token.amount.u128(), token.denom)],
+            funds: vec![],
             label: "".to_string(),
         }
         .into(),
@@ -108,7 +108,7 @@ pub fn open_position(
                 mirror_asset_cw20_addr: params.mirror_asset_cw20_addr,
             },
         )?,
-        funds: vec![],
+        funds: vec![Coin::new(token.amount.u128(), token.denom)],
     }));
 
     Ok(response)
