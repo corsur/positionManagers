@@ -1,7 +1,7 @@
 use cosmwasm_std::Addr;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use aperture_common::common::{StrategyAction, StrategyType};
+use aperture_common::common::{StrategyAction, StrategyType, TokenInfo};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {}
@@ -23,12 +23,14 @@ pub enum ExecuteMsg {
     InitStrategy {
         strategy_type: StrategyType,
         action_type: StrategyAction,
+        token_type: TokenInfo,
     },
     /// Update existing position for a strategy using the position id.
     UpdateStrategy {
         strategy_type: StrategyType,
         action_type: StrategyAction,
-        position_id: u64
+        token_type: TokenInfo,
+        position_id: u64,
     },
 }
 

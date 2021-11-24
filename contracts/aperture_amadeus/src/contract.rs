@@ -3,7 +3,7 @@ use cosmwasm_std::{
     QueryRequest, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg, WasmQuery,
 };
 
-use crate::msg::{
+use aperture_common::delta_neutral::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
 use crate::state::*;

@@ -3,7 +3,7 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use aperture_amadeus::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use aperture_common::delta_neutral::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use aperture_amadeus::state::Config;
 
 fn main() {

@@ -62,7 +62,7 @@ pub fn write_investment_registry(
 /// * `strategy_index`: the unique identifier representing each strategy.
 pub fn read_investment_registry(
     storage: &dyn Storage,
-    strategy_index: StrategyType,
+    strategy_index: &StrategyType,
 ) -> StdResult<Addr> {
     let bucket: ReadonlyBucket<Addr> = ReadonlyBucket::new(storage, INVESTMENT_REGISTRY_KEY);
     let res = bucket.load(to_binary(&strategy_index)?.as_slice());

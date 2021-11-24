@@ -1,8 +1,7 @@
-use cosmwasm_std::{Addr};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use aperture_common::common::{StrategyAction, TokenInfo};
+use crate::common::{DeltaNeutralParams, StrategyAction, TokenInfo};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {}
@@ -12,7 +11,11 @@ pub struct InstantiateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Action(aperture_common::common::StrategyAction)
+    Do {
+        action: StrategyAction,
+        token: TokenInfo,
+        params: DeltaNeutralParams,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -23,5 +26,5 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetPositionInfo {position_id: u64},
+    GetPositionInfo { position_id: u64 },
 }
