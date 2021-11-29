@@ -113,8 +113,8 @@ pub fn update_strategy() -> StdResult<Response> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetStrategyManagerAddr { strategy_index } => {
-            to_binary(&(read_investment_registry(deps.storage, strategy_index)?))
+        QueryMsg::GetStrategyManagerAddr { strategy_type } => {
+            to_binary(&(read_investment_registry(deps.storage, &strategy_type)?))
         }
         QueryMsg::GetPositionInfo { position_id } => to_binary(&(read_config(deps.storage)?)),
     }

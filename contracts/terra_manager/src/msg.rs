@@ -42,5 +42,5 @@ pub struct MigrateMsg {}
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     GetPositionInfo { position_id: u64 },
-    GetStrategyManagerAddr {strategy_index: StrategyType},
+    GetStrategyManagerAddr {strategy_type: StrategyType},
 }
