@@ -3,13 +3,13 @@ use cosmwasm_std::{
     QueryRequest, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg, WasmQuery,
 };
 
-use aperture_common::delta_neutral_position::{
-    ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
-};
 use crate::state::{
     read_config, read_position_info, write_config, write_position_info, Config, PositionInfo,
 };
 use crate::util::{create_terraswap_cw20_uusd_pair_asset_info, swap_cw20_token_for_uusd};
+use aperture_common::delta_neutral_position::{
+    ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
+};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(

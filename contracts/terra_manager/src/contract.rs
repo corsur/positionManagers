@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
-    MessageInfo, Response, StdError, StdResult, Storage, WasmMsg,
+    entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Response, StdError, StdResult, Storage, WasmMsg,
 };
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
@@ -21,7 +21,12 @@ pub fn instantiate(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
+pub fn execute(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> StdResult<Response> {
     let config = read_config(deps.storage)?;
     let is_authorized = info.sender == config.owner;
 
@@ -93,11 +98,13 @@ pub fn init_strategy(
         StrategyType::DeltaNeutral(params) => Ok(Response::new().add_message(CosmosMsg::Wasm(
             WasmMsg::Execute {
                 contract_addr: strategy_addr.to_string(),
-                msg: to_binary(&aperture_common::delta_neutral_manager::ExecuteMsg::Do {
-                    action,
-                    token,
-                    params,
-                })?,
+                msg: to_binary(
+                    &aperture_common::delta_neutral_position_manager::ExecuteMsg::Do {
+                        action,
+                        token,
+                        params,
+                    },
+                )?,
                 funds,
             },
         ))),
