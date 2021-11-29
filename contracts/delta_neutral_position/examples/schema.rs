@@ -3,8 +3,8 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use aperture_demo::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use aperture_demo::state::Config;
+use delta_neutral_position::state::Config;
+use aperture_common::delta_neutral_position::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

@@ -10,9 +10,8 @@ pub struct ConfigInfo {
     pub terraswap_factory: String,
     pub spectrum_token: String,
     pub spectrum_gov: String,
-    pub pylon_token: String,
-    pub pylon_staking: String,
-    pub pylon_gov: String,
+    pub kujira_token: String,
+    pub kujira_staking: String,
     pub platform: String,
     pub controller: String,
     pub base_denom: String,
@@ -126,6 +125,8 @@ pub struct RewardInfoResponseItem {
     pub stake_bond_share: Uint128,
     pub pending_farm_reward: Uint128,
     pub pending_spec_reward: Uint128,
+    pub deposit_amount: Option<Uint128>,
+    pub deposit_time: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]

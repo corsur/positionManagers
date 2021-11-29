@@ -3,11 +3,13 @@ use cosmwasm_std::{
     QueryRequest, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg, WasmQuery,
 };
 
-use aperture_common::delta_neutral::{
+use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
-use crate::state::*;
-use crate::util::*;
+use crate::state::{
+    read_config, read_position_info, write_config, write_position_info, Config, PositionInfo,
+};
+use crate::util::{create_terraswap_cw20_uusd_pair_asset_info, swap_cw20_token_for_uusd};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -67,11 +69,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         }
         ExecuteMsg::DeltaNeutralInvest {
             collateral_ratio_in_percentage,
+            buffer_percentage,
             mirror_asset_cw20_addr,
         } => delta_neutral_invest(
             deps,
             env,
             collateral_ratio_in_percentage,
+            buffer_percentage,
             mirror_asset_cw20_addr,
         ),
         ExecuteMsg::Do { cosmos_messages } => try_to_do(cosmos_messages),
@@ -203,12 +207,14 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
 
     let mut response = Response::new();
     if spec_reward > Uint128::zero() {
-        // Claim SPEC reward.
+        // Mint SPEC tokens to ensure that emissable SPEC tokens are available for withdrawal.
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.spectrum_gov_addr.to_string(),
             msg: to_binary(&spectrum_protocol::gov::ExecuteMsg::mint {})?,
             funds: vec![],
         }));
+
+        // Claim SPEC reward.
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: config.spectrum_mirror_farms_addr.to_string(),
             msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::withdraw {
@@ -219,26 +225,13 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
             funds: vec![],
         }));
 
-        // Swap SPEC for uusd.
-        let spec_uusd_terraswap_pair_addr = terraswap::querier::query_pair_info(
+        // Swap SPEC reward for uusd.
+        response = response.add_message(swap_cw20_token_for_uusd(
             &deps.querier,
             config.terraswap_factory_addr.clone(),
-            &get_terraswap_pair_asset_info(config.spectrum_cw20_addr.as_str()),
-        )?
-        .contract_addr;
-        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: config.spectrum_cw20_addr.to_string(),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: spec_uusd_terraswap_pair_addr,
-                amount: spec_reward,
-                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
-                    belief_price: None,
-                    max_spread: None,
-                    to: None,
-                })?,
-            })?,
-            funds: vec![],
-        }));
+            config.spectrum_cw20_addr.as_str(),
+            spec_reward,
+        )?);
     }
 
     if mir_reward > Uint128::zero() {
@@ -250,25 +243,12 @@ pub fn reinvest(deps: DepsMut, env: Env) -> StdResult<Response> {
         }));
 
         // Swap MIR for uusd.
-        let mir_uusd_terraswap_pair_addr = terraswap::querier::query_pair_info(
+        response = response.add_message(swap_cw20_token_for_uusd(
             &deps.querier,
             config.terraswap_factory_addr,
-            &get_terraswap_pair_asset_info(config.mirror_cw20_addr.as_str()),
-        )?
-        .contract_addr;
-        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: config.mirror_cw20_addr.to_string(),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: mir_uusd_terraswap_pair_addr,
-                amount: mir_reward,
-                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
-                    belief_price: None,
-                    max_spread: None,
-                    to: None,
-                })?,
-            })?,
-            funds: vec![],
-        }));
+            config.mirror_cw20_addr.as_str(),
+            mir_reward,
+        )?);
     }
 
     response = response.add_message(create_internal_execute_message(
@@ -315,6 +295,7 @@ pub fn delta_neutral_invest(
     deps: DepsMut,
     env: Env,
     collateral_ratio_in_percentage: Uint128,
+    buffer_percentage: Uint128,
     mirror_asset_cw20_addr: String,
 ) -> StdResult<Response> {
     if read_position_info(deps.storage).is_ok() {
@@ -330,7 +311,9 @@ pub fn delta_neutral_invest(
     )?;
     let anchor_deposit_amount = uusd_balance.multiply_ratio(
         collateral_ratio_in_percentage,
-        collateral_ratio_in_percentage.checked_add(Uint128::from(101u128))?,
+        collateral_ratio_in_percentage
+            .checked_add(buffer_percentage)?
+            .checked_add(Uint128::from(100u128))?,
     );
     let config = read_config(deps.storage)?;
     Ok(Response::new()
@@ -419,7 +402,7 @@ fn swap_uusd_for_minted_mirror_asset(deps: DepsMut, env: Env) -> StdResult<Respo
     let mirror_asset_uusd_terraswap_pair_addr = terraswap::querier::query_pair_info(
         &deps.querier,
         config.terraswap_factory_addr,
-        &get_terraswap_pair_asset_info(&mirror_asset_cw20_addr),
+        &create_terraswap_cw20_uusd_pair_asset_info(&mirror_asset_cw20_addr),
     )?
     .contract_addr;
     let reverse_simulation_response: terraswap::pair::ReverseSimulationResponse =
@@ -486,7 +469,8 @@ pub fn close_short_position(deps: Deps, env: Env, cdp_idx: Uint128) -> StdResult
     if mirror_asset_cw20_balance < mirror_asset_cw20_amount {
         let mirror_asset_cw20_ask_amount =
             mirror_asset_cw20_amount.checked_sub(mirror_asset_cw20_balance)?;
-        let terraswap_pair_asset_info = get_terraswap_pair_asset_info(&mirror_asset_cw20_addr);
+        let terraswap_pair_asset_info =
+            create_terraswap_cw20_uusd_pair_asset_info(&mirror_asset_cw20_addr);
         let terraswap_pair_info = terraswap::querier::query_pair_info(
             &deps.querier,
             config.terraswap_factory_addr,
@@ -617,7 +601,7 @@ pub fn claim_short_sale_proceeds_and_stake(
         }));
     if position_lock_info_query_result.is_ok() {
         let position_lock_info: mirror_protocol::lock::PositionLockInfoResponse =
-            position_lock_info_query_result.unwrap();
+            position_lock_info_query_result?;
         if position_lock_info.unlock_time <= env.block.time.seconds() {
             response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: config.mirror_lock_addr.to_string(),
@@ -630,8 +614,9 @@ pub fn claim_short_sale_proceeds_and_stake(
     }
 
     // Find uusd amount to pair with mAsset of quantity `mirror_asset_amount`.
-    let terraswap_pair_asset_info =
-        get_terraswap_pair_asset_info(&position_info.mirror_asset_cw20_addr.to_string());
+    let terraswap_pair_asset_info = create_terraswap_cw20_uusd_pair_asset_info(
+        &position_info.mirror_asset_cw20_addr.to_string(),
+    );
     let terraswap_pair_info = terraswap::querier::query_pair_info(
         &deps.querier,
         config.terraswap_factory_addr,

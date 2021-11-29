@@ -1,6 +1,6 @@
 [package]
-name = "delta-neutral-strategy-manager"
-version = "0.2.0"
+name = "delta-neutral-position"
+version = "0.9.1"
 authors = ["Aperture Finance"]
 edition = "2018"
 
@@ -27,7 +27,6 @@ spectrum-protocol = { version = "0.2.0", path = "../../packages/spectrum_protoco
 aperture-common = { version = "0.2.0", path = "../../packages/aperture_common" }
 terra-cosmwasm = "2.2.0"
 terraswap = "2.4.0"
-protobuf = { version = "2", features = ["with-bytes"] }
 
 [dev-dependencies]
 cosmwasm-schema = { version = "0.16.2" }

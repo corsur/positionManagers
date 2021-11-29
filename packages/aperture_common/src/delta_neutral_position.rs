@@ -54,6 +54,7 @@ pub enum ExecuteMsg {
     },
     DeltaNeutralInvest {
         collateral_ratio_in_percentage: Uint128,
+        buffer_percentage: Uint128,
         mirror_asset_cw20_addr: String,
     },
     Do {

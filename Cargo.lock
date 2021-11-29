@@ -3,24 +3,6 @@
 version = 3
 
 [[package]]
-name = "aperture-amadeus"
-version = "0.2.0"
-dependencies = [
- "aperture-common",
- "cosmwasm-schema",
- "cosmwasm-std",
- "cosmwasm-storage",
- "cw20 0.9.1",
- "mirror-protocol",
- "moneymarket",
- "schemars",
- "serde",
- "spectrum-protocol",
- "terra-cosmwasm",
- "terraswap",
-]
-
-[[package]]
 name = "aperture-common"
 version = "0.2.0"
 dependencies = [
@@ -79,12 +61,6 @@ name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
-
-[[package]]
-name = "bytes"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
 name = "cfg-if"
@@ -273,8 +249,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "delta-neutral-strategy-manager"
-version = "0.2.0"
+name = "delta-neutral-position"
+version = "0.9.1"
 dependencies = [
  "aperture-common",
  "cosmwasm-schema",
@@ -283,7 +259,6 @@ dependencies = [
  "cw20 0.9.1",
  "mirror-protocol",
  "moneymarket",
- "protobuf",
  "schemars",
  "serde",
  "spectrum-protocol",
@@ -502,15 +477,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9f5105d4fdaab20335ca9565e106a5d9b82b6219b5ba735731124ac6711d23d"
 dependencies = [
  "unicode-xid",
-]
-
-[[package]]
-name = "protobuf"
-version = "2.25.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47c327e191621a2158159df97cdbc2e7074bb4e940275e35abf38eb3d2595754"
-dependencies = [
- "bytes",
 ]
 
 [[package]]

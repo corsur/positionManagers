@@ -1,7 +1,6 @@
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
-    MessageInfo, QueryRequest, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128,
-    WasmMsg, WasmQuery,
+    entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Deps, DepsMut, Env,
+    MessageInfo, Response, StdError, StdResult, Storage, WasmMsg,
 };
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
@@ -14,7 +13,7 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    msg: InstantiateMsg,
+    _msg: InstantiateMsg,
 ) -> StdResult<Response> {
     let config = Config { owner: info.sender };
     write_config(deps.storage, &config)?;
@@ -22,7 +21,7 @@ pub fn instantiate(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
+pub fn execute(deps: DepsMut, _env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let config = read_config(deps.storage)?;
     let is_authorized = info.sender == config.owner;
 
@@ -45,10 +44,10 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             token_type,
         } => init_strategy(deps.storage, strategy_type, action_type, token_type),
         ExecuteMsg::UpdateStrategy {
-            strategy_type,
-            action_type,
-            token_type,
-            position_id,
+            strategy_type: _,
+            action_type: _,
+            token_type: _,
+            position_id: _,
         } => update_strategy(),
     }
 }
@@ -116,7 +115,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetStrategyManagerAddr { strategy_type } => {
             to_binary(&(read_investment_registry(deps.storage, &strategy_type)?))
         }
-        QueryMsg::GetPositionInfo { position_id } => to_binary(&(read_config(deps.storage)?)),
+        QueryMsg::GetPositionInfo { position_id: _ } => to_binary(&(read_config(deps.storage)?)),
     }
 }
 

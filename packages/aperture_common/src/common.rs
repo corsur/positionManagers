@@ -26,7 +26,7 @@ pub struct DeltaNeutralParams {
 /// they must be added here to be used by smart contracts.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum StrategyType {
-    DeltaNeutral(DeltaNeutralParams)
+    DeltaNeutral(DeltaNeutralParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

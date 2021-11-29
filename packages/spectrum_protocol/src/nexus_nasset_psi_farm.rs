@@ -8,14 +8,15 @@ use serde::{Deserialize, Serialize};
 pub struct ConfigInfo {
     pub owner: String,
     pub terraswap_factory: String,
+    pub terraswap_router: String,
     pub spectrum_token: String,
     pub spectrum_gov: String,
-    pub pylon_token: String,
-    pub pylon_staking: String,
-    pub pylon_gov: String,
+    pub nexus_token: String,
+    pub nasset_staking: String,
+    pub nexus_gov: String,
     pub platform: String,
     pub controller: String,
-    pub base_denom: String,
+    pub nasset_token: String,
     pub community_fee: Decimal,
     pub platform_fee: Decimal,
     pub controller_fee: Decimal,
@@ -101,7 +102,6 @@ pub struct PoolItem {
     pub farm_share_index: Decimal,       // per stake bond share
     pub stake_spec_share_index: Decimal, // per stake bond share
     pub auto_spec_share_index: Decimal,  // per auto bond share
-    pub reinvest_allowance: Uint128,
 }
 
 // We define a custom struct for each query response
