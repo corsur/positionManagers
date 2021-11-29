@@ -3,7 +3,7 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use delta_neutral_strategy_manager::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use aperture_common::delta_neutral_manager::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 use delta_neutral_strategy_manager::state::Config;
 
 fn main() {
