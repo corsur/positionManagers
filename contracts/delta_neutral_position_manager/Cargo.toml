@@ -1,5 +1,5 @@
 [package]
-name = "delta-neutral-strategy-manager"
+name = "delta-neutral-position-manager"
 version = "0.2.0"
 authors = ["Aperture Finance"]
 edition = "2018"

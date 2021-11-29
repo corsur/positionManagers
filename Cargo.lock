@@ -273,7 +273,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "delta-neutral-strategy-manager"
+name = "delta-neutral-position-manager"
 version = "0.2.0"
 dependencies = [
  "aperture-common",

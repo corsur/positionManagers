@@ -94,7 +94,7 @@ pub fn init_strategy(
         StrategyType::DeltaNeutral(params) => Ok(Response::new().add_message(CosmosMsg::Wasm(
             WasmMsg::Execute {
                 contract_addr: strategy_addr.to_string(),
-                msg: to_binary(&aperture_common::delta_neutral_manager::ExecuteMsg::Do {
+                msg: to_binary(&aperture_common::delta_neutral_position_manager::ExecuteMsg::Do {
                     action,
                     token,
                     params,

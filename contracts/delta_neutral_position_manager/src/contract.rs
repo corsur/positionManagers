@@ -9,7 +9,7 @@ use schemars::_serde_json::to_string;
 
 use crate::state::*;
 use aperture_common::common::{DeltaNeutralParams, StrategyAction, StrategyType, TokenInfo};
-use aperture_common::delta_neutral_manager::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use aperture_common::delta_neutral_position_manager::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 
 use crate::response::MsgInstantiateContractResponse;
 
