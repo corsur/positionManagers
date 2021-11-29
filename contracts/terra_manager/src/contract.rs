@@ -43,11 +43,13 @@ pub fn execute(
             }
             register_investment(deps, strategy_index, strategy_manager_addr)
         }
+        // Public methods.
         ExecuteMsg::InitStrategy {
             strategy_type,
             action_type,
             token_type,
         } => init_strategy(deps.storage, strategy_type, action_type, token_type),
+        // Public methods.
         ExecuteMsg::UpdateStrategy {
             strategy_type: _,
             action_type: _,
@@ -62,9 +64,10 @@ pub fn execute(
 pub fn register_investment(
     deps: DepsMut,
     strategy_index: StrategyType,
-    strategy_manager_addr: Addr,
+    strategy_manager_addr: String,
 ) -> StdResult<Response> {
-    write_investment_registry(deps.storage, strategy_index, &strategy_manager_addr)?;
+    let validated_addr: Addr = deps.api.addr_validate(&strategy_manager_addr).unwrap();
+    write_investment_registry(deps.storage, strategy_index, &validated_addr)?;
     Ok(Response::default())
 }
 

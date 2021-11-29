@@ -1,5 +1,4 @@
 use aperture_common::common::{StrategyAction, StrategyType, TokenInfo};
-use cosmwasm_std::Addr;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +16,7 @@ pub enum ExecuteMsg {
     /// <strategy_index, strategy_manager_addr> into storage.
     RegisterInvestment {
         strategy_index: StrategyType,
-        strategy_manager_addr: Addr,
+        strategy_manager_addr: String,
     },
     /// First time initiate a new strategy. A position id will be created.
     InitStrategy {
