@@ -108,7 +108,7 @@ pub fn open_position(
     response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: contract_addr.to_string(),
         msg: to_binary(
-            &aperture_common::delta_neutral_position::ExecuteMsg::DeltaNeutralInvest {
+            &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition {
                 collateral_ratio_in_percentage: params.collateral_ratio_in_percentage,
                 buffer_percentage: Uint128::from(5u128),
                 mirror_asset_cw20_addr: params.mirror_asset_cw20_addr,

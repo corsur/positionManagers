@@ -1,6 +1,6 @@
-# Aperture Finance - Amadeus
+# Aperture Finance - Terra Private Beta
 
-This monorepository contains the source code for the core smart contracts implementing Aperture Earn Protocol on the [Terra](https://terra.money) blockchain.
+This monorepository contains the source code for the core smart contracts implementing Aperture Protocol on the [Terra](https://terra.money) blockchain.
 
 ## Development
 
