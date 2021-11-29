@@ -33,7 +33,7 @@ pub fn execute(
     match msg {
         // Owner only: updates investment strategy bucket is priviledged.
         ExecuteMsg::RegisterInvestment {
-            strategy_index,
+            strategy_type,
             strategy_manager_addr,
         } => {
             if !is_authorized {
@@ -41,7 +41,7 @@ pub fn execute(
                     msg: "Unauthorized".to_string(),
                 });
             }
-            register_investment(deps, strategy_index, strategy_manager_addr)
+            register_investment(deps, strategy_type, strategy_manager_addr)
         }
         // Public methods.
         ExecuteMsg::InitStrategy {
@@ -59,15 +59,15 @@ pub fn execute(
     }
 }
 
-/// Owner only. Register strategy_index and the corresponding strategy manager's
+/// Owner only. Register strategy_type and the corresponding strategy manager's
 /// address into storage.
 pub fn register_investment(
     deps: DepsMut,
-    strategy_index: StrategyType,
+    strategy_type: StrategyType,
     strategy_manager_addr: String,
 ) -> StdResult<Response> {
     let validated_addr: Addr = deps.api.addr_validate(&strategy_manager_addr).unwrap();
-    write_investment_registry(deps.storage, strategy_index, &validated_addr)?;
+    write_investment_registry(deps.storage, strategy_type, &validated_addr)?;
     Ok(Response::default())
 }
 
@@ -83,7 +83,7 @@ pub fn init_strategy(
     token: TokenInfo,
 ) -> StdResult<Response> {
     // Step 1: look up strategy address.
-    let strategy_addr = read_investment_registry(storage, &strategy)?;
+    let strategy_addr : Addr = read_investment_registry(storage, &strategy)?;
 
     // Step 2: Transfer fund/token to strategy contract.
     let is_native = token.native;
@@ -91,7 +91,7 @@ pub fn init_strategy(
         denom: String::from("uusd"),
         amount: token.amount,
     };
-    let funds = if is_native { vec![native_coin] } else { vec![] };
+    let funds : Vec<Coin> = if is_native { vec![native_coin] } else { vec![] };
     // TODO: add logic for non-native CW20 tokens.
 
     // Step 3: Issue CW-721 token as a receipt to the user.

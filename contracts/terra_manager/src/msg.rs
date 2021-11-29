@@ -15,7 +15,7 @@ pub enum ExecuteMsg {
     /// `RegisterInvestment` - Owner only. Message to write the pair
     /// <strategy_index, strategy_manager_addr> into storage.
     RegisterInvestment {
-        strategy_index: StrategyType,
+        strategy_type: StrategyType,
         strategy_manager_addr: String,
     },
     /// First time initiate a new strategy. A position id will be created.

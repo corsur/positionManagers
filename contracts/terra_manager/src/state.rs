@@ -45,12 +45,12 @@ pub fn read_config(storage: &dyn Storage) -> StdResult<Config> {
 ///   manager.
 pub fn write_investment_registry(
     storage: &mut dyn Storage,
-    strategy_index: StrategyType,
+    strategy_type: StrategyType,
     strategy_manager_addr: &Addr,
 ) -> StdResult<()> {
     let mut bucket: Bucket<Addr> = Bucket::new(storage, INVESTMENT_REGISTRY_KEY);
     bucket.save(
-        to_binary(&strategy_index)?.as_slice(),
+        to_binary(&strategy_type)?.as_slice(),
         strategy_manager_addr,
     )
 }
