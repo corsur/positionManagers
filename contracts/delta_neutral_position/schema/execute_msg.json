@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ExecuteMsg",
-  "anyOf": [
+  "oneOf": [
     {
       "type": "object",
       "required": [
@@ -11,14 +11,10 @@
         "claim_short_sale_proceeds_and_stake": {
           "type": "object",
           "required": [
-            "cdp_idx",
             "mirror_asset_amount",
             "stake_via_spectrum"
           ],
           "properties": {
-            "cdp_idx": {
-              "$ref": "#/definitions/Uint128"
-            },
             "mirror_asset_amount": {
               "$ref": "#/definitions/Uint128"
             },
@@ -59,10 +55,14 @@
         "delta_neutral_invest": {
           "type": "object",
           "required": [
+            "buffer_percentage",
             "collateral_ratio_in_percentage",
             "mirror_asset_cw20_addr"
           ],
           "properties": {
+            "buffer_percentage": {
+              "$ref": "#/definitions/Uint128"
+            },
             "collateral_ratio_in_percentage": {
               "$ref": "#/definitions/Uint128"
             },
@@ -100,18 +100,6 @@
     {
       "type": "object",
       "required": [
-        "reinvest"
-      ],
-      "properties": {
-        "reinvest": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
         "set_controller"
       ],
       "properties": {
@@ -128,12 +116,36 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "controller"
+      ],
+      "properties": {
+        "controller": {
+          "$ref": "#/definitions/ControllerExecuteMsg"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "internal"
+      ],
+      "properties": {
+        "internal": {
+          "$ref": "#/definitions/InternalExecuteMsg"
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {
     "BankMsg": {
       "description": "The message types of the bank module.\n\nSee https://github.com/cosmos/cosmos-sdk/blob/v0.40.0/proto/cosmos/bank/v1beta1/tx.proto",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "Sends native tokens from the contract to the given address.\n\nThis is translated to a [MsgSend](https://github.com/cosmos/cosmos-sdk/blob/v0.40.0/proto/cosmos/bank/v1beta1/tx.proto#L19-L28). `from_address` is automatically filled with the current contract's address.",
           "type": "object",
@@ -207,8 +219,24 @@
         }
       }
     },
+    "ControllerExecuteMsg": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "claim_reward_and_add_to_anchor_collateral"
+          ],
+          "properties": {
+            "claim_reward_and_add_to_anchor_collateral": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "CosmosMsg_for_Empty": {
-      "anyOf": [
+      "oneOf": [
         {
           "type": "object",
           "required": [
@@ -247,9 +275,101 @@
         }
       ]
     },
+    "Decimal": {
+      "description": "A fixed-point decimal value with 18 fractional digits, i.e. Decimal(1_000_000_000_000_000_000) == 1.0\n\nThe greatest possible value that can be represented is 340282366920938463463.374607431768211455 (which is (2^128 - 1) / 10^18)",
+      "type": "string"
+    },
     "Empty": {
       "description": "An empty struct that serves as a placeholder in different places, such as contracts that don't set a custom message.\n\nIt is designed to be expressable in correct JSON and JSON Schema but contains no meaningful data. Previously we used enums without cases, but those cannot represented as valid JSON Schema (https://github.com/CosmWasm/cosmwasm/issues/451)",
       "type": "object"
+    },
+    "InternalExecuteMsg": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "deposit_uusd_balance_to_anchor"
+          ],
+          "properties": {
+            "deposit_uusd_balance_to_anchor": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "add_anchor_ust_balance_to_collateral"
+          ],
+          "properties": {
+            "add_anchor_ust_balance_to_collateral": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "open_cdp_with_anchor_ust_balance_as_collateral"
+          ],
+          "properties": {
+            "open_cdp_with_anchor_ust_balance_as_collateral": {
+              "type": "object",
+              "required": [
+                "collateral_ratio",
+                "mirror_asset_cw20_addr"
+              ],
+              "properties": {
+                "collateral_ratio": {
+                  "$ref": "#/definitions/Decimal"
+                },
+                "mirror_asset_cw20_addr": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "swap_uusd_for_minted_mirror_asset"
+          ],
+          "properties": {
+            "swap_uusd_for_minted_mirror_asset": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "stake_terraswap_lp_tokens"
+          ],
+          "properties": {
+            "stake_terraswap_lp_tokens": {
+              "type": "object",
+              "required": [
+                "lp_token_cw20_addr",
+                "stake_via_spectrum"
+              ],
+              "properties": {
+                "lp_token_cw20_addr": {
+                  "type": "string"
+                },
+                "stake_via_spectrum": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "Uint128": {
       "description": "A thin wrapper around u128 that is using strings for JSON encoding/decoding, such that the full u128 range can be used for clients that convert JSON numbers to floats, like JavaScript and jq.\n\n# Examples\n\nUse `from` to create instances of this and `u128` to get the value out:\n\n``` # use cosmwasm_std::Uint128; let a = Uint128::from(123u128); assert_eq!(a.u128(), 123);\n\nlet b = Uint128::from(42u64); assert_eq!(b.u128(), 42);\n\nlet c = Uint128::from(70u32); assert_eq!(c.u128(), 70); ```",
@@ -257,7 +377,7 @@
     },
     "WasmMsg": {
       "description": "The message types of the wasm module.\n\nSee https://github.com/CosmWasm/wasmd/blob/v0.14.0/x/wasm/internal/types/tx.proto",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "Dispatches a call to another contract at a known address (with known ABI).\n\nThis is translated to a [MsgExecuteContract](https://github.com/CosmWasm/wasmd/blob/v0.14.0/x/wasm/internal/types/tx.proto#L68-L78). `sender` is automatically filled with the current contract's address.",
           "type": "object",

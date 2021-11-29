@@ -1,68 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Config",
+  "description": "Basic config to be stored in storage. * `owner`: the owner of this contract.",
   "type": "object",
   "required": [
-    "anchor_market_addr",
-    "anchor_ust_cw20_addr",
-    "controller",
-    "mirror_collateral_oracle_addr",
-    "mirror_cw20_addr",
-    "mirror_lock_addr",
-    "mirror_mint_addr",
-    "mirror_oracle_addr",
-    "mirror_staking_addr",
-    "owner",
-    "spectrum_cw20_addr",
-    "spectrum_gov_addr",
-    "spectrum_mirror_farms_addr",
-    "spectrum_staker_addr",
-    "terraswap_factory_addr"
+    "owner"
   ],
   "properties": {
-    "anchor_market_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "anchor_ust_cw20_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "controller": {
-      "$ref": "#/definitions/Addr"
-    },
-    "mirror_collateral_oracle_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "mirror_cw20_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "mirror_lock_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "mirror_mint_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "mirror_oracle_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "mirror_staking_addr": {
-      "$ref": "#/definitions/Addr"
-    },
     "owner": {
-      "$ref": "#/definitions/Addr"
-    },
-    "spectrum_cw20_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "spectrum_gov_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "spectrum_mirror_farms_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "spectrum_staker_addr": {
-      "$ref": "#/definitions/Addr"
-    },
-    "terraswap_factory_addr": {
       "$ref": "#/definitions/Addr"
     }
   },

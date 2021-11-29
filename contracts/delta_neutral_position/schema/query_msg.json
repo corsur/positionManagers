@@ -1,6 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "QueryMsg",
-  "type": "string",
-  "enum": []
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "get_position_info"
+      ],
+      "properties": {
+        "get_position_info": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
 }
