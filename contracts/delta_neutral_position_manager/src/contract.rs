@@ -160,12 +160,12 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
         Message::parse_from_bytes(data.as_slice()).map_err(|_| {
             StdError::parse_err("MsgInstantiateContractResponse", "failed to parse data")
         })?;
-    let contract_addr = res.get_contract_address();
+    let contract_addr = deps.api.addr_validate(res.get_contract_address())?;
     let params = read_params(deps.storage)?;
     write_contract_registry(
         deps.storage,
         params.position_id,
-        &Addr::unchecked(contract_addr),
+        &contract_addr,
     )?;
     Ok(Response::default())
 }
