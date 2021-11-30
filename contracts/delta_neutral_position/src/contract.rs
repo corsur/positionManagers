@@ -1,16 +1,15 @@
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
-    QueryRequest, ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg, WasmQuery,
+    ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
 };
 
-use crate::state::{
-    MANAGER, POSITION_INFO, PositionInfo,
-};
-use crate::util::{create_terraswap_cw20_uusd_pair_asset_info, swap_cw20_token_for_uusd, query_manager_for_context};
+use crate::state::{PositionInfo, MANAGER, POSITION_INFO};
+use crate::util::{create_terraswap_cw20_uusd_pair_asset_info, swap_cw20_token_for_uusd};
 use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
+use aperture_common::delta_neutral_position_manager::QueryMsg as ManagerQueryMsg;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -26,7 +25,9 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let manager_addr = MANAGER.load(deps.storage)?;
-    let context = query_manager_for_context(&deps.querier, &manager_addr)?;
+    let context: Context = deps
+        .querier
+        .query_wasm_smart(&manager_addr, &ManagerQueryMsg::GetContext {})?;
     let is_authorized = match msg {
         ExecuteMsg::Controller(_) => info.sender == context.controller,
         ExecuteMsg::Internal(_) => info.sender == env.contract.address,
@@ -38,9 +39,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         });
     }
     match msg {
-        ExecuteMsg::ClosePosition {} => {
-            close_position(deps.as_ref(), env, context)
-        }
+        ExecuteMsg::ClosePosition {} => close_position(deps.as_ref(), env, context),
         ExecuteMsg::OpenPosition {
             collateral_ratio_in_percentage,
             buffer_percentage,
@@ -54,7 +53,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             mirror_asset_cw20_addr,
         ),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
-            ControllerExecuteMsg::ClaimRewardAndAddToAnchorCollateral {} => reinvest(deps, env, context),
+            ControllerExecuteMsg::ClaimRewardAndAddToAnchorCollateral {} => {
+                reinvest(deps, env, context)
+            }
             ControllerExecuteMsg::ClaimShortSaleProceedsAndStake {
                 mirror_asset_amount,
                 stake_via_spectrum,
@@ -100,7 +101,11 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     }
 }
 
-pub fn deposit_uusd_balance_to_anchor(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
+pub fn deposit_uusd_balance_to_anchor(
+    deps: Deps,
+    env: Env,
+    context: Context,
+) -> StdResult<Response> {
     let uusd_asset = terraswap::asset::Asset {
         amount: terraswap::querier::query_balance(
             &deps.querier,
@@ -120,7 +125,11 @@ pub fn deposit_uusd_balance_to_anchor(deps: Deps, env: Env, context: Context) ->
     )
 }
 
-pub fn add_anchor_ust_balance_to_collateral(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
+pub fn add_anchor_ust_balance_to_collateral(
+    deps: Deps,
+    env: Env,
+    context: Context,
+) -> StdResult<Response> {
     let aust_amount = terraswap::querier::query_token_balance(
         &deps.querier,
         context.anchor_ust_cw20_addr.clone(),
@@ -152,13 +161,13 @@ fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Cosmos
 pub fn reinvest(deps: DepsMut, env: Env, context: Context) -> StdResult<Response> {
     // Find claimable SPEC reward.
     let spec_reward_info_response: spectrum_protocol::mirror_farm::RewardInfoResponse =
-        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: context.spectrum_mirror_farms_addr.to_string(),
-            msg: to_binary(&spectrum_protocol::mirror_farm::QueryMsg::reward_info {
+        deps.querier.query_wasm_smart(
+            &context.spectrum_mirror_farms_addr,
+            &spectrum_protocol::mirror_farm::QueryMsg::reward_info {
                 staker_addr: env.contract.address.to_string(),
                 asset_token: None,
-            })?,
-        }))?;
+            },
+        )?;
     let mut spec_reward = Uint128::zero();
     for reward_info in spec_reward_info_response.reward_infos.iter() {
         spec_reward += reward_info.pending_spec_reward;
@@ -166,13 +175,13 @@ pub fn reinvest(deps: DepsMut, env: Env, context: Context) -> StdResult<Response
 
     // Find claimable MIR reward.
     let mir_reward_info_response: mirror_protocol::staking::RewardInfoResponse =
-        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: context.mirror_staking_addr.to_string(),
-            msg: to_binary(&mirror_protocol::staking::QueryMsg::RewardInfo {
+        deps.querier.query_wasm_smart(
+            &context.mirror_staking_addr,
+            &mirror_protocol::staking::QueryMsg::RewardInfo {
                 staker_addr: env.contract.address.to_string(),
                 asset_token: None,
-            })?,
-        }))?;
+            },
+        )?;
     let mut mir_reward = Uint128::zero();
     for reward_info in mir_reward_info_response.reward_infos.iter() {
         mir_reward += reward_info.pending_reward;
@@ -237,16 +246,16 @@ pub fn reinvest(deps: DepsMut, env: Env, context: Context) -> StdResult<Response
 
 fn get_first_position_index(deps: Deps, env: Env, context: &Context) -> StdResult<Uint128> {
     let positions_response: mirror_protocol::mint::PositionsResponse =
-        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: context.mirror_mint_addr.to_string(),
-            msg: to_binary(&mirror_protocol::mint::QueryMsg::Positions {
+        deps.querier.query_wasm_smart(
+            &context.mirror_mint_addr,
+            &mirror_protocol::mint::QueryMsg::Positions {
                 owner_addr: Some(env.contract.address.to_string()),
                 asset_token: None,
                 start_after: None,
                 limit: None,
                 order_by: None,
-            })?,
-        }))?;
+            },
+        )?;
     Ok(positions_response.positions[0].idx)
 }
 
@@ -343,16 +352,20 @@ fn open_cdp_with_anchor_ust_balance_as_collateral(
     )
 }
 
-fn swap_uusd_for_minted_mirror_asset(deps: DepsMut, env: Env, context: Context) -> StdResult<Response> {
+fn swap_uusd_for_minted_mirror_asset(
+    deps: DepsMut,
+    env: Env,
+    context: Context,
+) -> StdResult<Response> {
     // Query position info.
     let cdp_idx = get_first_position_index(deps.as_ref(), env, &context)?;
     let position_response: mirror_protocol::mint::PositionResponse =
-        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: context.mirror_mint_addr.to_string(),
-            msg: to_binary(&mirror_protocol::mint::QueryMsg::Position {
+        deps.querier.query_wasm_smart(
+            &context.mirror_mint_addr,
+            &mirror_protocol::mint::QueryMsg::Position {
                 position_idx: cdp_idx,
-            })?,
-        }))?;
+            },
+        )?;
     let mirror_asset_cw20_addr = if let terraswap::asset::AssetInfo::Token {
         contract_addr: addr,
     } = position_response.asset.info
@@ -377,17 +390,17 @@ fn swap_uusd_for_minted_mirror_asset(deps: DepsMut, env: Env, context: Context) 
     )?
     .contract_addr;
     let reverse_simulation_response: terraswap::pair::ReverseSimulationResponse =
-        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: mirror_asset_uusd_terraswap_pair_addr.clone(),
-            msg: to_binary(&terraswap::pair::QueryMsg::ReverseSimulation {
+        deps.querier.query_wasm_smart(
+            &mirror_asset_uusd_terraswap_pair_addr,
+            &terraswap::pair::QueryMsg::ReverseSimulation {
                 ask_asset: terraswap::asset::Asset {
                     amount: position_response.asset.amount,
                     info: terraswap::asset::AssetInfo::Token {
                         contract_addr: mirror_asset_cw20_addr,
                     },
                 },
-            })?,
-        }))?;
+            },
+        )?;
     let uusd_offer_amount: Uint128 = reverse_simulation_response.offer_amount;
     Ok(
         Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
@@ -414,16 +427,17 @@ fn swap_uusd_for_minted_mirror_asset(deps: DepsMut, env: Env, context: Context) 
 pub fn close_position(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
     let position_info = POSITION_INFO.load(deps.storage)?;
     let position_response: mirror_protocol::mint::PositionResponse =
-        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: context.mirror_mint_addr.to_string(),
-            msg: to_binary(&mirror_protocol::mint::QueryMsg::Position {
+        deps.querier.query_wasm_smart(
+            &context.mirror_mint_addr,
+            &mirror_protocol::mint::QueryMsg::Position {
                 position_idx: position_info.cdp_idx,
-            })?,
-        }))?;
+            },
+        )?;
     let mirror_asset_cw20_amount = position_response.asset.amount;
     let mirror_asset_cw20_balance = terraswap::querier::query_token_balance(
         &deps.querier,
-        deps.api.addr_validate(position_info.mirror_asset_cw20_addr.as_str())?,
+        deps.api
+            .addr_validate(position_info.mirror_asset_cw20_addr.as_str())?,
         env.contract.address,
     )?;
 
@@ -431,25 +445,26 @@ pub fn close_position(deps: Deps, env: Env, context: Context) -> StdResult<Respo
     if mirror_asset_cw20_balance < mirror_asset_cw20_amount {
         let mirror_asset_cw20_ask_amount =
             mirror_asset_cw20_amount.checked_sub(mirror_asset_cw20_balance)?;
-        let terraswap_pair_asset_info =
-            create_terraswap_cw20_uusd_pair_asset_info(position_info.mirror_asset_cw20_addr.as_str());
+        let terraswap_pair_asset_info = create_terraswap_cw20_uusd_pair_asset_info(
+            position_info.mirror_asset_cw20_addr.as_str(),
+        );
         let terraswap_pair_info = terraswap::querier::query_pair_info(
             &deps.querier,
             context.terraswap_factory_addr,
             &terraswap_pair_asset_info,
         )?;
         let reverse_simulation_response: terraswap::pair::ReverseSimulationResponse =
-            deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-                contract_addr: terraswap_pair_info.contract_addr.clone(),
-                msg: to_binary(&terraswap::pair::QueryMsg::ReverseSimulation {
+            deps.querier.query_wasm_smart(
+                &terraswap_pair_info.contract_addr,
+                &terraswap::pair::QueryMsg::ReverseSimulation {
                     ask_asset: terraswap::asset::Asset {
                         amount: mirror_asset_cw20_ask_amount,
                         info: terraswap::asset::AssetInfo::Token {
                             contract_addr: position_info.mirror_asset_cw20_addr.to_string(),
                         },
                     },
-                })?,
-            }))?;
+                },
+            )?;
         let swap_uusd_for_mirror_asset = CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: terraswap_pair_info.contract_addr,
             msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
@@ -554,13 +569,12 @@ pub fn claim_short_sale_proceeds_and_stake(
     let mut response = Response::new();
 
     // If UST locked in the position can be claimed now, claim it.
-    let position_lock_info_query_result =
-        deps.querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: context.mirror_lock_addr.to_string(),
-            msg: to_binary(&mirror_protocol::lock::QueryMsg::PositionLockInfo {
-                position_idx: position_info.cdp_idx,
-            })?,
-        }));
+    let position_lock_info_query_result = deps.querier.query_wasm_smart(
+        &context.mirror_lock_addr,
+        &mirror_protocol::lock::QueryMsg::PositionLockInfo {
+            position_idx: position_info.cdp_idx,
+        },
+    );
     if position_lock_info_query_result.is_ok() {
         let position_lock_info: mirror_protocol::lock::PositionLockInfoResponse =
             position_lock_info_query_result?;

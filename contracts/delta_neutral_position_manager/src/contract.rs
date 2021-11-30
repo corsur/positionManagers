@@ -6,10 +6,10 @@ use cosmwasm_std::{
 use cw_storage_plus::U128Key;
 use protobuf::Message;
 
-use crate::state::{Config, CONFIG, TMP_POSITION_ID, POSITIONS};
+use crate::state::{Config, CONFIG, POSITIONS, TMP_POSITION_ID};
 use aperture_common::common::{DeltaNeutralParams, StrategyAction, TokenInfo};
 use aperture_common::delta_neutral_position_manager::{
-    Context, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg
+    Context, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
 };
 
 use crate::response::MsgInstantiateContractResponse;
@@ -149,11 +149,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
         })?;
     let contract_addr = deps.api.addr_validate(res.get_contract_address())?;
     let position_id_key = U128Key::from(TMP_POSITION_ID.load(deps.storage)?);
-    POSITIONS.save(
-        deps.storage,
-        position_id_key,
-        &contract_addr,
-    )?;
+    POSITIONS.save(deps.storage, position_id_key, &contract_addr)?;
     Ok(Response::default())
 }
 
@@ -161,7 +157,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetPositionInfo { position_id: _ } => to_binary(&(CONFIG.load(deps.storage)?)),
-        QueryMsg::GetContext{} => to_binary(&(CONFIG.load(deps.storage)?).context),
+        QueryMsg::GetContext {} => to_binary(&(CONFIG.load(deps.storage)?).context),
     }
 }
 

@@ -700,7 +700,7 @@ dependencies = [
  "aperture-common",
  "cosmwasm-schema",
  "cosmwasm-std",
- "cosmwasm-storage",
+ "cw-storage-plus",
  "cw20 0.9.1",
  "mirror-protocol",
  "moneymarket",

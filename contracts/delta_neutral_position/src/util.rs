@@ -1,5 +1,4 @@
-use aperture_common::delta_neutral_position_manager;
-use cosmwasm_std::{to_binary, Addr, CosmosMsg, QuerierWrapper, StdResult, Uint128, WasmMsg, QueryRequest, WasmQuery};
+use cosmwasm_std::{to_binary, Addr, CosmosMsg, QuerierWrapper, StdResult, Uint128, WasmMsg};
 use terraswap::asset::AssetInfo;
 
 /// Returns an array comprising two AssetInfo elements, representing a Terraswap token pair where the first token is a cw20 with contract address
@@ -53,12 +52,4 @@ pub fn swap_cw20_token_for_uusd(
         })?,
         funds: vec![],
     }))
-}
-
-pub fn query_manager_for_context(querier: &QuerierWrapper, manager_addr: &Addr) -> StdResult<delta_neutral_position_manager::Context> {
-    let context: delta_neutral_position_manager::Context = querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-        contract_addr: manager_addr.to_string(),
-        msg: to_binary(&delta_neutral_position_manager::QueryMsg::GetContext {})?,
-    }))?;
-    Ok(context)
 }

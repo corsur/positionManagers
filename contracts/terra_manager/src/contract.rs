@@ -4,7 +4,8 @@ use cosmwasm_std::{
 };
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
-use crate::state::*;
+use crate::state::{OWNER, STRATEGIES};
+use crate::util::get_strategy_key;
 
 use aperture_common::common::{StrategyAction, StrategyType, TokenInfo};
 
@@ -15,8 +16,7 @@ pub fn instantiate(
     info: MessageInfo,
     _msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    let config = Config { owner: info.sender };
-    write_config(deps.storage, &config)?;
+    OWNER.save(deps.storage, &info.sender)?;
     Ok(Response::default())
 }
 
@@ -27,9 +27,7 @@ pub fn execute(
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> StdResult<Response> {
-    let config = read_config(deps.storage)?;
-    let is_authorized = info.sender == config.owner;
-
+    let is_authorized = info.sender == OWNER.load(deps.storage)?;
     match msg {
         // Owner only: updates investment strategy bucket is priviledged.
         ExecuteMsg::RegisterInvestment {
@@ -67,7 +65,11 @@ pub fn register_investment(
     strategy_manager_addr: String,
 ) -> StdResult<Response> {
     let validated_addr: Addr = deps.api.addr_validate(&strategy_manager_addr).unwrap();
-    write_investment_registry(deps.storage, strategy_type, &validated_addr)?;
+    STRATEGIES.save(
+        deps.storage,
+        get_strategy_key(&strategy_type),
+        &validated_addr,
+    )?;
     Ok(Response::default())
 }
 
@@ -78,12 +80,12 @@ pub fn register_investment(
 ///   * Delegate action and tokens received from caller to strategy contract.
 pub fn init_strategy(
     storage: &dyn Storage,
-    strategy: StrategyType,
+    strategy_type: StrategyType,
     action: StrategyAction,
     token: TokenInfo,
 ) -> StdResult<Response> {
     // Step 1: look up strategy address.
-    let strategy_addr : Addr = read_investment_registry(storage, &strategy)?;
+    let strategy_addr: Addr = STRATEGIES.load(storage, get_strategy_key(&strategy_type))?;
 
     // Step 2: Transfer fund/token to strategy contract.
     let is_native = token.native;
@@ -91,13 +93,13 @@ pub fn init_strategy(
         denom: String::from("uusd"),
         amount: token.amount,
     };
-    let funds : Vec<Coin> = if is_native { vec![native_coin] } else { vec![] };
+    let funds: Vec<Coin> = if is_native { vec![native_coin] } else { vec![] };
     // TODO: add logic for non-native CW20 tokens.
 
     // Step 3: Issue CW-721 token as a receipt to the user.
 
     // Step 4: delegate action and funds to strategy contract.
-    match strategy {
+    match strategy_type {
         StrategyType::DeltaNeutral(params) => Ok(Response::new().add_message(CosmosMsg::Wasm(
             WasmMsg::Execute {
                 contract_addr: strategy_addr.to_string(),
@@ -123,9 +125,8 @@ pub fn update_strategy() -> StdResult<Response> {
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetStrategyManagerAddr { strategy_type } => {
-            to_binary(&(read_investment_registry(deps.storage, &strategy_type)?))
+            to_binary(&STRATEGIES.load(deps.storage, get_strategy_key(&strategy_type))?)
         }
-        QueryMsg::GetPositionInfo { position_id: _ } => to_binary(&(read_config(deps.storage)?)),
     }
 }
 

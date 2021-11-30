@@ -13,15 +13,15 @@
         "register_investment": {
           "type": "object",
           "required": [
-            "strategy_index",
-            "strategy_manager_addr"
+            "strategy_manager_addr",
+            "strategy_type"
           ],
           "properties": {
-            "strategy_index": {
-              "$ref": "#/definitions/StrategyType"
-            },
             "strategy_manager_addr": {
-              "$ref": "#/definitions/Addr"
+              "type": "string"
+            },
+            "strategy_type": {
+              "$ref": "#/definitions/StrategyType"
             }
           }
         }
