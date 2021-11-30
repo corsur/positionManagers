@@ -8,7 +8,7 @@ use protobuf::Message;
 use crate::state::*;
 use aperture_common::common::{DeltaNeutralParams, StrategyAction, TokenInfo};
 use aperture_common::delta_neutral_position_manager::{
-    ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
+    ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, Context
 };
 
 use crate::response::MsgInstantiateContractResponse;
@@ -20,9 +20,29 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    let config = Config { owner: info.sender };
+    // Store contextual informaiton.
+    let config = Config {
+        owner: info.sender,
+        context: Context {
+            anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
+            mirror_cw20_addr: deps.api.addr_validate(&msg.mirror_cw20_addr)?,
+            spectrum_cw20_addr: deps.api.addr_validate(&msg.spectrum_cw20_addr)?,
+            anchor_market_addr: deps.api.addr_validate(&msg.anchor_market_addr)?,
+            mirror_collateral_oracle_addr: deps
+                .api
+                .addr_validate(&msg.mirror_collateral_oracle_addr)?,
+            mirror_lock_addr: deps.api.addr_validate(&msg.mirror_lock_addr)?,
+            mirror_mint_addr: deps.api.addr_validate(&msg.mirror_mint_addr)?,
+            mirror_oracle_addr: deps.api.addr_validate(&msg.mirror_oracle_addr)?,
+            mirror_staking_addr: deps.api.addr_validate(&msg.mirror_staking_addr)?,
+            spectrum_gov_addr: deps.api.addr_validate(&msg.spectrum_gov_addr)?,
+            spectrum_mirror_farms_addr: deps.api.addr_validate(&msg.spectrum_mirror_farms_addr)?,
+            spectrum_staker_addr: deps.api.addr_validate(&msg.spectrum_staker_addr)?,
+            terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
+        },
+    };
     write_config(deps.storage, &config)?;
     Ok(Response::default())
 }
@@ -154,6 +174,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetPositionInfo { position_id: _ } => to_binary(&(read_config(deps.storage)?)),
+        QueryMsg::GetContext{} => to_binary(&(read_config(deps.storage)?).context),
     }
 }
 

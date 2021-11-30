@@ -1,4 +1,4 @@
-use aperture_common::common::DeltaNeutralParams;
+use aperture_common::{common::DeltaNeutralParams, delta_neutral_position_manager::Context};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,7 @@ static PARAMS_KEY: &[u8] = b"params";
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
     pub owner: Addr,
+    pub context: Context
 }
 
 /// Persist config into storage.
