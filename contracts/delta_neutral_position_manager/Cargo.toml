@@ -17,8 +17,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 cosmwasm-std = { version = "0.16.2" }
-cosmwasm-storage = { version = "0.16.2" }
 cw20 = "0.9.1"
+cw-storage-plus = { version = "0.9.1" }
 mirror-protocol = "2.1.1"
 moneymarket = "0.3.0"
 schemars = "0.8.1"

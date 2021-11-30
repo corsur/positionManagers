@@ -5,24 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::common::{DeltaNeutralParams, StrategyAction, TokenInfo};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Context {
-    pub anchor_ust_cw20_addr: Addr,
-    pub mirror_cw20_addr: Addr,
-    pub spectrum_cw20_addr: Addr,
-    pub anchor_market_addr: Addr,
-    pub mirror_collateral_oracle_addr: Addr,
-    pub mirror_lock_addr: Addr,
-    pub mirror_mint_addr: Addr,
-    pub mirror_oracle_addr: Addr,
-    pub mirror_staking_addr: Addr,
-    pub spectrum_gov_addr: Addr,
-    pub spectrum_mirror_farms_addr: Addr,
-    pub spectrum_staker_addr: Addr,
-    pub terraswap_factory_addr: Addr,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
+    pub delta_neutral_position_code_id: u64,
     pub controller: String,
     pub anchor_ust_cw20_addr: String,
     pub mirror_cw20_addr: String,
@@ -61,4 +45,22 @@ pub struct MigrateMsg {}
 pub enum QueryMsg {
     GetPositionInfo { position_id: u64 },
     GetContext{},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct Context {
+    pub controller: Addr,
+    pub anchor_ust_cw20_addr: Addr,
+    pub mirror_cw20_addr: Addr,
+    pub spectrum_cw20_addr: Addr,
+    pub anchor_market_addr: Addr,
+    pub mirror_collateral_oracle_addr: Addr,
+    pub mirror_lock_addr: Addr,
+    pub mirror_mint_addr: Addr,
+    pub mirror_oracle_addr: Addr,
+    pub mirror_staking_addr: Addr,
+    pub spectrum_gov_addr: Addr,
+    pub spectrum_mirror_farms_addr: Addr,
+    pub spectrum_staker_addr: Addr,
+    pub terraswap_factory_addr: Addr,
 }
