@@ -7,11 +7,8 @@ name = "aperture-common"
 version = "0.2.0"
 dependencies = [
  "cosmwasm-std",
- "cosmwasm-storage",
- "cw20 0.8.1",
  "schemars",
  "serde",
- "terraswap",
 ]
 
 [[package]]
@@ -275,14 +272,9 @@ dependencies = [
  "cosmwasm-std",
  "cw-storage-plus",
  "cw20 0.9.1",
- "mirror-protocol",
- "moneymarket",
  "protobuf",
  "schemars",
  "serde",
- "spectrum-protocol",
- "terra-cosmwasm",
- "terraswap",
 ]
 
 [[package]]
@@ -701,14 +693,8 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus",
- "cw20 0.9.1",
- "mirror-protocol",
- "moneymarket",
  "schemars",
  "serde",
- "spectrum-protocol",
- "terra-cosmwasm",
- "terraswap",
 ]
 
 [[package]]
