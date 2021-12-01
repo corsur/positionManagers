@@ -9,7 +9,7 @@ use protobuf::Message;
 use crate::state::{Config, CONFIG, POSITIONS, TMP_POSITION_ID};
 use aperture_common::common::{DeltaNeutralParams, StrategyAction, TokenInfo};
 use aperture_common::delta_neutral_position_manager::{
-    Context, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
+    Context, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
 
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
@@ -52,12 +52,7 @@ pub fn instantiate(
 
 /// Dispatch enum message to its corresponding functions.
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn execute(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
-    msg: ExecuteMsg,
-) -> StdResult<Response> {
+pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let is_authorized = info.sender == (CONFIG.load(deps.storage)?.owner);
     // Only Terra manager can call this contract.
     if !is_authorized {
@@ -66,21 +61,48 @@ pub fn execute(
         });
     }
 
-    let ExecuteMsg::Do {
-        action,
-        token,
-        params,
-    } = msg;
-
-    match action {
-        StrategyAction::OpenPosition {} => open_position(deps.storage, token, params),
-        StrategyAction::IncreasePosition {} => increase_position(token, params),
-        StrategyAction::DecreasePosition {} => decrease_position(token, params),
-        StrategyAction::ClosePosition {} => close_position(token, params),
+    match msg {
+        ExecuteMsg::Do {
+            action,
+            token,
+            params,
+        } => match action {
+            StrategyAction::OpenPosition {} => open_position(env, deps.storage, token, params),
+            StrategyAction::IncreasePosition {} => increase_position(token, params),
+            StrategyAction::DecreasePosition {} => decrease_position(token, params),
+            StrategyAction::ClosePosition {} => close_position(token, params),
+        },
+        ExecuteMsg::Internal(internal_msg) => match internal_msg {
+            InternalExecuteMsg::SendOpenPositionToPositionContract { token, params } => {
+                send_open_position_to_position_contract(deps.storage, token, params)
+            }
+        },
     }
 }
 
+fn send_open_position_to_position_contract(
+    storage: &dyn Storage,
+    token: TokenInfo,
+    params: DeltaNeutralParams,
+) -> StdResult<Response> {
+    let contract_addr = POSITIONS.load(storage, U128Key::from(params.position_id.u128()))?;
+    Ok(
+        Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: contract_addr.to_string(),
+            msg: to_binary(
+                &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition {
+                    collateral_ratio_in_percentage: params.collateral_ratio_in_percentage,
+                    buffer_percentage: Uint128::from(5u128),
+                    mirror_asset_cw20_addr: params.mirror_asset_cw20_addr,
+                },
+            )?,
+            funds: vec![Coin::new(token.amount.u128(), token.denom)],
+        })),
+    )
+}
+
 pub fn open_position(
+    env: Env,
     storage: &mut dyn Storage,
     token: TokenInfo,
     params: DeltaNeutralParams,
@@ -108,22 +130,13 @@ pub fn open_position(
         id: INSTANTIATE_REPLY_ID,
         reply_on: ReplyOn::Success,
     });
-
-    // TODO(lipeiqian): Move the code block below to an internal message. Currently this is executed before
-    // instantiation of the position contract.
-    let contract_addr = POSITIONS.load(storage, U128Key::from(params.position_id.u128()))?;
     response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: contract_addr.to_string(),
-        msg: to_binary(
-            &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition {
-                collateral_ratio_in_percentage: params.collateral_ratio_in_percentage,
-                buffer_percentage: Uint128::from(5u128),
-                mirror_asset_cw20_addr: params.mirror_asset_cw20_addr,
-            },
-        )?,
-        funds: vec![Coin::new(token.amount.u128(), token.denom)],
+        contract_addr: env.contract.address.to_string(),
+        msg: to_binary(&ExecuteMsg::Internal(
+            InternalExecuteMsg::SendOpenPositionToPositionContract { token, params },
+        ))?,
+        funds: vec![],
     }));
-
     Ok(response)
 }
 

@@ -23,6 +23,16 @@ pub struct InstantiateMsg {
     pub terraswap_factory_addr: String,
 }
 
+/// Internal execute messages that will only be processed if sent from the contract itself.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum InternalExecuteMsg {
+    SendOpenPositionToPositionContract {
+        token: TokenInfo,
+        params: DeltaNeutralParams,
+    },
+}
+
 /// List of actions available on this particular strategy. The specific enums
 /// are inherited/copied from the Aperture common package.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -33,6 +43,7 @@ pub enum ExecuteMsg {
         token: TokenInfo,
         params: DeltaNeutralParams,
     },
+    Internal(InternalExecuteMsg),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
