@@ -12,7 +12,7 @@ use aperture_common::delta_neutral_position_manager::{
     Context, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
 };
 
-use crate::response::MsgInstantiateContractResponse;
+use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
 

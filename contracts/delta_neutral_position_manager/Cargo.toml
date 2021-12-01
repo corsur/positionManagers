@@ -22,7 +22,10 @@ cw-storage-plus = { version = "0.9.1" }
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 aperture-common = { version = "0.2.0", path = "../../packages/aperture_common" }
-protobuf = { version = "2", features = ["with-bytes"] }
+protobuf = { version = "2.25.2", features = ["with-bytes"] }
+
+[build-dependencies]
+protoc-rust = "2.25.2"
 
 [dev-dependencies]
 cosmwasm-schema = { version = "0.16.2" }

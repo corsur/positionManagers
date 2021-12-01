@@ -1,5 +1,4 @@
 pub mod contract;
 pub mod state;
 
-mod response;
-mod util;
+mod msg_instantiate_contract_response;
