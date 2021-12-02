@@ -1,9 +1,9 @@
 use std::env::current_dir;
 use std::fs::create_dir_all;
 
-use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 use aperture_common::nft::Extension;
 use aperture_position_nft::msg::MigrateMsg;
+use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 pub use cw721_base::{InstantiateMsg, QueryMsg};
 
 pub type ExecuteMsg = cw721_base::ExecuteMsg<Extension>;

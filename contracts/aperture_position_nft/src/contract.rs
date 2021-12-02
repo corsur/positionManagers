@@ -1,9 +1,9 @@
 use crate::msg::MigrateMsg;
+use aperture_common::nft::Extension;
 use cosmwasm_std::{
     entry_point, Binary, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
 };
 use cw721_base::{InstantiateMsg, QueryMsg};
-use aperture_common::nft::Extension;
 
 pub type ExecuteMsg = cw721_base::ExecuteMsg<Extension>;
 // Type declaration to make things cleaner.
