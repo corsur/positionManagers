@@ -1,13 +1,14 @@
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, Binary, Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::common::{DeltaNeutralParams, StrategyAction, TokenInfo};
+use crate::common::Position;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
     pub delta_neutral_position_code_id: u64,
     pub controller: String,
+    pub min_uusd_amount: Uint128,
     pub anchor_ust_cw20_addr: String,
     pub mirror_cw20_addr: String,
     pub spectrum_cw20_addr: String,
@@ -28,8 +29,9 @@ pub struct InstantiateMsg {
 #[serde(rename_all = "snake_case")]
 pub enum InternalExecuteMsg {
     SendOpenPositionToPositionContract {
-        token: TokenInfo,
+        position: Position,
         params: DeltaNeutralParams,
+        uusd_asset: terraswap::asset::Asset,
     },
 }
 
@@ -38,10 +40,10 @@ pub enum InternalExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Do {
-        action: StrategyAction,
-        token: TokenInfo,
-        params: DeltaNeutralParams,
+    PerformAction {
+        position: Position,
+        action_data_binary: Option<Binary>,
+        assets: Vec<terraswap::asset::Asset>,
     },
     Internal(InternalExecuteMsg),
 }
@@ -54,7 +56,7 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetPositionInfo { position_id: u64 },
+    GetPositionContractAddr { position: Position },
     GetContext {},
 }
 
@@ -74,4 +76,29 @@ pub struct Context {
     pub spectrum_mirror_farms_addr: Addr,
     pub spectrum_staker_addr: Addr,
     pub terraswap_factory_addr: Addr,
+}
+
+// Parameters of a delta-neutral position.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct DeltaNeutralParams {
+    pub min_collateral_ratio_percentage: Uint128,
+    pub max_collateral_ratio_percentage: Uint128,
+    pub mirror_asset_cw20_addr: String,
+}
+
+/// Action enum that represents what users can do to each strategy.
+/// For instance, users can open a position, which is represented by the
+/// OpenPosition variant.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum Action {
+    OpenPosition,
+    ClosePosition,
+    IncreasePosition,
+    DecreasePosition { proportion: Decimal },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ActionData {
+    pub action: Action,
+    pub params: DeltaNeutralParams,
 }

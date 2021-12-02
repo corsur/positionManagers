@@ -7,8 +7,10 @@ name = "aperture-common"
 version = "0.2.0"
 dependencies = [
  "cosmwasm-std",
+ "cw-storage-plus",
  "schemars",
  "serde",
+ "terraswap",
 ]
 
 [[package]]
@@ -282,6 +284,7 @@ dependencies = [
  "protoc-rust",
  "schemars",
  "serde",
+ "terraswap",
 ]
 
 [[package]]
@@ -821,8 +824,10 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus",
+ "cw20 0.9.1",
  "schemars",
  "serde",
+ "terraswap",
 ]
 
 [[package]]

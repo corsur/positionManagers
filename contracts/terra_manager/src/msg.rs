@@ -1,6 +1,9 @@
-use aperture_common::common::{StrategyAction, StrategyType, TokenInfo};
+use aperture_common::common::{ChainId, Position, Strategy};
+use cosmwasm_std::{Binary, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+pub static TERRA_CHAIN_ID: ChainId = 0;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {}
@@ -12,24 +15,28 @@ pub struct InstantiateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    /// `RegisterInvestment` - Owner only. Message to write the pair
-    /// <strategy_index, strategy_manager_addr> into storage.
-    RegisterInvestment {
-        strategy_type: StrategyType,
-        strategy_manager_addr: String,
+    /// Add strategy with the specified manager address and metadata.
+    /// A new, unique identifier is assigned to this new strategy.
+    ///
+    /// Only contract owner may execute `AddStrategy`.
+    AddStrategy {
+        name: String,
+        version: String,
+        manager_addr: String,
     },
-    /// First time initiate a new strategy. A position id will be created.
-    InitStrategy {
-        strategy_type: StrategyType,
-        action_type: StrategyAction,
-        token_type: TokenInfo,
+    /// Remove the strategy associated with the specified identifier.
+    ///
+    /// Only contract owner may execute `RemoveStrategy`.
+    RemoveStrategy { strategy_id: Uint64 },
+    ExecuteStrategy {
+        position: Position,
+        action_data_binary: Option<Binary>,
+        assets: Vec<terraswap::asset::Asset>,
     },
-    /// Update existing position for a strategy using the position id.
-    UpdateStrategy {
-        strategy_type: StrategyType,
-        action_type: StrategyAction,
-        token_type: TokenInfo,
-        position_id: u64,
+    CreateTerraNFTPosition {
+        strategy: Strategy,
+        action_data_binary: Option<Binary>,
+        assets: Vec<terraswap::asset::Asset>,
     },
 }
 
@@ -40,5 +47,5 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetStrategyManagerAddr { strategy_type: StrategyType },
+    GetStrategyMetadata { strategy_id: Uint64 },
 }

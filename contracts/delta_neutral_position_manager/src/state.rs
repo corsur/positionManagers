@@ -1,6 +1,9 @@
-use aperture_common::delta_neutral_position_manager::Context;
-use cosmwasm_std::Addr;
-use cw_storage_plus::{Item, Map, U128Key};
+use aperture_common::{
+    common::{Position, PositionKey},
+    delta_neutral_position_manager::Context,
+};
+use cosmwasm_std::{Addr, Uint128};
+use cw_storage_plus::{Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -11,8 +14,9 @@ pub struct Config {
     pub owner: Addr,
     pub delta_neutral_position_code_id: u64,
     pub context: Context,
+    pub min_uusd_amount: Uint128,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");
-pub const TMP_POSITION_ID: Item<u128> = Item::new("tmp_position_id");
-pub const POSITIONS: Map<U128Key, Addr> = Map::new("positions");
+pub const TMP_POSITION: Item<Position> = Item::new("tmp_position");
+pub const POSITION_TO_CONTRACT_ADDR: Map<PositionKey, Addr> = Map::new("position_to_contract_addr");

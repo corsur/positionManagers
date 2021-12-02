@@ -1,7 +1,7 @@
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
-    ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
+    Response, StdError, StdResult, Uint128, WasmMsg,
 };
 
 use crate::state::{PositionInfo, MANAGER, POSITION_INFO};
@@ -257,19 +257,6 @@ fn get_first_position_index(deps: Deps, env: Env, context: &Context) -> StdResul
             },
         )?;
     Ok(positions_response.positions[0].idx)
-}
-
-pub fn try_to_do(cosmos_messages: Vec<CosmosMsg>) -> StdResult<Response> {
-    let mut response = Response::new();
-    for message in cosmos_messages.iter() {
-        response.messages.push(SubMsg {
-            id: 0, // unused since reply_on is ReplyOn::Never.
-            msg: message.clone(),
-            reply_on: ReplyOn::Never,
-            gas_limit: None,
-        });
-    }
-    Ok(response)
 }
 
 pub fn delta_neutral_invest(
