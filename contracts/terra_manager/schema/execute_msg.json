@@ -4,24 +4,28 @@
   "description": "Terra manager is the entry point for a user to initiate an investment transaction. It is responsible for locating the underlying contract strategy manager address by utilizing Aperture registry, and delegate specific business logic to the strategy manager.",
   "oneOf": [
     {
-      "description": "`RegisterInvestment` - Owner only. Message to write the pair <strategy_index, strategy_manager_addr> into storage.",
+      "description": "Add strategy with the specified manager address and metadata. A new, unique identifier is assigned to this new strategy.\n\nOnly contract owner may execute `AddStrategy`.",
       "type": "object",
       "required": [
-        "register_investment"
+        "add_strategy"
       ],
       "properties": {
-        "register_investment": {
+        "add_strategy": {
           "type": "object",
           "required": [
-            "strategy_manager_addr",
-            "strategy_type"
+            "manager_addr",
+            "name",
+            "version"
           ],
           "properties": {
-            "strategy_manager_addr": {
+            "manager_addr": {
               "type": "string"
             },
-            "strategy_type": {
-              "$ref": "#/definitions/StrategyType"
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
             }
           }
         }
@@ -29,28 +33,20 @@
       "additionalProperties": false
     },
     {
-      "description": "First time initiate a new strategy. A position id will be created.",
+      "description": "Remove the strategy associated with the specified identifier.\n\nOnly contract owner may execute `RemoveStrategy`.",
       "type": "object",
       "required": [
-        "init_strategy"
+        "remove_strategy"
       ],
       "properties": {
-        "init_strategy": {
+        "remove_strategy": {
           "type": "object",
           "required": [
-            "action_type",
-            "strategy_type",
-            "token_type"
+            "strategy_id"
           ],
           "properties": {
-            "action_type": {
-              "$ref": "#/definitions/StrategyAction"
-            },
-            "strategy_type": {
-              "$ref": "#/definitions/StrategyType"
-            },
-            "token_type": {
-              "$ref": "#/definitions/TokenInfo"
+            "strategy_id": {
+              "$ref": "#/definitions/Uint64"
             }
           }
         }
@@ -58,34 +54,73 @@
       "additionalProperties": false
     },
     {
-      "description": "Update existing position for a strategy using the position id.",
       "type": "object",
       "required": [
-        "update_strategy"
+        "execute_strategy"
       ],
       "properties": {
-        "update_strategy": {
+        "execute_strategy": {
           "type": "object",
           "required": [
-            "action_type",
-            "position_id",
-            "strategy_type",
-            "token_type"
+            "assets",
+            "position"
           ],
           "properties": {
-            "action_type": {
-              "$ref": "#/definitions/StrategyAction"
+            "action_data_binary": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Binary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
-            "position_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Asset"
+              }
             },
-            "strategy_type": {
-              "$ref": "#/definitions/StrategyType"
+            "position": {
+              "$ref": "#/definitions/Position"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "create_terra_n_f_t_position"
+      ],
+      "properties": {
+        "create_terra_n_f_t_position": {
+          "type": "object",
+          "required": [
+            "assets",
+            "strategy"
+          ],
+          "properties": {
+            "action_data_binary": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Binary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
-            "token_type": {
-              "$ref": "#/definitions/TokenInfo"
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Asset"
+              }
+            },
+            "strategy": {
+              "$ref": "#/definitions/Strategy"
             }
           }
         }
@@ -94,124 +129,110 @@
     }
   ],
   "definitions": {
-    "Addr": {
-      "description": "A human readable address.\n\nIn Cosmos, this is typically bech32 encoded. But for multi-chain smart contracts no assumptions should be made other than being UTF-8 encoded and of reasonable length.\n\nThis type represents a validated address. It can be created in the following ways 1. Use `Addr::unchecked(input)` 2. Use `let checked: Addr = deps.api.addr_validate(input)?` 3. Use `let checked: Addr = deps.api.addr_humanize(canonical_addr)?` 4. Deserialize from JSON. This must only be done from JSON that was validated before such as a contract's state. `Addr` must not be used in messages sent by the user because this would result in unvalidated instances.\n\nThis type is immutable. If you really need to mutate it (Really? Are you sure?), create a mutable copy using `let mut mutable = Addr::to_string()` and operate on that `String` instance.",
-      "type": "string"
-    },
-    "DeltaNeutralParams": {
+    "Asset": {
       "type": "object",
       "required": [
-        "collateral_ratio_in_percentage",
-        "mirror_asset_cw20_addr",
+        "amount",
+        "info"
+      ],
+      "properties": {
+        "amount": {
+          "$ref": "#/definitions/Uint128"
+        },
+        "info": {
+          "$ref": "#/definitions/AssetInfo"
+        }
+      }
+    },
+    "AssetInfo": {
+      "description": "AssetInfo contract_addr is usually passed from the cw20 hook so we can trust the contract_addr is properly validated.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "token"
+          ],
+          "properties": {
+            "token": {
+              "type": "object",
+              "required": [
+                "contract_addr"
+              ],
+              "properties": {
+                "contract_addr": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "native_token"
+          ],
+          "properties": {
+            "native_token": {
+              "type": "object",
+              "required": [
+                "denom"
+              ],
+              "properties": {
+                "denom": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Binary": {
+      "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
+      "type": "string"
+    },
+    "Position": {
+      "type": "object",
+      "required": [
+        "chain_id",
         "position_id"
       ],
       "properties": {
-        "collateral_ratio_in_percentage": {
-          "$ref": "#/definitions/Uint128"
-        },
-        "mirror_asset_cw20_addr": {
-          "type": "string"
+        "chain_id": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         },
         "position_id": {
           "$ref": "#/definitions/Uint128"
         }
       }
     },
-    "StrategyAction": {
-      "description": "Structures commonly shared by Aperture contracts. Action enum that represents what users can do to each strategy. For instance, users can open a position, which is represented by the OpenPosition variant.",
-      "oneOf": [
-        {
-          "type": "object",
-          "required": [
-            "OpenPosition"
-          ],
-          "properties": {
-            "OpenPosition": {
-              "type": "object"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "required": [
-            "ClosePosition"
-          ],
-          "properties": {
-            "ClosePosition": {
-              "type": "object"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "required": [
-            "IncreasePosition"
-          ],
-          "properties": {
-            "IncreasePosition": {
-              "type": "object"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "required": [
-            "DecreasePosition"
-          ],
-          "properties": {
-            "DecreasePosition": {
-              "type": "object"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "StrategyType": {
-      "description": "Enum represents individual strategy. When new strategies are added, they must be added here to be used by smart contracts.",
-      "oneOf": [
-        {
-          "type": "object",
-          "required": [
-            "DeltaNeutral"
-          ],
-          "properties": {
-            "DeltaNeutral": {
-              "$ref": "#/definitions/DeltaNeutralParams"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "TokenInfo": {
+    "Strategy": {
       "type": "object",
       "required": [
-        "addr",
-        "amount",
-        "denom",
-        "native"
+        "chain_id",
+        "strategy_id"
       ],
       "properties": {
-        "addr": {
-          "$ref": "#/definitions/Addr"
+        "chain_id": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         },
-        "amount": {
-          "$ref": "#/definitions/Uint128"
-        },
-        "denom": {
-          "type": "string"
-        },
-        "native": {
-          "type": "boolean"
+        "strategy_id": {
+          "$ref": "#/definitions/Uint64"
         }
       }
     },
     "Uint128": {
       "description": "A thin wrapper around u128 that is using strings for JSON encoding/decoding, such that the full u128 range can be used for clients that convert JSON numbers to floats, like JavaScript and jq.\n\n# Examples\n\nUse `from` to create instances of this and `u128` to get the value out:\n\n``` # use cosmwasm_std::Uint128; let a = Uint128::from(123u128); assert_eq!(a.u128(), 123);\n\nlet b = Uint128::from(42u64); assert_eq!(b.u128(), 42);\n\nlet c = Uint128::from(70u32); assert_eq!(c.u128(), 70); ```",
+      "type": "string"
+    },
+    "Uint64": {
+      "description": "A thin wrapper around u64 that is using strings for JSON encoding/decoding, such that the full u64 range can be used for clients that convert JSON numbers to floats, like JavaScript and jq.\n\n# Examples\n\nUse `from` to create instances of this and `u64` to get the value out:\n\n``` # use cosmwasm_std::Uint64; let a = Uint64::from(42u64); assert_eq!(a.u64(), 42);\n\nlet b = Uint64::from(70u32); assert_eq!(b.u64(), 70); ```",
       "type": "string"
     }
   }

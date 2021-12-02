@@ -6,67 +6,88 @@
     {
       "type": "object",
       "required": [
-        "do"
+        "perform_action"
       ],
       "properties": {
-        "do": {
+        "perform_action": {
           "type": "object",
           "required": [
-            "action",
-            "params",
-            "token"
+            "assets",
+            "position"
           ],
           "properties": {
-            "action": {
-              "$ref": "#/definitions/StrategyAction"
+            "action_data_binary": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Binary"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
-            "params": {
-              "$ref": "#/definitions/DeltaNeutralParams"
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Asset"
+              }
             },
-            "token": {
-              "$ref": "#/definitions/TokenInfo"
+            "position": {
+              "$ref": "#/definitions/Position"
             }
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "internal"
+      ],
+      "properties": {
+        "internal": {
+          "$ref": "#/definitions/InternalExecuteMsg"
         }
       },
       "additionalProperties": false
     }
   ],
   "definitions": {
-    "Addr": {
-      "description": "A human readable address.\n\nIn Cosmos, this is typically bech32 encoded. But for multi-chain smart contracts no assumptions should be made other than being UTF-8 encoded and of reasonable length.\n\nThis type represents a validated address. It can be created in the following ways 1. Use `Addr::unchecked(input)` 2. Use `let checked: Addr = deps.api.addr_validate(input)?` 3. Use `let checked: Addr = deps.api.addr_humanize(canonical_addr)?` 4. Deserialize from JSON. This must only be done from JSON that was validated before such as a contract's state. `Addr` must not be used in messages sent by the user because this would result in unvalidated instances.\n\nThis type is immutable. If you really need to mutate it (Really? Are you sure?), create a mutable copy using `let mut mutable = Addr::to_string()` and operate on that `String` instance.",
-      "type": "string"
-    },
-    "DeltaNeutralParams": {
+    "Asset": {
       "type": "object",
       "required": [
-        "collateral_ratio_in_percentage",
-        "mirror_asset_cw20_addr",
-        "position_id"
+        "amount",
+        "info"
       ],
       "properties": {
-        "collateral_ratio_in_percentage": {
+        "amount": {
           "$ref": "#/definitions/Uint128"
         },
-        "mirror_asset_cw20_addr": {
-          "type": "string"
-        },
-        "position_id": {
-          "$ref": "#/definitions/Uint128"
+        "info": {
+          "$ref": "#/definitions/AssetInfo"
         }
       }
     },
-    "StrategyAction": {
-      "description": "Structures commonly shared by Aperture contracts. Action enum that represents what users can do to each strategy. For instance, users can open a position, which is represented by the OpenPosition variant.",
+    "AssetInfo": {
+      "description": "AssetInfo contract_addr is usually passed from the cw20 hook so we can trust the contract_addr is properly validated.",
       "oneOf": [
         {
           "type": "object",
           "required": [
-            "OpenPosition"
+            "token"
           ],
           "properties": {
-            "OpenPosition": {
-              "type": "object"
+            "token": {
+              "type": "object",
+              "required": [
+                "contract_addr"
+              ],
+              "properties": {
+                "contract_addr": {
+                  "type": "string"
+                }
+              }
             }
           },
           "additionalProperties": false
@@ -74,61 +95,95 @@
         {
           "type": "object",
           "required": [
-            "ClosePosition"
+            "native_token"
           ],
           "properties": {
-            "ClosePosition": {
-              "type": "object"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "required": [
-            "IncreasePosition"
-          ],
-          "properties": {
-            "IncreasePosition": {
-              "type": "object"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "required": [
-            "DecreasePosition"
-          ],
-          "properties": {
-            "DecreasePosition": {
-              "type": "object"
+            "native_token": {
+              "type": "object",
+              "required": [
+                "denom"
+              ],
+              "properties": {
+                "denom": {
+                  "type": "string"
+                }
+              }
             }
           },
           "additionalProperties": false
         }
       ]
     },
-    "TokenInfo": {
+    "Binary": {
+      "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
+      "type": "string"
+    },
+    "DeltaNeutralParams": {
       "type": "object",
       "required": [
-        "addr",
-        "amount",
-        "denom",
-        "native"
+        "max_collateral_ratio_percentage",
+        "min_collateral_ratio_percentage",
+        "mirror_asset_cw20_addr"
       ],
       "properties": {
-        "addr": {
-          "$ref": "#/definitions/Addr"
-        },
-        "amount": {
+        "max_collateral_ratio_percentage": {
           "$ref": "#/definitions/Uint128"
         },
-        "denom": {
-          "type": "string"
+        "min_collateral_ratio_percentage": {
+          "$ref": "#/definitions/Uint128"
         },
-        "native": {
-          "type": "boolean"
+        "mirror_asset_cw20_addr": {
+          "type": "string"
+        }
+      }
+    },
+    "InternalExecuteMsg": {
+      "description": "Internal execute messages that will only be processed if sent from the contract itself.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "send_open_position_to_position_contract"
+          ],
+          "properties": {
+            "send_open_position_to_position_contract": {
+              "type": "object",
+              "required": [
+                "params",
+                "position",
+                "uusd_asset"
+              ],
+              "properties": {
+                "params": {
+                  "$ref": "#/definitions/DeltaNeutralParams"
+                },
+                "position": {
+                  "$ref": "#/definitions/Position"
+                },
+                "uusd_asset": {
+                  "$ref": "#/definitions/Asset"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Position": {
+      "type": "object",
+      "required": [
+        "chain_id",
+        "position_id"
+      ],
+      "properties": {
+        "chain_id": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "position_id": {
+          "$ref": "#/definitions/Uint128"
         }
       }
     },
