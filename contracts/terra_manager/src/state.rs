@@ -3,6 +3,7 @@ use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map, U64Key};
 
 pub const OWNER: Item<Addr> = Item::new("owner");
+pub const NFT_ADDR: Item<Addr> = Item::new("nft_addr");
 
 pub type StrategyIdKey = U64Key;
 pub const NEXT_STRATEGY_ID: Item<StrategyId> = Item::new("next_strategy_id");

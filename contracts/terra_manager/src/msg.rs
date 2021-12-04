@@ -4,9 +4,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub static TERRA_CHAIN_ID: ChainId = 0;
+pub static APERTURE_NFT: &str = "ApertureNFT";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub nft_addr: String,
+}
 
 /// Terra manager is the entry point for a user to initiate an investment
 /// transaction. It is responsible for locating the underlying contract strategy

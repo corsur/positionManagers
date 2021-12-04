@@ -1,16 +1,17 @@
 use aperture_common::common::{
     get_position_key, Position, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg,
 };
+use aperture_common::nft::{Extension, Metadata};
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
     StdError, StdResult, Uint128, Uint64, WasmMsg,
 };
 use terraswap::asset::{Asset, AssetInfo};
 
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, TERRA_CHAIN_ID};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, APERTURE_NFT, TERRA_CHAIN_ID};
 use crate::state::{
-    get_strategy_id_key, NEXT_POSITION_ID, NEXT_STRATEGY_ID, OWNER, POSITION_TO_STRATEGY_MAP,
-    STRATEGY_ID_TO_METADATA_MAP,
+    get_strategy_id_key, NEXT_POSITION_ID, NEXT_STRATEGY_ID, NFT_ADDR, OWNER,
+    POSITION_TO_STRATEGY_MAP, STRATEGY_ID_TO_METADATA_MAP,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -18,9 +19,10 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> StdResult<Response> {
     OWNER.save(deps.storage, &info.sender)?;
+    NFT_ADDR.save(deps.storage, &deps.api.addr_validate(&msg.nft_addr)?)?;
     NEXT_STRATEGY_ID.save(deps.storage, &Uint64::zero())?;
     NEXT_POSITION_ID.save(deps.storage, &Uint128::zero())?;
     Ok(Response::default())
@@ -103,6 +105,17 @@ pub fn create_terra_nft_position(
     let position_id = NEXT_POSITION_ID.load(deps.storage)?;
     NEXT_POSITION_ID.save(deps.storage, &position_id.checked_add(1u128.into())?)?;
     // TODO: issue CW-721 with `position_id` token id.
+    let metadata: Extension = Some(Metadata {
+        name: Some(APERTURE_NFT.to_string()),
+        description: None,
+    });
+
+    let nft_mint_msg = cw721_base::ExecuteMsg::Mint(cw721_base::MintMsg {
+        token_id: position_id.to_string(),
+        owner: info.sender.to_string(),
+        token_uri: None,
+        extension: metadata,
+    });
 
     // Update POSITION_TO_STRATEGY_MAP.
     let position = Position {
@@ -112,7 +125,13 @@ pub fn create_terra_nft_position(
     POSITION_TO_STRATEGY_MAP.save(deps.storage, get_position_key(&position), &strategy)?;
 
     // Execute strategy.
-    execute_strategy(deps.as_ref(), env, info, position, action_data, assets)
+    let response =
+        execute_strategy(deps.as_ref(), env, info, position, action_data, assets)?;
+    Ok(response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: (NFT_ADDR.load(deps.storage)?).to_string(),
+        msg: to_binary(&nft_mint_msg)?,
+        funds: vec![],
+    })))
 }
 
 pub fn execute_strategy(
