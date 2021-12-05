@@ -104,7 +104,6 @@ pub fn create_terra_nft_position(
     // Issue CW-721 token as a receipt to the user.
     let position_id = NEXT_POSITION_ID.load(deps.storage)?;
     NEXT_POSITION_ID.save(deps.storage, &position_id.checked_add(1u128.into())?)?;
-    // TODO: issue CW-721 with `position_id` token id.
     let metadata: Extension = Some(Metadata {
         name: Some(APERTURE_NFT.to_string()),
         description: None,
@@ -125,8 +124,7 @@ pub fn create_terra_nft_position(
     POSITION_TO_STRATEGY_MAP.save(deps.storage, get_position_key(&position), &strategy)?;
 
     // Execute strategy.
-    let response =
-        execute_strategy(deps.as_ref(), env, info, position, action_data, assets)?;
+    let response = execute_strategy(deps.as_ref(), env, info, position, action_data, assets)?;
     Ok(response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: (NFT_ADDR.load(deps.storage)?).to_string(),
         msg: to_binary(&nft_mint_msg)?,

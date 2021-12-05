@@ -36,8 +36,8 @@ pub enum ControllerExecuteMsg {
 pub enum ExecuteMsg {
     ClosePosition {},
     OpenPosition {
-        collateral_ratio_in_percentage: Uint128,
-        buffer_percentage: Uint128,
+        target_min_collateral_ratio: Decimal,
+        target_max_collateral_ratio: Decimal,
         mirror_asset_cw20_addr: String,
     },
     Controller(ControllerExecuteMsg),

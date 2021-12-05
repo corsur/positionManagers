@@ -22,6 +22,7 @@ pub struct InstantiateMsg {
     pub spectrum_mirror_farms_addr: String,
     pub spectrum_staker_addr: String,
     pub terraswap_factory_addr: String,
+    pub collateral_ratio_safety_margin: Decimal,
 }
 
 /// Internal execute messages that will only be processed if sent from the contract itself.
@@ -76,13 +77,14 @@ pub struct Context {
     pub spectrum_mirror_farms_addr: Addr,
     pub spectrum_staker_addr: Addr,
     pub terraswap_factory_addr: Addr,
+    pub collateral_ratio_safety_margin: Decimal,
 }
 
 // Parameters of a delta-neutral position.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct DeltaNeutralParams {
-    pub min_collateral_ratio_percentage: Uint128,
-    pub max_collateral_ratio_percentage: Uint128,
+    pub target_min_collateral_ratio: Decimal,
+    pub target_max_collateral_ratio: Decimal,
     pub mirror_asset_cw20_addr: String,
 }
 

@@ -5,7 +5,10 @@ use cosmwasm_std::{
 };
 
 use crate::state::{PositionInfo, MANAGER, POSITION_INFO};
-use crate::util::{create_terraswap_cw20_uusd_pair_asset_info, swap_cw20_token_for_uusd};
+use crate::util::{
+    create_terraswap_cw20_uusd_pair_asset_info, find_collateral_uusd_amount,
+    swap_cw20_token_for_uusd,
+};
 use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
@@ -41,15 +44,15 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     match msg {
         ExecuteMsg::ClosePosition {} => close_position(deps.as_ref(), env, context),
         ExecuteMsg::OpenPosition {
-            collateral_ratio_in_percentage,
-            buffer_percentage,
+            target_min_collateral_ratio,
+            target_max_collateral_ratio,
             mirror_asset_cw20_addr,
         } => delta_neutral_invest(
             deps,
             env,
             context,
-            collateral_ratio_in_percentage,
-            buffer_percentage,
+            target_min_collateral_ratio,
+            target_max_collateral_ratio,
             mirror_asset_cw20_addr,
         ),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
@@ -263,8 +266,8 @@ pub fn delta_neutral_invest(
     deps: DepsMut,
     env: Env,
     context: Context,
-    collateral_ratio_in_percentage: Uint128,
-    buffer_percentage: Uint128,
+    target_min_collateral_ratio: Decimal,
+    target_max_collateral_ratio: Decimal,
     mirror_asset_cw20_addr: String,
 ) -> StdResult<Response> {
     if POSITION_INFO.load(deps.storage).is_ok() {
@@ -278,25 +281,27 @@ pub fn delta_neutral_invest(
         env.contract.address.clone(),
         String::from("uusd"),
     )?;
-    let anchor_deposit_amount = uusd_balance.multiply_ratio(
-        collateral_ratio_in_percentage,
-        collateral_ratio_in_percentage
-            .checked_add(buffer_percentage)?
-            .checked_add(Uint128::from(100u128))?,
-    );
     Ok(Response::new()
         .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: context.anchor_market_addr.to_string(),
             msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
             funds: vec![Coin {
                 denom: String::from("uusd"),
-                amount: anchor_deposit_amount,
+                amount: find_collateral_uusd_amount(
+                    deps.as_ref(),
+                    &context,
+                    &mirror_asset_cw20_addr,
+                    target_min_collateral_ratio,
+                    target_max_collateral_ratio,
+                    uusd_balance,
+                )?,
             }],
         }))
         .add_message(create_internal_execute_message(
             &env,
             InternalExecuteMsg::OpenCdpWithAnchorUstBalanceAsCollateral {
-                collateral_ratio: Decimal::from_ratio(collateral_ratio_in_percentage, 100u128),
+                collateral_ratio: (target_min_collateral_ratio + target_max_collateral_ratio)
+                    / 2u128.into(),
                 mirror_asset_cw20_addr,
             },
         ))

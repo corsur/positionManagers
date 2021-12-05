@@ -23,19 +23,19 @@
         "open_position": {
           "type": "object",
           "required": [
-            "buffer_percentage",
-            "collateral_ratio_in_percentage",
-            "mirror_asset_cw20_addr"
+            "mirror_asset_cw20_addr",
+            "target_max_collateral_ratio",
+            "target_min_collateral_ratio"
           ],
           "properties": {
-            "buffer_percentage": {
-              "$ref": "#/definitions/Uint128"
-            },
-            "collateral_ratio_in_percentage": {
-              "$ref": "#/definitions/Uint128"
-            },
             "mirror_asset_cw20_addr": {
               "type": "string"
+            },
+            "target_max_collateral_ratio": {
+              "$ref": "#/definitions/Decimal"
+            },
+            "target_min_collateral_ratio": {
+              "$ref": "#/definitions/Decimal"
             }
           }
         }

@@ -5,7 +5,7 @@ use aperture_common::delta_neutral_position_manager::{
 };
 use cosmwasm_std::{
     entry_point, from_binary, to_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply,
-    ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
+    ReplyOn, Response, StdError, StdResult, Storage, SubMsg, WasmMsg,
 };
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
@@ -44,6 +44,7 @@ pub fn instantiate(
             spectrum_mirror_farms_addr: deps.api.addr_validate(&msg.spectrum_mirror_farms_addr)?,
             spectrum_staker_addr: deps.api.addr_validate(&msg.spectrum_staker_addr)?,
             terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
+            collateral_ratio_safety_margin: msg.collateral_ratio_safety_margin,
         },
     };
     CONFIG.save(deps.storage, &config)?;
@@ -108,8 +109,8 @@ fn send_open_position_to_position_contract(
             msg: to_binary(
                 // TODO: Update delta-neutral position contract to take DeltaNeutralParams.
                 &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition {
-                    collateral_ratio_in_percentage: params.max_collateral_ratio_percentage,
-                    buffer_percentage: Uint128::from(5u128),
+                    target_min_collateral_ratio: params.target_min_collateral_ratio,
+                    target_max_collateral_ratio: params.target_max_collateral_ratio,
                     mirror_asset_cw20_addr: params.mirror_asset_cw20_addr,
                 },
             )?,
