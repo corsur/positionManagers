@@ -1,0 +1,14 @@
+{
+  "name": "aperture-terra-contract-deployment",
+  "version": "1.0.0",
+  "description": "Deploy Aperture Finance's Terra contracts.",
+  "main": "deploy.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@terra-money/terra.js": "^3.0.1"
+  }
+}
