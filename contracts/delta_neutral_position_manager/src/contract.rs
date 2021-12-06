@@ -60,8 +60,8 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     if !is_authorized {
         return Err(StdError::GenericErr {
             msg: format!(
-                "Unauthorized: only {} may call this contract",
-                owner.to_string()
+                "Unauthorized: owner: {}, sender: {}",
+                owner.to_string(), info.sender.to_string()
             ),
         });
     }
@@ -111,7 +111,6 @@ fn send_open_position_to_position_contract(
         Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: contract_addr.to_string(),
             msg: to_binary(
-                // TODO: Update delta-neutral position contract to take DeltaNeutralParams.
                 &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition {
                     params,
                 },
