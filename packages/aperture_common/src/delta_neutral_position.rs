@@ -1,4 +1,4 @@
-use cosmwasm_std::{Decimal, Uint128};
+use cosmwasm_std::Decimal;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -26,18 +26,20 @@ pub enum InternalExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ControllerExecuteMsg {
-    ClaimRewardAndAddToAnchorCollateral {},
-    ClaimShortSaleProceedsAndStake {
-        mirror_asset_amount: Uint128,
-        stake_via_spectrum: bool,
-    },
+    Rebalance {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    ClosePosition {},
-    OpenPosition { params: DeltaNeutralParams },
+    OpenPosition {
+        params: DeltaNeutralParams,
+    },
+    IncreasePosition {},
+    DecreasePosition {
+        proportion: Decimal,
+        recipient: String,
+    },
     Controller(ControllerExecuteMsg),
     Internal(InternalExecuteMsg),
 }

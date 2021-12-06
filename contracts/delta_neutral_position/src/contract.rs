@@ -32,7 +32,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         .querier
         .query_wasm_smart(&manager_addr, &ManagerQueryMsg::GetContext {})?;
     let is_authorized = match msg {
-        ExecuteMsg::Controller(_) => info.sender == context.controller,
+        ExecuteMsg::Controller(_) => {
+            info.sender == context.controller || info.sender == env.contract.address
+        }
         ExecuteMsg::Internal(_) => info.sender == env.contract.address,
         _ => info.sender == manager_addr,
     };
@@ -42,7 +44,6 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         });
     }
     match msg {
-        ExecuteMsg::ClosePosition {} => close_position(deps.as_ref(), env, context),
         ExecuteMsg::OpenPosition { params } => delta_neutral_invest(
             deps,
             env,
@@ -51,20 +52,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             params.target_max_collateral_ratio,
             params.mirror_asset_cw20_addr,
         ),
+        ExecuteMsg::IncreasePosition {} => rebalance(deps.as_ref(), env, context),
+        ExecuteMsg::DecreasePosition {
+            proportion,
+            recipient,
+        } => decrease_position(deps.as_ref(), env, context, proportion, recipient),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
-            ControllerExecuteMsg::ClaimRewardAndAddToAnchorCollateral {} => {
-                reinvest(deps, env, context)
-            }
-            ControllerExecuteMsg::ClaimShortSaleProceedsAndStake {
-                mirror_asset_amount,
-                stake_via_spectrum,
-            } => claim_short_sale_proceeds_and_stake(
-                deps.as_ref(),
-                env,
-                context,
-                mirror_asset_amount,
-                stake_via_spectrum,
-            ),
+            ControllerExecuteMsg::Rebalance {} => rebalance(deps.as_ref(), env, context),
         },
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
             InternalExecuteMsg::DepositUusdBalanceToAnchor {} => {
@@ -157,7 +151,7 @@ fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Cosmos
     })
 }
 
-pub fn reinvest(deps: DepsMut, env: Env, context: Context) -> StdResult<Response> {
+pub fn rebalance(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
     // Find claimable SPEC reward.
     let spec_reward_info_response: spectrum_protocol::mirror_farm::RewardInfoResponse =
         deps.querier.query_wasm_smart(
@@ -412,7 +406,14 @@ fn swap_uusd_for_minted_mirror_asset(
     )
 }
 
-pub fn close_position(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
+// TODO: Implement decrease_position.
+pub fn decrease_position(
+    deps: Deps,
+    env: Env,
+    context: Context,
+    _fraction: Decimal,
+    _recipient: String,
+) -> StdResult<Response> {
     let position_info = POSITION_INFO.load(deps.storage)?;
     let position_response: mirror_protocol::mint::PositionResponse =
         deps.querier.query_wasm_smart(

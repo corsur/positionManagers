@@ -1,10 +1,11 @@
 use aperture_common::common::{get_position_key, Position};
+use aperture_common::delta_neutral_position;
 use aperture_common::delta_neutral_position_manager::{
     Action, ActionData, Context, DeltaNeutralParams, ExecuteMsg, InstantiateMsg,
     InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
     MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, WasmMsg,
 };
 use protobuf::Message;
@@ -81,9 +82,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                     action_data.params,
                     assets,
                 ),
-                Action::IncreasePosition {} => increase_position(),
-                Action::DecreasePosition { proportion } => decrease_position(proportion),
-                Action::ClosePosition {} => close_position(deps.storage, position),
+                Action::IncreasePosition {} => {
+                    increase_position(deps.as_ref(), info, position, assets)
+                }
+                Action::DecreasePosition { proportion } => {
+                    decrease_position(deps.as_ref(), position, proportion)
+                }
+                Action::ClosePosition {} => close_position(deps, position),
             }
         }
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
@@ -91,28 +96,33 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 position,
                 params,
                 uusd_asset,
-            } => {
-                send_open_position_to_position_contract(deps.as_ref(), position, params, uusd_asset)
-            }
+            } => send_execute_message_to_position_contract(
+                deps.as_ref(),
+                position,
+                delta_neutral_position::ExecuteMsg::OpenPosition { params },
+                Some(uusd_asset),
+            ),
         },
     }
 }
 
-fn send_open_position_to_position_contract(
+fn send_execute_message_to_position_contract(
     deps: Deps,
     position: Position,
-    params: DeltaNeutralParams,
-    uusd_asset: Asset,
+    position_contract_execute_msg: aperture_common::delta_neutral_position::ExecuteMsg,
+    uusd_asset: Option<Asset>,
 ) -> StdResult<Response> {
     let contract_addr =
         POSITION_TO_CONTRACT_ADDR.load(deps.storage, get_position_key(&position))?;
+    let mut funds: Vec<Coin> = vec![];
+    if let Some(asset) = uusd_asset {
+        funds.push(asset.deduct_tax(&deps.querier)?);
+    }
     Ok(
         Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: contract_addr.to_string(),
-            msg: to_binary(
-                &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition { params },
-            )?,
-            funds: vec![uusd_asset.deduct_tax(&deps.querier)?],
+            msg: to_binary(&position_contract_execute_msg)?,
+            funds,
         })),
     )
 }
@@ -126,21 +136,7 @@ pub fn open_position(
     assets: Vec<Asset>,
 ) -> StdResult<Response> {
     let config = CONFIG.load(storage)?;
-
-    // Check that `assets` comprise exactly one native-uusd asset of amount >= min_uusd_amount.
-    let mut valid_assets = false;
-    if assets.len() == 1 {
-        if let AssetInfo::NativeToken { denom } = &assets[0].info {
-            valid_assets = denom == "uusd"
-                && assets[0].amount >= config.min_uusd_amount
-                && assets[0].assert_sent_native_token_balance(&info).is_ok();
-        }
-    }
-    if !valid_assets {
-        return Err(StdError::GenericErr {
-            msg: "Invalid assets".to_string(),
-        });
-    }
+    let uusd_asset = validate_assets(&info, &config, &assets)?;
 
     // Instantiate a new contract for the position.
     TMP_POSITION.save(storage, &position)?;
@@ -166,7 +162,7 @@ pub fn open_position(
             InternalExecuteMsg::SendOpenPositionToPositionContract {
                 position,
                 params,
-                uusd_asset: assets[0].clone(),
+                uusd_asset,
             },
         ))?,
         funds: vec![],
@@ -174,18 +170,42 @@ pub fn open_position(
     Ok(response)
 }
 
-// TODO: implement the corresponding methods in the position contract.
-pub fn increase_position() -> StdResult<Response> {
-    Ok(Response::default())
+pub fn increase_position(
+    deps: Deps,
+    info: MessageInfo,
+    position: Position,
+    assets: Vec<Asset>,
+) -> StdResult<Response> {
+    let config = CONFIG.load(deps.storage)?;
+    let uusd_asset = validate_assets(&info, &config, &assets)?;
+    send_execute_message_to_position_contract(
+        deps,
+        position,
+        delta_neutral_position::ExecuteMsg::IncreasePosition {},
+        Some(uusd_asset),
+    )
 }
 
-pub fn decrease_position(_proportion: Decimal) -> StdResult<Response> {
-    Ok(Response::default())
+pub fn decrease_position(
+    deps: Deps,
+    position: Position,
+    proportion: Decimal,
+) -> StdResult<Response> {
+    send_execute_message_to_position_contract(
+        deps,
+        position,
+        delta_neutral_position::ExecuteMsg::DecreasePosition {
+            proportion,
+            // TODO: Pass recipient.
+            recipient: String::new(),
+        },
+        None,
+    )
 }
 
-pub fn close_position(storage: &mut dyn Storage, position: Position) -> StdResult<Response> {
-    POSITION_TO_CONTRACT_ADDR.remove(storage, get_position_key(&position));
-    decrease_position(Decimal::one())
+pub fn close_position(deps: DepsMut, position: Position) -> StdResult<Response> {
+    POSITION_TO_CONTRACT_ADDR.remove(deps.storage, get_position_key(&position));
+    decrease_position(deps.as_ref(), position, Decimal::one())
 }
 
 // To store instantiated contract address into state and initiate investment.
@@ -218,4 +238,22 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
     Ok(Response::default())
+}
+
+// Check that `assets` comprise exactly one native-uusd asset of amount >= min_uusd_amount.
+fn validate_assets(info: &MessageInfo, config: &Config, assets: &[Asset]) -> StdResult<Asset> {
+    if assets.len() == 1 {
+        let asset = &assets[0];
+        if let AssetInfo::NativeToken { denom } = &asset.info {
+            if denom == "uusd"
+                && asset.amount >= config.min_uusd_amount
+                && asset.assert_sent_native_token_balance(info).is_ok()
+            {
+                return Ok(asset.clone());
+            }
+        }
+    }
+    Err(StdError::GenericErr {
+        msg: "Invalid assets".to_string(),
+    })
 }
