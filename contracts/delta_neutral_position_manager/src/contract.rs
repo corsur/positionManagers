@@ -4,8 +4,8 @@ use aperture_common::delta_neutral_position_manager::{
     InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply,
-    ReplyOn, Response, StdError, StdResult, Storage, SubMsg, WasmMsg,
+    entry_point, from_binary, to_binary, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, WasmMsg,
 };
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
@@ -54,11 +54,15 @@ pub fn instantiate(
 /// Dispatch enum message to its corresponding functions.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
-    let is_authorized = info.sender == (CONFIG.load(deps.storage)?.owner);
+    let owner = CONFIG.load(deps.storage)?.owner;
+    let is_authorized = info.sender == owner;
     // Only Terra manager can call this contract.
     if !is_authorized {
         return Err(StdError::GenericErr {
-            msg: "Unauthorized".to_string(),
+            msg: format!(
+                "Unauthorized: only {} may call this contract",
+                owner.to_string()
+            ),
         });
     }
 
@@ -79,8 +83,8 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                     assets,
                 ),
                 Action::IncreasePosition {} => increase_position(),
-                Action::DecreasePosition { proportion: _ } => decrease_position(),
-                Action::ClosePosition {} => decrease_position(),
+                Action::DecreasePosition { proportion } => decrease_position(proportion),
+                Action::ClosePosition {} => close_position(deps.storage, position),
             }
         }
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
@@ -109,9 +113,7 @@ fn send_open_position_to_position_contract(
             msg: to_binary(
                 // TODO: Update delta-neutral position contract to take DeltaNeutralParams.
                 &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition {
-                    target_min_collateral_ratio: params.target_min_collateral_ratio,
-                    target_max_collateral_ratio: params.target_max_collateral_ratio,
-                    mirror_asset_cw20_addr: params.mirror_asset_cw20_addr,
+                    params,
                 },
             )?,
             funds: vec![uusd_asset.deduct_tax(&deps.querier)?],
@@ -181,8 +183,13 @@ pub fn increase_position() -> StdResult<Response> {
     Ok(Response::default())
 }
 
-pub fn decrease_position() -> StdResult<Response> {
+pub fn decrease_position(_proportion: Decimal) -> StdResult<Response> {
     Ok(Response::default())
+}
+
+pub fn close_position(storage: &mut dyn Storage, position: Position) -> StdResult<Response> {
+    POSITION_TO_CONTRACT_ADDR.remove(storage, get_position_key(&position));
+    decrease_position(Decimal::one())
 }
 
 // To store instantiated contract address into state and initiate investment.

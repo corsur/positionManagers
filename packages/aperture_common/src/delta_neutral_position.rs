@@ -2,6 +2,8 @@ use cosmwasm_std::{Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::delta_neutral_position_manager::DeltaNeutralParams;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {}
 
@@ -36,9 +38,7 @@ pub enum ControllerExecuteMsg {
 pub enum ExecuteMsg {
     ClosePosition {},
     OpenPosition {
-        target_min_collateral_ratio: Decimal,
-        target_max_collateral_ratio: Decimal,
-        mirror_asset_cw20_addr: String,
+        params: DeltaNeutralParams,
     },
     Controller(ControllerExecuteMsg),
     Internal(InternalExecuteMsg),

@@ -44,16 +44,14 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     match msg {
         ExecuteMsg::ClosePosition {} => close_position(deps.as_ref(), env, context),
         ExecuteMsg::OpenPosition {
-            target_min_collateral_ratio,
-            target_max_collateral_ratio,
-            mirror_asset_cw20_addr,
+            params,
         } => delta_neutral_invest(
             deps,
             env,
             context,
-            target_min_collateral_ratio,
-            target_max_collateral_ratio,
-            mirror_asset_cw20_addr,
+            params.target_min_collateral_ratio,
+            params.target_max_collateral_ratio,
+            params.mirror_asset_cw20_addr,
         ),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
             ControllerExecuteMsg::ClaimRewardAndAddToAnchorCollateral {} => {

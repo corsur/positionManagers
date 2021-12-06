@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ActionData",
+  "type": "object",
+  "required": [
+    "action",
+    "params"
+  ],
+  "properties": {
+    "action": {
+      "$ref": "#/definitions/Action"
+    },
+    "params": {
+      "$ref": "#/definitions/DeltaNeutralParams"
+    }
+  },
+  "definitions": {
+    "Action": {
+      "description": "Action enum that represents what users can do to each strategy. For instance, users can open a position, which is represented by the OpenPosition variant.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "OpenPosition",
+            "ClosePosition",
+            "IncreasePosition"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "DecreasePosition"
+          ],
+          "properties": {
+            "DecreasePosition": {
+              "type": "object",
+              "required": [
+                "proportion"
+              ],
+              "properties": {
+                "proportion": {
+                  "$ref": "#/definitions/Decimal"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Decimal": {
+      "description": "A fixed-point decimal value with 18 fractional digits, i.e. Decimal(1_000_000_000_000_000_000) == 1.0\n\nThe greatest possible value that can be represented is 340282366920938463463.374607431768211455 (which is (2^128 - 1) / 10^18)",
+      "type": "string"
+    },
+    "DeltaNeutralParams": {
+      "type": "object",
+      "required": [
+        "mirror_asset_cw20_addr",
+        "target_max_collateral_ratio",
+        "target_min_collateral_ratio"
+      ],
+      "properties": {
+        "mirror_asset_cw20_addr": {
+          "type": "string"
+        },
+        "target_max_collateral_ratio": {
+          "$ref": "#/definitions/Decimal"
+        },
+        "target_min_collateral_ratio": {
+          "$ref": "#/definitions/Decimal"
+        }
+      }
+    }
+  }
+}
