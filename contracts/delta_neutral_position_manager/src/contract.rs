@@ -55,14 +55,13 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let owner = CONFIG.load(deps.storage)?.owner;
-    let is_authorized = info.sender == owner;
-    // Only Terra manager can call this contract.
+    let is_authorized = match msg {
+        ExecuteMsg::PerformAction { .. } => info.sender == owner,
+        ExecuteMsg::Internal(_) => info.sender == env.contract.address,
+    };
     if !is_authorized {
         return Err(StdError::GenericErr {
-            msg: format!(
-                "Unauthorized: owner: {}, sender: {}",
-                owner.to_string(), info.sender.to_string()
-            ),
+            msg: "Unauthorized delta-neutral position manager call".to_string(),
         });
     }
 
@@ -111,9 +110,7 @@ fn send_open_position_to_position_contract(
         Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: contract_addr.to_string(),
             msg: to_binary(
-                &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition {
-                    params,
-                },
+                &aperture_common::delta_neutral_position::ExecuteMsg::OpenPosition { params },
             )?,
             funds: vec![uusd_asset.deduct_tax(&deps.querier)?],
         })),

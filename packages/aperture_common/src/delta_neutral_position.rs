@@ -37,9 +37,7 @@ pub enum ControllerExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
     ClosePosition {},
-    OpenPosition {
-        params: DeltaNeutralParams,
-    },
+    OpenPosition { params: DeltaNeutralParams },
     Controller(ControllerExecuteMsg),
     Internal(InternalExecuteMsg),
 }

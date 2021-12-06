@@ -43,9 +43,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     }
     match msg {
         ExecuteMsg::ClosePosition {} => close_position(deps.as_ref(), env, context),
-        ExecuteMsg::OpenPosition {
-            params,
-        } => delta_neutral_invest(
+        ExecuteMsg::OpenPosition { params } => delta_neutral_invest(
             deps,
             env,
             context,
