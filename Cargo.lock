@@ -878,6 +878,7 @@ dependencies = [
  "cosmwasm-std",
  "cw-storage-plus",
  "cw20 0.9.1",
+ "cw721",
  "cw721-base",
  "schemars",
  "serde",
