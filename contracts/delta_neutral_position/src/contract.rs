@@ -151,6 +151,7 @@ fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Cosmos
     })
 }
 
+// TODO: implement rebalance.
 pub fn rebalance(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
     // Find claimable SPEC reward.
     let spec_reward_info_response: spectrum_protocol::mirror_farm::RewardInfoResponse =

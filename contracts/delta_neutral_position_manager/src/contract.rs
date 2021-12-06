@@ -196,7 +196,7 @@ pub fn decrease_position(
         position,
         delta_neutral_position::ExecuteMsg::DecreasePosition {
             proportion,
-            // TODO: Pass recipient.
+            // TODO: Pass recipient from Terra manager via position managers.
             recipient: String::new(),
         },
         None,
