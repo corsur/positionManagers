@@ -12,19 +12,13 @@
         "perform_action": {
           "type": "object",
           "required": [
+            "action",
             "assets",
             "position"
           ],
           "properties": {
-            "action_data_binary": {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/Binary"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+            "action": {
+              "$ref": "#/definitions/Action"
             },
             "assets": {
               "type": "array",
@@ -54,6 +48,91 @@
     }
   ],
   "definitions": {
+    "Action": {
+      "description": "Action enum that represents what users can do to each strategy. For instance, users can open a position, which is represented by the OpenPosition variant.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "OpenPosition"
+          ],
+          "properties": {
+            "OpenPosition": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Binary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "ClosePosition"
+          ],
+          "properties": {
+            "ClosePosition": {
+              "type": "object",
+              "required": [
+                "recipient"
+              ],
+              "properties": {
+                "recipient": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "IncreasePosition"
+          ],
+          "properties": {
+            "IncreasePosition": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "DecreasePosition"
+          ],
+          "properties": {
+            "DecreasePosition": {
+              "type": "object",
+              "required": [
+                "proportion",
+                "recipient"
+              ],
+              "properties": {
+                "proportion": {
+                  "$ref": "#/definitions/Decimal"
+                },
+                "recipient": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "Asset": {
       "type": "object",
       "required": [

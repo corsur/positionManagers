@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, Binary, Uint128, Uint64};
+use cosmwasm_std::{Addr, Binary, Decimal, Uint128, Uint64};
 use cw_storage_plus::{U128Key, U32Key};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,25 @@ pub struct StrategyMetadata {
 pub enum StrategyPositionManagerExecuteMsg {
     PerformAction {
         position: Position,
-        action_data_binary: Option<Binary>,
+        action: Action,
         assets: Vec<terraswap::asset::Asset>,
+    },
+}
+
+/// Action enum that represents what users can do to each strategy.
+/// For instance, users can open a position, which is represented by the
+/// OpenPosition variant.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum Action {
+    OpenPosition {
+        data: Option<Binary>,
+    },
+    ClosePosition {
+        recipient: String,
+    },
+    IncreasePosition {},
+    DecreasePosition {
+        proportion: Decimal,
+        recipient: String,
     },
 }

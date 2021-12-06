@@ -1,4 +1,4 @@
-use aperture_common::common::{ChainId, Position, Strategy};
+use aperture_common::common::{Action, ChainId, Position, Strategy};
 use cosmwasm_std::{Binary, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -33,12 +33,12 @@ pub enum ExecuteMsg {
     RemoveStrategy { strategy_id: Uint64 },
     ExecuteStrategy {
         position: Position,
-        action_data_binary: Option<Binary>,
+        action: Action,
         assets: Vec<terraswap::asset::Asset>,
     },
     CreateTerraNFTPosition {
         strategy: Strategy,
-        action_data_binary: Option<Binary>,
+        data: Option<Binary>,
         assets: Vec<terraswap::asset::Asset>,
     },
 }

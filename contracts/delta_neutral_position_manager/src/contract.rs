@@ -1,8 +1,8 @@
-use aperture_common::common::{get_position_key, Position};
+use aperture_common::common::{get_position_key, Action, Position};
 use aperture_common::delta_neutral_position;
 use aperture_common::delta_neutral_position_manager::{
-    Action, ActionData, Context, DeltaNeutralParams, ExecuteMsg, InstantiateMsg,
-    InternalExecuteMsg, MigrateMsg, QueryMsg,
+    Context, DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
+    QueryMsg,
 };
 use cosmwasm_std::{
     entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
@@ -69,28 +69,20 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     match msg {
         ExecuteMsg::PerformAction {
             position,
-            action_data_binary,
+            action,
             assets,
-        } => {
-            let action_data: ActionData = from_binary(&action_data_binary.unwrap())?;
-            match action_data.action {
-                Action::OpenPosition {} => open_position(
-                    env,
-                    info,
-                    deps.storage,
-                    position,
-                    action_data.params,
-                    assets,
-                ),
-                Action::IncreasePosition {} => {
-                    increase_position(deps.as_ref(), info, position, assets)
-                }
-                Action::DecreasePosition { proportion } => {
-                    decrease_position(deps.as_ref(), position, proportion)
-                }
-                Action::ClosePosition {} => close_position(deps, position),
+        } => match action {
+            Action::OpenPosition { data } => {
+                let params: DeltaNeutralParams = from_binary(&data.unwrap())?;
+                open_position(env, info, deps.storage, position, params, assets)
             }
-        }
+            Action::IncreasePosition {} => increase_position(deps.as_ref(), info, position, assets),
+            Action::DecreasePosition {
+                proportion,
+                recipient,
+            } => decrease_position(deps.as_ref(), position, proportion, recipient),
+            Action::ClosePosition { recipient } => close_position(deps, position, recipient),
+        },
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
             InternalExecuteMsg::SendOpenPositionToPositionContract {
                 position,
@@ -190,22 +182,22 @@ pub fn decrease_position(
     deps: Deps,
     position: Position,
     proportion: Decimal,
+    recipient: String,
 ) -> StdResult<Response> {
     send_execute_message_to_position_contract(
         deps,
         position,
         delta_neutral_position::ExecuteMsg::DecreasePosition {
             proportion,
-            // TODO: Pass recipient from Terra manager via position managers.
-            recipient: String::new(),
+            recipient,
         },
         None,
     )
 }
 
-pub fn close_position(deps: DepsMut, position: Position) -> StdResult<Response> {
+pub fn close_position(deps: DepsMut, position: Position, recipient: String) -> StdResult<Response> {
     POSITION_TO_CONTRACT_ADDR.remove(deps.storage, get_position_key(&position));
-    decrease_position(deps.as_ref(), position, Decimal::one())
+    decrease_position(deps.as_ref(), position, Decimal::one(), recipient)
 }
 
 // To store instantiated contract address into state and initiate investment.

@@ -1,5 +1,6 @@
 use aperture_common::common::{
-    get_position_key, Position, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg,
+    get_position_key, Action, Position, Strategy, StrategyMetadata,
+    StrategyPositionManagerExecuteMsg,
 };
 use aperture_common::nft::{Extension, Metadata};
 use cosmwasm_std::{
@@ -50,21 +51,14 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::RemoveStrategy { strategy_id } => remove_strategy(deps, strategy_id),
         ExecuteMsg::CreateTerraNFTPosition {
             strategy,
-            action_data_binary,
+            data,
             assets,
-        } => create_terra_nft_position(deps, env, info, strategy, action_data_binary, assets),
+        } => create_terra_nft_position(deps, env, info, strategy, data, assets),
         ExecuteMsg::ExecuteStrategy {
             position,
-            action_data_binary,
+            action,
             assets,
-        } => execute_strategy(
-            deps.as_ref(),
-            env,
-            info,
-            position,
-            action_data_binary,
-            assets,
-        ),
+        } => execute_strategy(deps.as_ref(), env, info, position, action, assets),
     }
 }
 
@@ -98,7 +92,7 @@ pub fn create_terra_nft_position(
     env: Env,
     info: MessageInfo,
     strategy: Strategy,
-    action_data: Option<Binary>,
+    data: Option<Binary>,
     assets: Vec<Asset>,
 ) -> StdResult<Response> {
     // Assign position id.
@@ -126,8 +120,14 @@ pub fn create_terra_nft_position(
 
     // Emit messages that execute the strategy and issues a cw-721 token to the user at the end.
     let mut response = Response::new();
-    response.messages =
-        create_execute_strategy_messages(deps.as_ref(), env, info, position, action_data, assets)?;
+    response.messages = create_execute_strategy_messages(
+        deps.as_ref(),
+        env,
+        info,
+        position,
+        Action::OpenPosition { data },
+        assets,
+    )?;
     Ok(response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: (NFT_ADDR.load(deps.storage)?).to_string(),
         msg: to_binary(&nft_mint_msg)?,
@@ -140,7 +140,7 @@ pub fn execute_strategy(
     env: Env,
     info: MessageInfo,
     position: Position,
-    action_data_binary: Option<Binary>,
+    action: Action,
     assets: Vec<Asset>,
 ) -> StdResult<Response> {
     // Verify that the message sender owns an Aperture NFT with the specified position id.
@@ -160,7 +160,7 @@ pub fn execute_strategy(
     // Emit messages that execute the strategy.
     let mut response = Response::new();
     response.messages =
-        create_execute_strategy_messages(deps, env, info, position, action_data_binary, assets)?;
+        create_execute_strategy_messages(deps, env, info, position, action, assets)?;
     Ok(response)
 }
 
@@ -183,7 +183,7 @@ fn create_execute_strategy_messages(
     env: Env,
     info: MessageInfo,
     position: Position,
-    action_data_binary: Option<Binary>,
+    action: Action,
     assets: Vec<Asset>,
 ) -> StdResult<Vec<SubMsg>> {
     let strategy = POSITION_TO_STRATEGY_MAP.load(deps.storage, get_position_key(&position))?;
@@ -248,7 +248,7 @@ fn create_execute_strategy_messages(
         contract_addr: manager_addr.to_string(),
         msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
             position,
-            action_data_binary,
+            action,
             assets: assets_after_tax_deduction,
         })?,
         funds,

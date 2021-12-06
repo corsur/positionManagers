@@ -1,8 +1,8 @@
-use cosmwasm_std::{Addr, Binary, Decimal, Uint128};
+use cosmwasm_std::{Addr, Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::common::Position;
+use crate::common::{Action, Position};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -43,7 +43,7 @@ pub enum InternalExecuteMsg {
 pub enum ExecuteMsg {
     PerformAction {
         position: Position,
-        action_data_binary: Option<Binary>,
+        action: Action,
         assets: Vec<terraswap::asset::Asset>,
     },
     Internal(InternalExecuteMsg),
@@ -86,21 +86,4 @@ pub struct DeltaNeutralParams {
     pub target_min_collateral_ratio: Decimal,
     pub target_max_collateral_ratio: Decimal,
     pub mirror_asset_cw20_addr: String,
-}
-
-/// Action enum that represents what users can do to each strategy.
-/// For instance, users can open a position, which is represented by the
-/// OpenPosition variant.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub enum Action {
-    OpenPosition,
-    ClosePosition,
-    IncreasePosition,
-    DecreasePosition { proportion: Decimal },
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct ActionData {
-    pub action: Action,
-    pub params: DeltaNeutralParams,
 }
