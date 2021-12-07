@@ -153,6 +153,7 @@ pub fn find_collateral_uusd_amount(
     // (1) uusd_amount_for_collateral = target_collateral_ratio * (mAsset amount * mAsset oracle price).
     // (2) uusd_amount_for_long_position which is able to get us the same mAsset amount from Terraswap after the short position is opened.
 
+    // TODO: Consider whether Uint128 is enough for numerator and denominator.
     // Target collateral ratio is the mid point between the target min and max collateral ratios.
     let target_collateral_ratio =
         (target_min_collateral_ratio + target_max_collateral_ratio) / 2u128.into();

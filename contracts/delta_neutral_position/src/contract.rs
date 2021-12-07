@@ -61,6 +61,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             ControllerExecuteMsg::Rebalance {} => rebalance(deps.as_ref(), env, context),
         },
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
+            InternalExecuteMsg::ClaimAndIncreaseUusdBalance {} => {
+                claim_and_increase_uusd_balance(deps.as_ref(), env, context)
+            }
             InternalExecuteMsg::DepositUusdBalanceToAnchor {} => {
                 deposit_uusd_balance_to_anchor(deps.as_ref(), env, context)
             }
@@ -151,8 +154,22 @@ fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Cosmos
     })
 }
 
-// TODO: implement rebalance.
-pub fn rebalance(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
+pub fn rebalance(_deps: Deps, env: Env, _context: Context) -> StdResult<Response> {
+    let mut response = Response::new();
+    response = response.add_message(create_internal_execute_message(
+        &env,
+        InternalExecuteMsg::ClaimAndIncreaseUusdBalance {},
+    ));
+    // TODO: bring mAsset back to delta-neutral.
+    // TODO: bring collateral ratio to target range.
+    Ok(response)
+}
+
+pub fn claim_and_increase_uusd_balance(
+    deps: Deps,
+    env: Env,
+    context: Context,
+) -> StdResult<Response> {
     // Find claimable SPEC reward.
     let spec_reward_info_response: spectrum_protocol::mirror_farm::RewardInfoResponse =
         deps.querier.query_wasm_smart(
@@ -181,6 +198,7 @@ pub fn rebalance(deps: Deps, env: Env, context: Context) -> StdResult<Response> 
         mir_reward += reward_info.pending_reward;
     }
 
+    // Claim MIR / SPEC reward and swap them for uusd.
     let mut response = Response::new();
     if spec_reward > Uint128::zero() {
         // Mint SPEC tokens to ensure that emissable SPEC tokens are available for withdrawal.
@@ -209,7 +227,6 @@ pub fn rebalance(deps: Deps, env: Env, context: Context) -> StdResult<Response> 
             spec_reward,
         )?);
     }
-
     if mir_reward > Uint128::zero() {
         // Claim MIR reward.
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
@@ -227,18 +244,31 @@ pub fn rebalance(deps: Deps, env: Env, context: Context) -> StdResult<Response> 
         )?);
     }
 
-    response = response.add_message(create_internal_execute_message(
-        &env,
-        InternalExecuteMsg::DepositUusdBalanceToAnchor {},
-    ));
-    response = response.add_message(create_internal_execute_message(
-        &env,
-        InternalExecuteMsg::AddAnchorUstBalanceToCollateral {},
-    ));
+    // If there are any unlocked funds in the short farm, claim them.
+    let position_info = POSITION_INFO.load(deps.storage)?;
+    let position_lock_info_result: StdResult<mirror_protocol::lock::PositionLockInfoResponse> =
+        deps.querier.query_wasm_smart(
+            &context.mirror_lock_addr,
+            &mirror_protocol::lock::QueryMsg::PositionLockInfo {
+                position_idx: position_info.cdp_idx,
+            },
+        );
+    if let Ok(position_lock_info_response) = position_lock_info_result {
+        if position_lock_info_response.unlock_time <= env.block.time.seconds() {
+            response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: context.mirror_lock_addr.to_string(),
+                msg: to_binary(&mirror_protocol::lock::ExecuteMsg::UnlockPositionFunds {
+                    positions_idx: vec![position_info.cdp_idx],
+                })?,
+                funds: vec![],
+            }));
+        }
+    }
+
     Ok(response)
 }
 
-fn get_first_position_index(deps: Deps, env: Env, context: &Context) -> StdResult<Uint128> {
+fn get_cdp_index(deps: Deps, env: Env, context: &Context) -> StdResult<Uint128> {
     let positions_response: mirror_protocol::mint::PositionsResponse =
         deps.querier.query_wasm_smart(
             &context.mirror_mint_addr,
@@ -341,7 +371,7 @@ fn swap_uusd_for_minted_mirror_asset(
     context: Context,
 ) -> StdResult<Response> {
     // Query position info.
-    let cdp_idx = get_first_position_index(deps.as_ref(), env, &context)?;
+    let cdp_idx = get_cdp_index(deps.as_ref(), env, &context)?;
     let position_response: mirror_protocol::mint::PositionResponse =
         deps.querier.query_wasm_smart(
             &context.mirror_mint_addr,
@@ -407,7 +437,6 @@ fn swap_uusd_for_minted_mirror_asset(
     )
 }
 
-// TODO: Implement decrease_position.
 pub fn decrease_position(
     deps: Deps,
     env: Env,
@@ -415,6 +444,7 @@ pub fn decrease_position(
     _fraction: Decimal,
     _recipient: String,
 ) -> StdResult<Response> {
+    // TODO: Rebalance, reduce short / long / collateral positions by `fraction`, and then return UST to `recipient`.
     let position_info = POSITION_INFO.load(deps.storage)?;
     let position_response: mirror_protocol::mint::PositionResponse =
         deps.querier.query_wasm_smart(
@@ -557,27 +587,6 @@ pub fn claim_short_sale_proceeds_and_stake(
 ) -> StdResult<Response> {
     let position_info = POSITION_INFO.load(deps.storage)?;
     let mut response = Response::new();
-
-    // If UST locked in the position can be claimed now, claim it.
-    let position_lock_info_query_result = deps.querier.query_wasm_smart(
-        &context.mirror_lock_addr,
-        &mirror_protocol::lock::QueryMsg::PositionLockInfo {
-            position_idx: position_info.cdp_idx,
-        },
-    );
-    if position_lock_info_query_result.is_ok() {
-        let position_lock_info: mirror_protocol::lock::PositionLockInfoResponse =
-            position_lock_info_query_result?;
-        if position_lock_info.unlock_time <= env.block.time.seconds() {
-            response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: context.mirror_lock_addr.to_string(),
-                msg: to_binary(&mirror_protocol::lock::ExecuteMsg::UnlockPositionFunds {
-                    positions_idx: vec![position_info.cdp_idx],
-                })?,
-                funds: vec![],
-            }));
-        }
-    }
 
     // Find uusd amount to pair with mAsset of quantity `mirror_asset_amount`.
     let terraswap_pair_asset_info = create_terraswap_cw20_uusd_pair_asset_info(
