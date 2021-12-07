@@ -578,7 +578,7 @@ pub fn stake_terraswap_lp_tokens(
     }
 }
 
-pub fn claim_short_sale_proceeds_and_stake(
+pub fn pair_ust_with_mirror_asset_and_stake(
     deps: Deps,
     env: Env,
     context: Context,
