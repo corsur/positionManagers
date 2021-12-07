@@ -1,14 +1,25 @@
 import { LCDClient, MnemonicKey, MsgStoreCode, MsgInstantiateContract, isTxError } from '@terra-money/terra.js';
 import * as fs from 'fs';
 
+const gasPrices = {
+  uusd: 0.15
+};
+
+const gasAdjustment = 1.5;
+
 const testnet = new LCDClient({
   URL: 'https://bombay-lcd.terra.dev',
   chainID: 'bombay-12',
+  gasPrices: gasPrices,
+  gasAdjustment: gasAdjustment,
 });
+
 const mainnet = new LCDClient({
-    URL: 'https://lcd.terra.dev',
-    chainID: 'columbus-5',
-  });
+  URL: 'https://lcd.terra.dev',
+  chainID: 'columbus-5',
+  gasPrices: gasPrices,
+  gasAdjustment: gasAdjustment,
+});
 
 const test_wallet = testnet.wallet(new MnemonicKey({
   mnemonic:
@@ -17,10 +28,9 @@ const test_wallet = testnet.wallet(new MnemonicKey({
 
 async function store_code(wasm_file) {
   const storeCodeTx = await test_wallet.createAndSignTx({
-    msgs: [new MsgStoreCode(test_wallet.key.acc_address, fs.readFileSync(wasm_file).toString('base64'))],
+    msgs: [new MsgStoreCode(test_wallet.key.accAddress, fs.readFileSync(wasm_file).toString('base64'))],
   });
-  const storeCodeTxResult = await terra.tx.broadcast(storeCodeTx);
-  console.log(storeCodeTxResult);
+  const storeCodeTxResult = await testnet.tx.broadcast(storeCodeTx);
   if (isTxError(storeCodeTxResult)) {
     throw new Error(
       `Store code failed. code: ${storeCodeTxResult.code}, codespace: ${storeCodeTxResult.codespace}, raw_log: ${storeCodeTxResult.raw_log}`
@@ -29,7 +39,7 @@ async function store_code(wasm_file) {
   const {
     store_code: { code_id },
   } = storeCodeTxResult.logs[0].eventsByType;
-  return code_id;
+  return code_id[0];
 }
 
 // Instantiate message refers to various contract addresses on the 'bombay-12' testnet.
@@ -37,7 +47,7 @@ function instantiate_delta_neutral_position_manager(manager_code_id, position_co
   test_wallet.createAndSignTx({
     msgs: [new MsgInstantiateContract(/*sender=*/test_wallet.key.acc_address, /*admin=*/test_wallet.key.acc_address, manager_code_id, {
       delta_neutral_position_code_id: position_code_id,
-      controller: test_wallet.key.acc_address,
+      controller: test_wallet.key.accAddress,
       min_uusd_amount: 100 * 1e6,
       anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
       mirror_cw20_addr: "terra10llyp6v3j3her8u3ce66ragytu45kcmd9asj3u",
@@ -54,24 +64,26 @@ function instantiate_delta_neutral_position_manager(manager_code_id, position_co
       terraswap_factory_addr: "terra18qpjm4zkvqnpjpw0zn0tdr8gdzvt8au35v45xf",
       collateral_ratio_safety_margin: 0.3,
     },
-    /*init_coins=*/{},)],
+    /*init_coins=*/{})],
     memo: 'Instantiate delta-neutral position manager',
   })
-  .then(tx => terra.tx.broadcast(tx))
-  .then(result => {
-    console.log(result);
-    if (isTxError(result)) {
-      throw new Error(
-        `Failed to store code: ${storeCodeTxResult.code}, codespace: ${storeCodeTxResult.codespace}, raw_log: ${storeCodeTxResult.raw_log}`
-      );
-    }
-  });
+    .then(tx => terra.tx.broadcast(tx))
+    .then(result => {
+      console.log(result);
+      if (isTxError(result)) {
+        throw new Error(
+          `Failed to store code: ${storeCodeTxResult.code}, codespace: ${storeCodeTxResult.codespace}, raw_log: ${storeCodeTxResult.raw_log}`
+        );
+      }
+    });
 }
 
-function deploy() {
-  var delta_neutral_position_manager_code_id = store_code('../artifacts/delta_neutral_position_manager.wasm')
-  var delta_neutral_position_code_id = store_code('../artifacts/delta_neutral_position.wasm');
-  instantiate_delta_neutral_position_manager(delta_neutral_position_manager_code_id, delta_neutral_position_code_id);
+async function deploy() {
+  console.log('Deploying using address: ', test_wallet.key.accAddress);
+  var delta_neutral_position_manager_code_id = await store_code('../artifacts/delta_neutral_position_manager.wasm')
+  console.log('new code id: ', delta_neutral_position_manager_code_id);
+  // var delta_neutral_position_code_id = store_code('../artifacts/delta_neutral_position.wasm');
+  // instantiate_delta_neutral_position_manager(delta_neutral_position_manager_code_id, delta_neutral_position_code_id);
 }
 
-deploy();
+await deploy();
