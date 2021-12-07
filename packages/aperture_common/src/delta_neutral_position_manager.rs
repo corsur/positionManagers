@@ -6,6 +6,7 @@ use crate::common::{Action, Position};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
+    pub owner_addr: String,
     pub delta_neutral_position_code_id: u64,
     pub controller: String,
     pub min_uusd_amount: Uint128,

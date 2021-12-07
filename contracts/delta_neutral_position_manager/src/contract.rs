@@ -20,12 +20,12 @@ const INSTANTIATE_REPLY_ID: u64 = 1;
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
     // Store contextual informaiton.
     let config = Config {
-        owner: info.sender,
+        owner: deps.api.addr_validate(&msg.owner_addr)?,
         delta_neutral_position_code_id: msg.delta_neutral_position_code_id,
         min_uusd_amount: msg.min_uusd_amount,
         context: Context {
