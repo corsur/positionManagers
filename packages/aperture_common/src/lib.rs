@@ -5,4 +5,3 @@ pub mod common;
 pub mod delta_neutral_position;
 pub mod delta_neutral_position_manager;
 pub mod nft;
-pub mod msg_instantiate_contract_response;

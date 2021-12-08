@@ -11,8 +11,8 @@ use cosmwasm_std::{
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
+use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{Config, CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION};
-use aperture_common::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
 

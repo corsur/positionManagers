@@ -11,11 +11,11 @@ use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, APERTURE_NFT, TERRA_CHAIN_ID};
+use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{
     get_strategy_id_key, NEXT_POSITION_ID, NEXT_STRATEGY_ID, NFT_ADDR, OWNER,
     POSITION_TO_STRATEGY_MAP, STRATEGY_ID_TO_METADATA_MAP,
 };
-use aperture_common::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
 
