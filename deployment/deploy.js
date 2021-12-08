@@ -66,6 +66,13 @@ async function store_code(wasm_file) {
   return parseInt(code_id[0]);
 }
 
+function getContractAddress(response) {
+  const {
+    instantiate_contract: { contract_address },
+  } = response.logs[0].eventsByType;
+  return contract_address[0];
+}
+
 async function instantiate_terra_manager(terra_manager_id, nft_code_id) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
@@ -89,12 +96,7 @@ async function instantiate_terra_manager(terra_manager_id, nft_code_id) {
       `Instantiate Terra Manager contract failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
     );
   }
-  console.log("--- instantiate response ---");
-  console.log(JSON.stringify(response, undefined, 2));
-  const {
-    instantiate_contract: { contract_address },
-  } = response.logs[0].eventsByType;
-  return contract_address[0];
+  return getContractAddress(response);
 }
 
 async function instantiate_delta_neutral_position_manager(
@@ -144,8 +146,7 @@ async function instantiate_delta_neutral_position_manager(
       `Instantiate contract failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
     );
   }
-  console.log("--- instantiate response ---");
-  console.log(JSON.stringify(response, undefined, 2));
+  return getContractAddress(response);
 }
 
 async function deploy() {
@@ -189,10 +190,16 @@ async function deploy() {
     aperture_nft_id
   );
   console.log("Terra manager contract address: ", terra_manager_addr);
-  await instantiate_delta_neutral_position_manager(
-    terra_manager_addr,
-    delta_neutral_position_manager_id,
-    delta_neutral_position_id
+
+  const delta_neutral_position_manager_addr =
+    await instantiate_delta_neutral_position_manager(
+      terra_manager_addr,
+      delta_neutral_position_manager_id,
+      delta_neutral_position_id
+    );
+  console.log(
+    "delta neutral position manager address: ",
+    delta_neutral_position_manager_addr
   );
   /*****************************************/
   /***** End of contract instantiation *****/
