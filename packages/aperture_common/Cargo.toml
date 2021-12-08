@@ -10,9 +10,13 @@ edition = "2018"
 # for more explicit tests, cargo test --features=backtraces
 backtraces = ["cosmwasm-std/backtraces"]
 
+[build-dependencies]
+protoc-rust = "2.25.2"
+
 [dependencies]
 cosmwasm-std = { version = "0.16.0" }
 cw-storage-plus = { version = "0.9.1" }
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 terraswap = "2.4.0"
+protobuf = { version = "2.25.2", features = ["with-bytes"] }

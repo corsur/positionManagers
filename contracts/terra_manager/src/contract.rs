@@ -4,9 +4,10 @@ use aperture_common::common::{
 };
 use aperture_common::nft::{Extension, Metadata};
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
-    StdError, StdResult, Uint128, Uint64, WasmMsg,
+    entry_point, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply,
+    ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, Uint64, WasmMsg,
 };
+use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, APERTURE_NFT, TERRA_CHAIN_ID};
@@ -14,19 +15,39 @@ use crate::state::{
     get_strategy_id_key, NEXT_POSITION_ID, NEXT_STRATEGY_ID, NFT_ADDR, OWNER,
     POSITION_TO_STRATEGY_MAP, STRATEGY_ID_TO_METADATA_MAP,
 };
+use aperture_common::msg_instantiate_contract_response::MsgInstantiateContractResponse;
+
+const INSTANTIATE_REPLY_ID: u64 = 1;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
     OWNER.save(deps.storage, &info.sender)?;
-    NFT_ADDR.save(deps.storage, &deps.api.addr_validate(&msg.nft_addr)?)?;
     NEXT_STRATEGY_ID.save(deps.storage, &Uint64::zero())?;
     NEXT_POSITION_ID.save(deps.storage, &Uint128::zero())?;
-    Ok(Response::default())
+    // Instantiate NFT contract and store its address in the state through reply.
+    Ok(Response::new().add_submessage(SubMsg {
+        msg: WasmMsg::Instantiate {
+            admin: None,
+            code_id: msg.code_id,
+            msg: to_binary(&cw721_base::InstantiateMsg {
+                name: "Aperture NFT".to_string(),
+                symbol: "APT_NFT".to_string(),
+                // Minter will be the Terra Manager itself.
+                minter: env.contract.address.to_string(),
+            })?,
+            funds: vec![],
+            label: String::new(),
+        }
+        .into(),
+        gas_limit: None,
+        id: INSTANTIATE_REPLY_ID,
+        reply_on: ReplyOn::Success,
+    }))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -60,6 +81,22 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             assets,
         } => execute_strategy(deps.as_ref(), env, info, position, action, assets),
     }
+}
+
+// To store instantiated NFT contract address into state.
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
+    let data = msg.result.unwrap().data.unwrap();
+    let res: MsgInstantiateContractResponse =
+        Message::parse_from_bytes(data.as_slice()).map_err(|_| {
+            StdError::parse_err(
+                "MsgInstantiateContractResponse",
+                "Terra Manager failed to parse MsgInstantiateContractResponse",
+            )
+        })?;
+    let contract_addr = deps.api.addr_validate(res.get_contract_address())?;
+    NFT_ADDR.save(deps.storage, &contract_addr)?;
+    Ok(Response::default())
 }
 
 pub fn add_strategy(

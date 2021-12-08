@@ -11,8 +11,8 @@ use cosmwasm_std::{
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
-use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{Config, CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION};
+use aperture_common::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
 
@@ -208,7 +208,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
         Message::parse_from_bytes(data.as_slice()).map_err(|_| {
             StdError::parse_err(
                 "MsgInstantiateContractResponse",
-                "failed to parse MsgInstantiateContractResponse",
+                "Delta Neutral Position Manager failed to parse MsgInstantiateContractResponse",
             )
         })?;
     let contract_addr = deps.api.addr_validate(res.get_contract_address())?;
