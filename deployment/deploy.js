@@ -19,12 +19,8 @@ async function initializeSequence(wallet) {
   sequence = account_and_sequence.sequence;
 }
 
-function incrementSequence() {
-  sequence += 1;
-}
-
-function getSequence() {
-  return sequence;
+function getAndIncrementSequence() {
+  return sequence++;
 }
 
 const testnet = new LCDClient({
@@ -56,9 +52,8 @@ async function store_code(wasm_file) {
         fs.readFileSync(wasm_file).toString("base64")
       ),
     ],
-    sequence: getSequence(),
+    sequence: getAndIncrementSequence(),
   });
-  incrementSequence();
   const storeCodeTxResult = await testnet.tx.broadcast(storeCodeTx);
   if (isTxError(storeCodeTxResult)) {
     throw new Error(
@@ -71,8 +66,39 @@ async function store_code(wasm_file) {
   return parseInt(code_id[0]);
 }
 
-// Instantiate message refers to various contract addresses on the 'bombay-12' testnet.
+async function instantiate_terra_manager(terra_manager_id, nft_code_id) {
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgInstantiateContract(
+        /*sender=*/ test_wallet.key.accAddress,
+        /*admin=*/ test_wallet.key.accAddress,
+        terra_manager_id,
+        {
+          code_id: nft_code_id,
+        },
+        /*init_coins=*/ {}
+      ),
+    ],
+    memo: "Instantiate Terra Manager",
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  if (isTxError(response)) {
+    throw new Error(
+      `Instantiate Terra Manager contract failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+    );
+  }
+  console.log("--- instantiate response ---");
+  console.log(JSON.stringify(response, undefined, 2));
+  const {
+    instantiate_contract: { contract_address },
+  } = response.logs[0].eventsByType;
+  return contract_address[0];
+}
+
 async function instantiate_delta_neutral_position_manager(
+  terra_manager_addr,
   manager_code_id,
   position_code_id
 ) {
@@ -83,6 +109,7 @@ async function instantiate_delta_neutral_position_manager(
         /*admin=*/ test_wallet.key.accAddress,
         manager_code_id,
         {
+          owner_addr: terra_manager_addr,
           delta_neutral_position_code_id: position_code_id,
           controller: test_wallet.key.accAddress,
           min_uusd_amount: (100 * 1e6).toString(),
@@ -108,9 +135,8 @@ async function instantiate_delta_neutral_position_manager(
       ),
     ],
     memo: "Instantiate delta-neutral position manager",
-    sequence: getSequence(),
+    sequence: getAndIncrementSequence(),
   });
-  incrementSequence();
 
   const response = await testnet.tx.broadcast(tx);
   if (isTxError(response)) {
@@ -118,30 +144,59 @@ async function instantiate_delta_neutral_position_manager(
       `Instantiate contract failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
     );
   }
-  console.log("instantiate response: ", response);
+  console.log("--- instantiate response ---");
+  console.log(JSON.stringify(response, undefined, 2));
 }
 
 async function deploy() {
   // Initialize sequence number.
   await initializeSequence(test_wallet);
   console.log("Deploying using address: ", test_wallet.key.accAddress);
+
+  /******************************************/
+  /***** Store bytecode onto blockchain *****/
+  /******************************************/
+  const aperture_nft_id = await store_code(
+    "../artifacts/aperture_position_nft.wasm"
+  );
+  console.log("aperture_nft_id: ", aperture_nft_id);
+
   const terra_manager_id = await store_code("../artifacts/terra_manager.wasm");
+  console.log("terra_manager_id: ", terra_manager_id);
+
   const delta_neutral_position_manager_id = await store_code(
     "../artifacts/delta_neutral_position_manager.wasm"
   );
-  const delta_neutral_position_id = await store_code(
-    "../artifacts/delta_neutral_position.wasm"
-  );
-  console.log("terra_manager_id: ", terra_manager_id);
   console.log(
     "delta_neutral_position_manager_id: ",
     delta_neutral_position_manager_id
   );
+
+  const delta_neutral_position_id = await store_code(
+    "../artifacts/delta_neutral_position.wasm"
+  );
   console.log("delta_neutral_position_id: ", delta_neutral_position_id);
+  /***************************************************/
+  /***** End of storing bytecode onto blockchain *****/
+  /***************************************************/
+
+  /*********************************/
+  /***** Instantiate contracts *****/
+  /*********************************/
+
+  const terra_manager_addr = await instantiate_terra_manager(
+    terra_manager_id,
+    aperture_nft_id
+  );
+  console.log("Terra manager contract address: ", terra_manager_addr);
   await instantiate_delta_neutral_position_manager(
+    terra_manager_addr,
     delta_neutral_position_manager_id,
     delta_neutral_position_id
   );
+  /*****************************************/
+  /***** End of contract instantiation *****/
+  /*****************************************/
 }
 
 await deploy();
