@@ -1,7 +1,5 @@
-use aperture_common::common::{
-    get_position_key, Action, Position, Strategy, StrategyMetadata,
-    StrategyPositionManagerExecuteMsg,
-};
+use aperture_common::common::{get_position_key, Action, Position, Strategy, StrategyMetadata};
+use aperture_common::delta_neutral_position_manager::ExecuteMsg::PerformAction;
 use aperture_common::nft::{Extension, Metadata};
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply,
@@ -284,7 +282,7 @@ fn create_execute_strategy_messages(
     // Ask strategy position manager to perform the requested action.
     messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: manager_addr.to_string(),
-        msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
+        msg: to_binary(&PerformAction {
             position,
             action,
             assets: assets_after_tax_deduction,
