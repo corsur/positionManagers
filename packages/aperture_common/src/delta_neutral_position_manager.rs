@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::common::{Action, Position};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
     pub owner_addr: String,
     pub delta_neutral_position_code_id: u64,
@@ -63,6 +64,7 @@ pub enum QueryMsg {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct Context {
     pub controller: Addr,
     pub anchor_ust_cw20_addr: Addr,
@@ -83,6 +85,7 @@ pub struct Context {
 
 // Parameters of a delta-neutral position.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct DeltaNeutralParams {
     pub target_min_collateral_ratio: Decimal,
     pub target_max_collateral_ratio: Decimal,

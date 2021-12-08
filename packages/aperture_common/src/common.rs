@@ -18,12 +18,14 @@ pub fn get_position_key(position: &Position) -> PositionKey {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct Position {
     pub chain_id: ChainId,
     pub position_id: PositionId,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct Strategy {
     pub chain_id: ChainId,
     pub strategy_id: StrategyId,
@@ -31,6 +33,7 @@ pub struct Strategy {
 
 // Metadata describing a strategy.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct StrategyMetadata {
     pub name: String,
     pub version: String,
@@ -42,6 +45,7 @@ pub struct StrategyMetadata {
 /// Each strategy position manager MAY choose to add other variants to its
 /// own ExecuteMsg.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum StrategyPositionManagerExecuteMsg {
     PerformAction {
         position: Position,
@@ -54,6 +58,7 @@ pub enum StrategyPositionManagerExecuteMsg {
 /// For instance, users can open a position, which is represented by the
 /// OpenPosition variant.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum Action {
     OpenPosition {
         data: Option<Binary>,

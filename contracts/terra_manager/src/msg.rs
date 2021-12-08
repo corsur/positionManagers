@@ -7,6 +7,7 @@ pub static TERRA_CHAIN_ID: ChainId = 0;
 pub static APERTURE_NFT: &str = "ApertureNFT";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
     pub code_id: u64,
 }
