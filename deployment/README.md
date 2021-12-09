@@ -13,6 +13,11 @@ Check node version:
 v14.18.2
 ```
 
+## Install
+```sh
+npm install
+```
+
 ## Deploy
 
 ```sh

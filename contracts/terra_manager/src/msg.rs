@@ -32,11 +32,14 @@ pub enum ExecuteMsg {
     ///
     /// Only contract owner may execute `RemoveStrategy`.
     RemoveStrategy { strategy_id: Uint64 },
+    /// For existing positions or positions created from a different chain.
+    /// Essentially, use this when creation of NFT position id is not needed.
     ExecuteStrategy {
         position: Position,
         action: Action,
         assets: Vec<terraswap::asset::Asset>,
     },
+    /// Terra local entry point for creating strategies.
     CreateTerraNFTPosition {
         strategy: Strategy,
         data: Option<Binary>,

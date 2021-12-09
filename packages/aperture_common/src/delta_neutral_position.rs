@@ -7,6 +7,7 @@ use crate::delta_neutral_position_manager::DeltaNeutralParams;
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {}
 
+/// Internal message to achieve better logic flow.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InternalExecuteMsg {

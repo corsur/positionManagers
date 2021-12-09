@@ -55,7 +55,7 @@ pub enum ExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub struct MigrateMsg {}
 
-/// Get basic information for a position.
+/// Get basic information from this position manager.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
@@ -63,6 +63,9 @@ pub enum QueryMsg {
     GetContext {},
 }
 
+/// Contextual information for delta neutral position manager. It contains
+/// addresses for contracts needed by this position manager along with
+/// other necessary data.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct Context {
@@ -83,7 +86,7 @@ pub struct Context {
     pub collateral_ratio_safety_margin: Decimal,
 }
 
-// Parameters of a delta-neutral position.
+/// Parameters of a delta-neutral position.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct DeltaNeutralParams {
