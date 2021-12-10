@@ -11,7 +11,8 @@ use crate::state::{
 use crate::util::{
     create_terraswap_cw20_uusd_pair_asset_info, decimal_division, decimal_inverse,
     decimal_multiplication, find_collateral_uusd_amount, get_mirror_asset_oracle_uusd_price,
-    get_position_state, increase_mirror_asset_balance_from_long_farm, swap_cw20_token_for_uusd,
+    get_position_state, get_uusd_asset_from_amount, increase_mirror_asset_balance_from_long_farm,
+    swap_cw20_token_for_uusd,
 };
 use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
@@ -298,6 +299,7 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             mirror_asset_long_amount - state.mirror_asset_short_amount;
         response = response.add_messages(increase_mirror_asset_balance_from_long_farm(
             &state,
+            &context,
             net_long_mirror_asset_amount,
         ));
         response = response.add_message(swap_cw20_token_for_uusd(
@@ -341,6 +343,7 @@ pub fn achieve_safe_collateral_ratios(
             state.mirror_asset_short_amount - target_short_mirror_asset_amount;
         response = response.add_messages(increase_mirror_asset_balance_from_long_farm(
             &state,
+            &context,
             burn_mirror_asset_amount,
         ));
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
@@ -764,12 +767,7 @@ pub fn pair_ust_with_mirror_asset_and_stake(
                     },
                     amount: mirror_asset_amount,
                 },
-                terraswap::asset::Asset {
-                    info: terraswap::asset::AssetInfo::NativeToken {
-                        denom: String::from("uusd"),
-                    },
-                    amount: uusd_amount_to_provide_liquidity,
-                },
+                get_uusd_asset_from_amount(uusd_amount_to_provide_liquidity),
             ],
             slippage_tolerance: None,
             receiver: None,

@@ -4,7 +4,7 @@ use cosmwasm_std::{
     WasmMsg,
 };
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
-use terraswap::asset::AssetInfo;
+use terraswap::asset::{Asset, AssetInfo};
 
 use crate::state::{TargetCollateralRatioRange, POSITION_INFO};
 
@@ -20,6 +20,15 @@ pub fn decimal_division(a: Decimal, b: Decimal) -> Decimal {
 
 pub fn decimal_inverse(decimal: Decimal) -> Decimal {
     Decimal::from_ratio(DECIMAL_FRACTIONAL, decimal * DECIMAL_FRACTIONAL)
+}
+
+pub fn get_uusd_asset_from_amount(amount: Uint128) -> Asset {
+    Asset {
+        info: AssetInfo::NativeToken {
+            denom: "uusd".into(),
+        },
+        amount,
+    }
 }
 
 /// Returns an array comprising two AssetInfo elements, representing a Terraswap token pair where the first token is a cw20 with contract address
@@ -221,6 +230,12 @@ pub struct PositionState {
     pub mirror_asset_oracle_price: Decimal,
     // Oracle price of aUST.
     pub anchor_ust_oracle_price: Decimal,
+    // Amount of LP token staked in Spectrum Mirror farm.
+    pub lp_token_amount: Uint128,
+    // Address of the LP cw20 token contract.
+    pub lp_token_cw20_addr: String,
+    // Address of the mAsset-UST Terraswap pair contract.
+    pub terraswap_pair_addr: String,
 }
 
 pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult<PositionState> {
@@ -240,8 +255,50 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         },
     )?;
 
-    let uusd_long_farm = Uint128::zero();
-    let mirror_asset_long_farm = Uint128::zero();
+    let spectrum_info: spectrum_protocol::mirror_farm::RewardInfoResponse =
+        deps.querier.query_wasm_smart(
+            context.spectrum_mirror_farms_addr.to_string(),
+            &spectrum_protocol::mirror_farm::QueryMsg::reward_info {
+                staker_addr: env.contract.address.to_string(),
+                asset_token: Some(position_info.mirror_asset_cw20_addr.to_string()),
+            },
+        )?;
+    let mut lp_token_amount = Uint128::zero();
+    let mut uusd_long_farm = Uint128::zero();
+    let mut mirror_asset_long_farm = Uint128::zero();
+    let mut lp_token_cw20_addr = String::new();
+    let mut terraswap_pair_addr = String::new();
+    for info in spectrum_info.reward_infos.iter() {
+        if info.asset_token == position_info.mirror_asset_cw20_addr {
+            lp_token_amount = info.bond_amount;
+
+            let asset_infos = create_terraswap_cw20_uusd_pair_asset_info(
+                position_info.mirror_asset_cw20_addr.as_str(),
+            );
+            let terraswap_pair_info = terraswap::querier::query_pair_info(
+                &deps.querier,
+                context.terraswap_factory_addr.clone(),
+                &asset_infos,
+            )?;
+            terraswap_pair_addr = terraswap_pair_info.contract_addr;
+            let validated_pair_addr = deps.api.addr_validate(&terraswap_pair_addr)?;
+            lp_token_cw20_addr = terraswap_pair_info.liquidity_token;
+            let lp_total_supply = terraswap::querier::query_supply(
+                &deps.querier,
+                deps.api.addr_validate(&lp_token_cw20_addr)?,
+            )?;
+
+            mirror_asset_long_farm = lp_token_amount.multiply_ratio(
+                asset_infos[0].query_pool(&deps.querier, deps.api, validated_pair_addr.clone())?,
+                lp_total_supply,
+            );
+            uusd_long_farm = lp_token_amount.multiply_ratio(
+                asset_infos[1].query_pool(&deps.querier, deps.api, validated_pair_addr)?,
+                lp_total_supply,
+            );
+        }
+    }
+
     let state = PositionState {
         uusd_balance: terraswap::querier::query_balance(
             &deps.querier,
@@ -265,17 +322,44 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
             position_info.mirror_asset_cw20_addr.as_str(),
         )?,
         anchor_ust_oracle_price: collateral_price_response.rate,
+        lp_token_amount,
+        lp_token_cw20_addr,
+        terraswap_pair_addr,
     };
     Ok(state)
 }
 
 pub fn increase_mirror_asset_balance_from_long_farm(
     state: &PositionState,
+    context: &Context,
     target_mirror_asset_balance: Uint128,
 ) -> Vec<CosmosMsg> {
     if target_mirror_asset_balance <= state.mirror_asset_balance {
         return vec![];
     }
-    // TODO
-    vec![]
+    let withdraw_mirror_asset_amount = target_mirror_asset_balance - state.mirror_asset_balance;
+    let withdraw_lp_token_amount = state
+        .lp_token_amount
+        .multiply_ratio(withdraw_mirror_asset_amount, state.mirror_asset_long_farm);
+    vec![
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: context.spectrum_mirror_farms_addr.to_string(),
+            funds: vec![],
+            msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::unbond {
+                asset_token: state.mirror_asset_cw20_addr.to_string(),
+                amount: withdraw_lp_token_amount,
+            })
+            .unwrap(),
+        }),
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: state.lp_token_cw20_addr.to_string(),
+            funds: vec![],
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: state.terraswap_pair_addr.to_string(),
+                amount: withdraw_lp_token_amount,
+                msg: to_binary(&terraswap::pair::Cw20HookMsg::WithdrawLiquidity {}).unwrap(),
+            })
+            .unwrap(),
+        }),
+    ]
 }
