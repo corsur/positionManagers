@@ -12,6 +12,8 @@ pub struct InstantiateMsg {}
 #[serde(rename_all = "snake_case")]
 pub enum InternalExecuteMsg {
     ClaimAndIncreaseUusdBalance {},
+    AchieveDeltaNeutral {},
+    AchieveSafeCollateralRatio {},
     DepositUusdBalanceToAnchor {},
     AddAnchorUstBalanceToCollateral {},
     OpenCdpWithAnchorUstBalanceAsCollateral {
@@ -28,7 +30,7 @@ pub enum InternalExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ControllerExecuteMsg {
-    Rebalance {},
+    RebalanceAndReinvest {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

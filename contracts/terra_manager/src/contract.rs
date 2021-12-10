@@ -1,4 +1,7 @@
-use aperture_common::common::{get_position_key, Action, Position, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg};
+use aperture_common::common::{
+    get_position_key, Action, Position, Strategy, StrategyMetadata,
+    StrategyPositionManagerExecuteMsg,
+};
 use aperture_common::nft::{Extension, Metadata};
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply,
