@@ -96,13 +96,11 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             }
             InternalExecuteMsg::StakeTerraswapLpTokens {
                 lp_token_cw20_addr,
-                stake_via_spectrum,
             } => stake_terraswap_lp_tokens(
                 deps.as_ref(),
                 env,
                 context,
                 lp_token_cw20_addr,
-                stake_via_spectrum,
             ),
         },
     }
@@ -572,7 +570,7 @@ fn swap_uusd_for_minted_mirror_asset(
 
 pub fn decrease_position(
     deps: Deps,
-    env: Env,
+    _env: Env,
     context: Context,
     _fraction: Decimal,
     _recipient: String,
@@ -586,59 +584,8 @@ pub fn decrease_position(
                 position_idx: position_info.cdp_idx,
             },
         )?;
-    let mirror_asset_cw20_amount = position_response.asset.amount;
-    let mirror_asset_cw20_balance = terraswap::querier::query_token_balance(
-        &deps.querier,
-        deps.api
-            .addr_validate(position_info.mirror_asset_cw20_addr.as_str())?,
-        env.contract.address,
-    )?;
 
     let mut response = Response::new();
-    if mirror_asset_cw20_balance < mirror_asset_cw20_amount {
-        let mirror_asset_cw20_ask_amount =
-            mirror_asset_cw20_amount.checked_sub(mirror_asset_cw20_balance)?;
-        let terraswap_pair_asset_info = create_terraswap_cw20_uusd_pair_asset_info(
-            position_info.mirror_asset_cw20_addr.as_str(),
-        );
-        let terraswap_pair_info = terraswap::querier::query_pair_info(
-            &deps.querier,
-            context.terraswap_factory_addr,
-            &terraswap_pair_asset_info,
-        )?;
-        let reverse_simulation_response: terraswap::pair::ReverseSimulationResponse =
-            deps.querier.query_wasm_smart(
-                &terraswap_pair_info.contract_addr,
-                &terraswap::pair::QueryMsg::ReverseSimulation {
-                    ask_asset: terraswap::asset::Asset {
-                        amount: mirror_asset_cw20_ask_amount,
-                        info: terraswap::asset::AssetInfo::Token {
-                            contract_addr: position_info.mirror_asset_cw20_addr.to_string(),
-                        },
-                    },
-                },
-            )?;
-        let swap_uusd_for_mirror_asset = CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: terraswap_pair_info.contract_addr,
-            msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                offer_asset: terraswap::asset::Asset {
-                    amount: reverse_simulation_response.offer_amount,
-                    info: terraswap::asset::AssetInfo::NativeToken {
-                        denom: String::from("uusd"),
-                    },
-                },
-                belief_price: None,
-                max_spread: None,
-                to: None,
-            })?,
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount: reverse_simulation_response.offer_amount,
-            }],
-        });
-        response = response.add_message(swap_uusd_for_mirror_asset);
-    }
-
     let burn_minted_mirror_asset = CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: position_info.mirror_asset_cw20_addr.to_string(),
         msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
@@ -670,7 +617,6 @@ pub fn stake_terraswap_lp_tokens(
     env: Env,
     context: Context,
     lp_token_cw20_addr: String,
-    stake_via_spectrum: bool,
 ) -> StdResult<Response> {
     let lp_token_amount = terraswap::querier::query_token_balance(
         &deps.querier,
@@ -678,37 +624,21 @@ pub fn stake_terraswap_lp_tokens(
         env.contract.address,
     )?;
     let position_info = POSITION_INFO.load(deps.storage)?;
-    if stake_via_spectrum {
-        Ok(
-            Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: lp_token_cw20_addr,
-                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                    contract: context.spectrum_mirror_farms_addr.to_string(),
-                    amount: lp_token_amount,
-                    msg: to_binary(&spectrum_protocol::mirror_farm::Cw20HookMsg::bond {
-                        asset_token: position_info.mirror_asset_cw20_addr.to_string(),
-                        compound_rate: Some(Decimal::one()),
-                        staker_addr: None,
-                    })?,
+    Ok(
+        Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: lp_token_cw20_addr,
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: context.spectrum_mirror_farms_addr.to_string(),
+                amount: lp_token_amount,
+                msg: to_binary(&spectrum_protocol::mirror_farm::Cw20HookMsg::bond {
+                    asset_token: position_info.mirror_asset_cw20_addr.to_string(),
+                    compound_rate: Some(Decimal::one()),
+                    staker_addr: None,
                 })?,
-                funds: vec![],
-            })),
-        )
-    } else {
-        Ok(
-            Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: lp_token_cw20_addr,
-                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                    contract: context.mirror_staking_addr.to_string(),
-                    amount: lp_token_amount,
-                    msg: to_binary(&mirror_protocol::staking::Cw20HookMsg::Bond {
-                        asset_token: position_info.mirror_asset_cw20_addr.to_string(),
-                    })?,
-                })?,
-                funds: vec![],
-            })),
-        )
-    }
+            })?,
+            funds: vec![],
+        })),
+    )
 }
 
 pub fn pair_ust_with_mirror_asset_and_stake(
@@ -716,7 +646,6 @@ pub fn pair_ust_with_mirror_asset_and_stake(
     env: Env,
     context: Context,
     mirror_asset_amount: Uint128,
-    stake_via_spectrum: bool,
 ) -> StdResult<Response> {
     let position_info = POSITION_INFO.load(deps.storage)?;
     let mut response = Response::new();
@@ -779,15 +708,12 @@ pub fn pair_ust_with_mirror_asset_and_stake(
     }));
 
     // Stake Terraswap LP tokens to Mirror Long Farm or Spectrum Mirror Vault.
-    response = response.add_message(create_internal_execute_message(
+    Ok(response.add_message(create_internal_execute_message(
         &env,
         InternalExecuteMsg::StakeTerraswapLpTokens {
             lp_token_cw20_addr: terraswap_pair_info.liquidity_token,
-            stake_via_spectrum,
         },
-    ));
-
-    Ok(response)
+    )))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

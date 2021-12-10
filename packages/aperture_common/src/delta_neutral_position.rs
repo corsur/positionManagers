@@ -23,7 +23,6 @@ pub enum InternalExecuteMsg {
     SwapUusdForMintedMirrorAsset {},
     StakeTerraswapLpTokens {
         lp_token_cw20_addr: String,
-        stake_via_spectrum: bool,
     },
 }
 
