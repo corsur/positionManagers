@@ -1,7 +1,7 @@
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
-    Response, StdError, StdResult, Uint128, WasmMsg,
+    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -12,7 +12,7 @@ use crate::util::{
     create_terraswap_cw20_uusd_pair_asset_info, decimal_division, decimal_inverse,
     decimal_multiplication, find_collateral_uusd_amount, get_mirror_asset_oracle_uusd_price,
     get_position_state, get_uusd_asset_from_amount, increase_mirror_asset_balance_from_long_farm,
-    swap_cw20_token_for_uusd,
+    increase_uusd_balance_from_aust_collateral, swap_cw20_token_for_uusd,
 };
 use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
@@ -61,7 +61,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::DecreasePosition {
             proportion,
             recipient,
-        } => decrease_position(deps.as_ref(), env, context, proportion, recipient),
+        } => decrease_position(env, proportion, recipient),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
             ControllerExecuteMsg::RebalanceAndReinvest {} => rebalance_and_reinvest(env),
         },
@@ -75,6 +75,14 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             InternalExecuteMsg::AchieveSafeCollateralRatio {} => {
                 achieve_safe_collateral_ratios(deps.as_ref(), env, context)
             }
+            InternalExecuteMsg::WithdrawFundsInUusd {
+                proportion,
+                recipient,
+            } => withdraw_funds_in_uusd(deps.as_ref(), env, context, proportion, recipient),
+            InternalExecuteMsg::WithdrawUusd {
+                proportion,
+                recipient,
+            } => withdraw_uusd(deps.as_ref(), env, proportion, recipient),
             InternalExecuteMsg::DepositUusdBalanceToAnchor {} => {
                 deposit_uusd_balance_to_anchor(deps.as_ref(), env, context)
             }
@@ -94,14 +102,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             InternalExecuteMsg::SwapUusdForMintedMirrorAsset {} => {
                 swap_uusd_for_minted_mirror_asset(deps, env, context)
             }
-            InternalExecuteMsg::StakeTerraswapLpTokens {
-                lp_token_cw20_addr,
-            } => stake_terraswap_lp_tokens(
-                deps.as_ref(),
-                env,
-                context,
-                lp_token_cw20_addr,
-            ),
+            InternalExecuteMsg::StakeTerraswapLpTokens { lp_token_cw20_addr } => {
+                stake_terraswap_lp_tokens(deps.as_ref(), env, context, lp_token_cw20_addr)
+            }
         },
     }
 }
@@ -111,13 +114,13 @@ pub fn deposit_uusd_balance_to_anchor(
     env: Env,
     context: Context,
 ) -> StdResult<Response> {
-    let uusd_asset = terraswap::asset::Asset {
+    let uusd_asset = Asset {
         amount: terraswap::querier::query_balance(
             &deps.querier,
             env.contract.address,
             String::from("uusd"),
         )?,
-        info: terraswap::asset::AssetInfo::NativeToken {
+        info: AssetInfo::NativeToken {
             denom: String::from("uusd"),
         },
     };
@@ -363,33 +366,14 @@ pub fn achieve_safe_collateral_ratios(
                 state.anchor_ust_oracle_price,
             );
 
-        // Withdraw aUST collateral.
+        // Withdraw aUST collateral and redeem for UST.
         let withdraw_anchor_ust_collateral_amount =
             state.collateral_anchor_ust_amount - target_anchor_ust_collateral_amount;
-        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.mirror_mint_addr.to_string(),
-            funds: vec![],
-            msg: to_binary(&mirror_protocol::mint::ExecuteMsg::Withdraw {
-                position_idx: POSITION_INFO.load(deps.storage)?.cdp_idx,
-                collateral: Some(Asset {
-                    info: AssetInfo::Token {
-                        contract_addr: context.anchor_ust_cw20_addr.to_string(),
-                    },
-                    amount: withdraw_anchor_ust_collateral_amount,
-                }),
-            })?,
-        }));
-
-        // Redeem withdrawn aUST for UST.
-        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.anchor_ust_cw20_addr.to_string(),
-            funds: vec![],
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: context.anchor_market_addr.to_string(),
-                amount: withdraw_anchor_ust_collateral_amount,
-                msg: to_binary(&moneymarket::market::Cw20HookMsg::RedeemStable {})?,
-            })?,
-        }));
+        response = response.add_messages(increase_uusd_balance_from_aust_collateral(
+            &context,
+            POSITION_INFO.load(deps.storage)?.cdp_idx,
+            withdraw_anchor_ust_collateral_amount,
+        ));
     }
     Ok(response)
 }
@@ -481,7 +465,7 @@ fn open_cdp_with_anchor_ust_balance_as_collateral(
                     env.contract.address,
                 )?,
                 msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
-                    asset_info: terraswap::asset::AssetInfo::Token {
+                    asset_info: AssetInfo::Token {
                         contract_addr: mirror_asset_cw20_addr,
                     },
                     collateral_ratio,
@@ -510,7 +494,7 @@ fn swap_uusd_for_minted_mirror_asset(
                 position_idx: cdp_idx,
             },
         )?;
-    let mirror_asset_cw20_addr = if let terraswap::asset::AssetInfo::Token {
+    let mirror_asset_cw20_addr = if let AssetInfo::Token {
         contract_addr: addr,
     } = position_response.asset.info
     {
@@ -537,9 +521,9 @@ fn swap_uusd_for_minted_mirror_asset(
         deps.querier.query_wasm_smart(
             &mirror_asset_uusd_terraswap_pair_addr,
             &terraswap::pair::QueryMsg::ReverseSimulation {
-                ask_asset: terraswap::asset::Asset {
+                ask_asset: Asset {
                     amount: position_response.asset.amount,
-                    info: terraswap::asset::AssetInfo::Token {
+                    info: AssetInfo::Token {
                         contract_addr: mirror_asset_cw20_addr,
                     },
                 },
@@ -550,8 +534,8 @@ fn swap_uusd_for_minted_mirror_asset(
         Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: mirror_asset_uusd_terraswap_pair_addr,
             msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                offer_asset: terraswap::asset::Asset {
-                    info: terraswap::asset::AssetInfo::NativeToken {
+                offer_asset: Asset {
+                    info: AssetInfo::NativeToken {
                         denom: String::from("uusd"),
                     },
                     amount: uusd_offer_amount,
@@ -568,46 +552,82 @@ fn swap_uusd_for_minted_mirror_asset(
     )
 }
 
-pub fn decrease_position(
-    deps: Deps,
-    _env: Env,
-    context: Context,
-    _fraction: Decimal,
-    _recipient: String,
-) -> StdResult<Response> {
-    // TODO: Rebalance, reduce short / long / collateral positions by `fraction`, and then return UST to `recipient`.
-    let position_info = POSITION_INFO.load(deps.storage)?;
-    let position_response: mirror_protocol::mint::PositionResponse =
-        deps.querier.query_wasm_smart(
-            &context.mirror_mint_addr,
-            &mirror_protocol::mint::QueryMsg::Position {
-                position_idx: position_info.cdp_idx,
+pub fn decrease_position(env: Env, proportion: Decimal, recipient: String) -> StdResult<Response> {
+    Ok(Response::new()
+        .add_messages(get_rebalance_internal_messages(&env))
+        .add_message(create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::WithdrawFundsInUusd {
+                proportion,
+                recipient,
             },
-        )?;
+        )))
+}
+
+pub fn withdraw_uusd(
+    deps: Deps,
+    env: Env,
+    proportion: Decimal,
+    recipient: String,
+) -> StdResult<Response> {
+    let amount =
+        terraswap::querier::query_balance(&deps.querier, env.contract.address, "uusd".into())?
+            * proportion;
+    if amount == Uint128::zero() {
+        return Ok(Response::default());
+    }
+    Ok(Response::new().add_message(CosmosMsg::Bank(BankMsg::Send {
+        to_address: recipient,
+        amount: vec![get_uusd_asset_from_amount(amount).deduct_tax(&deps.querier)?],
+    })))
+}
+
+pub fn withdraw_funds_in_uusd(
+    deps: Deps,
+    env: Env,
+    context: Context,
+    proportion: Decimal,
+    recipient: String,
+) -> StdResult<Response> {
+    let state = get_position_state(deps, &env, &context)?;
+    let cdp_idx = POSITION_INFO.load(deps.storage)?.cdp_idx;
 
     let mut response = Response::new();
-    let burn_minted_mirror_asset = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: position_info.mirror_asset_cw20_addr.to_string(),
+
+    // Reduce mAsset short position.
+    let mirror_asset_burn_amount = state.mirror_asset_short_amount * proportion;
+    response = response.add_messages(increase_mirror_asset_balance_from_long_farm(
+        &state,
+        &context,
+        mirror_asset_burn_amount,
+    ));
+    response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: state.mirror_asset_cw20_addr.to_string(),
         msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
             contract: context.mirror_mint_addr.to_string(),
-            amount: position_response.asset.amount,
+            amount: mirror_asset_burn_amount,
             msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
-                position_idx: position_info.cdp_idx,
+                position_idx: cdp_idx,
             })?,
         })?,
         funds: vec![],
-    });
-    response = response.add_message(burn_minted_mirror_asset);
+    }));
 
-    let withdraw_collateral = CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: position_info.mirror_asset_cw20_addr.into_string(),
-        msg: to_binary(&mirror_protocol::mint::ExecuteMsg::Withdraw {
-            collateral: None,
-            position_idx: position_info.cdp_idx,
-        })?,
-        funds: vec![],
-    });
-    response = response.add_message(withdraw_collateral);
+    // Withdraw aUST collateral and redeem for UST.
+    response = response.add_messages(increase_uusd_balance_from_aust_collateral(
+        &context,
+        cdp_idx,
+        state.collateral_anchor_ust_amount * proportion,
+    ));
+
+    // Send uusd to recipient.
+    response = response.add_message(create_internal_execute_message(
+        &env,
+        InternalExecuteMsg::WithdrawUusd {
+            proportion,
+            recipient,
+        },
+    ));
 
     Ok(response)
 }
@@ -690,8 +710,8 @@ pub fn pair_ust_with_mirror_asset_and_stake(
         contract_addr: terraswap_pair_info.contract_addr,
         msg: to_binary(&terraswap::pair::ExecuteMsg::ProvideLiquidity {
             assets: [
-                terraswap::asset::Asset {
-                    info: terraswap::asset::AssetInfo::Token {
+                Asset {
+                    info: AssetInfo::Token {
                         contract_addr: position_info.mirror_asset_cw20_addr.to_string(),
                     },
                     amount: mirror_asset_amount,

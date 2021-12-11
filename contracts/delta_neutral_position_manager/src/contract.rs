@@ -184,6 +184,11 @@ pub fn decrease_position(
     proportion: Decimal,
     recipient: String,
 ) -> StdResult<Response> {
+    if proportion <= Decimal::zero() || proportion > Decimal::one() {
+        return Err(StdError::GenericErr {
+            msg: "`proportion` must safity `0 < proportion <= 1`.".to_string(),
+        });
+    }
     send_execute_message_to_position_contract(
         deps,
         position,

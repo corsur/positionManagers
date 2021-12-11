@@ -14,6 +14,14 @@ pub enum InternalExecuteMsg {
     ClaimAndIncreaseUusdBalance {},
     AchieveDeltaNeutral {},
     AchieveSafeCollateralRatio {},
+    WithdrawFundsInUusd {
+        proportion: Decimal,
+        recipient: String,
+    },
+    WithdrawUusd {
+        proportion: Decimal,
+        recipient: String,
+    },
     DepositUusdBalanceToAnchor {},
     AddAnchorUstBalanceToCollateral {},
     OpenCdpWithAnchorUstBalanceAsCollateral {

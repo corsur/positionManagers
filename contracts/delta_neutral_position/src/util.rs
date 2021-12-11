@@ -363,3 +363,36 @@ pub fn increase_mirror_asset_balance_from_long_farm(
         }),
     ]
 }
+
+pub fn increase_uusd_balance_from_aust_collateral(
+    context: &Context,
+    cdp_idx: Uint128,
+    anchor_ust_amount: Uint128,
+) -> Vec<CosmosMsg> {
+    vec![
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: context.mirror_mint_addr.to_string(),
+            funds: vec![],
+            msg: to_binary(&mirror_protocol::mint::ExecuteMsg::Withdraw {
+                position_idx: cdp_idx,
+                collateral: Some(Asset {
+                    info: AssetInfo::Token {
+                        contract_addr: context.anchor_ust_cw20_addr.to_string(),
+                    },
+                    amount: anchor_ust_amount,
+                }),
+            })
+            .unwrap(),
+        }),
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: context.anchor_ust_cw20_addr.to_string(),
+            funds: vec![],
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: context.anchor_market_addr.to_string(),
+                amount: anchor_ust_amount,
+                msg: to_binary(&moneymarket::market::Cw20HookMsg::RedeemStable {}).unwrap(),
+            })
+            .unwrap(),
+        }),
+    ]
+}
