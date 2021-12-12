@@ -1,6 +1,8 @@
 use std::str::FromStr;
 
-use aperture_common::{delta_neutral_position_manager::Context, delta_neutral_position::PositionState};
+use aperture_common::{
+    delta_neutral_position::PositionState, delta_neutral_position_manager::Context,
+};
 use cosmwasm_std::{
     to_binary, Addr, CosmosMsg, Decimal, Decimal256, Deps, Env, QuerierWrapper, StdError,
     StdResult, Uint128, Uint256, WasmMsg,
@@ -218,8 +220,8 @@ pub fn find_collateral_uusd_amount(
         mirror_asset_config_response.min_collateral_ratio,
         aust_collateral_info_response.multiplier,
     );
-    if min_collateral_ratio + context.collateral_ratio_safety_margin
-        < target_collateral_ratio_range.min
+    if target_collateral_ratio_range.min
+        < min_collateral_ratio + context.collateral_ratio_safety_margin
     {
         return Err(StdError::GenericErr {
             msg: "target_min_collateral_ratio too small".to_string(),

@@ -11,11 +11,10 @@ use crate::state::{
     PositionInfo, TargetCollateralRatioRange, MANAGER, POSITION_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    compute_terraswap_uusd_offer_amount,
-    decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
-    get_cdp_uusd_lock_info_result, get_mirror_asset_oracle_uusd_price, get_position_state,
-    get_terraswap_uusd_mirror_asset_pool_balance_info, get_uusd_asset_from_amount,
-    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
+    compute_terraswap_uusd_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
+    find_collateral_uusd_amount, get_cdp_uusd_lock_info_result, get_mirror_asset_oracle_uusd_price,
+    get_position_state, get_terraswap_uusd_mirror_asset_pool_balance_info,
+    get_uusd_asset_from_amount, get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
     increase_uusd_balance_from_aust_collateral, increase_uusd_balance_from_long_farm,
     swap_cw20_token_for_uusd,
 };
