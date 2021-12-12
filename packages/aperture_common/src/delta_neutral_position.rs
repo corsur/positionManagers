@@ -1,4 +1,4 @@
-use cosmwasm_std::{Decimal, Uint128};
+use cosmwasm_std::{Decimal, Uint128, Addr};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -68,5 +68,36 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetPositionInfo {},
+    GetPositionState {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct PositionState {
+    // This contract's uusd balance.
+    pub uusd_balance: Uint128,
+    // Amount of uusd redeemable from staked LP tokens.
+    pub uusd_long_farm: Uint128,
+    // Amount of shorted mAsset.
+    pub mirror_asset_short_amount: Uint128,
+    // This contract's mAsset balance.
+    pub mirror_asset_balance: Uint128,
+    // Amount of mAsset redeemable from staked LP tokens.
+    pub mirror_asset_long_farm: Uint128,
+    // Amount of aUST collateral.
+    pub collateral_anchor_ust_amount: Uint128,
+    // Value of aUST colleteral in uusd.
+    pub collateral_uusd_value: Uint128,
+    // Address of the mAsset cw20 contract.
+    pub mirror_asset_cw20_addr: Addr,
+    // Oracle price of the mAsset.
+    pub mirror_asset_oracle_price: Decimal,
+    // Oracle price of aUST.
+    pub anchor_ust_oracle_price: Decimal,
+    // Amount of LP token staked in Spectrum Mirror farm.
+    pub lp_token_amount: Uint128,
+    // Address of the LP cw20 token contract.
+    pub lp_token_cw20_addr: String,
+    // Address of the mAsset-UST Terraswap pair contract.
+    pub terraswap_pair_addr: String,
 }

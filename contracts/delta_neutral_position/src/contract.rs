@@ -749,9 +749,13 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    let manager_addr = MANAGER.load(deps.storage)?;
+    let context: Context = deps
+        .querier
+        .query_wasm_smart(&manager_addr, &ManagerQueryMsg::GetContext {})?;
     match msg {
-        QueryMsg::GetPositionInfo {} => to_binary(&(POSITION_INFO.load(deps.storage)?)),
+        QueryMsg::GetPositionState {} => to_binary(&(get_position_state(deps, &env, &context)?)),
     }
 }
 
