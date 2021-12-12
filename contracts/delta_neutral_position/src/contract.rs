@@ -87,10 +87,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 proportion,
                 recipient,
             } => withdraw_funds_in_uusd(deps.as_ref(), env, context, proportion, recipient),
-            InternalExecuteMsg::WithdrawUusd {
+            InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd { proportion } => {
+                withdraw_collateral_and_redeem_for_uusd(deps.as_ref(), context, proportion)
+            }
+            InternalExecuteMsg::SendUusdToRecipient {
                 proportion,
                 recipient,
-            } => withdraw_uusd(deps.as_ref(), env, proportion, recipient),
+            } => send_uusd_to_recipient(deps.as_ref(), env, proportion, recipient),
             InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
                 collateral_ratio,
                 mirror_asset_cw20_addr,
@@ -582,7 +585,7 @@ pub fn decrease_position(env: Env, proportion: Decimal, recipient: String) -> St
         )))
 }
 
-pub fn withdraw_uusd(
+pub fn send_uusd_to_recipient(
     deps: Deps,
     env: Env,
     proportion: Decimal,
@@ -596,6 +599,28 @@ pub fn withdraw_uusd(
         to_address: recipient,
         amount: vec![get_uusd_asset_from_amount(amount).deduct_tax(&deps.querier)?],
     })))
+}
+
+pub fn withdraw_collateral_and_redeem_for_uusd(
+    deps: Deps,
+    context: Context,
+    proportion: Decimal,
+) -> StdResult<Response> {
+    let position_info = POSITION_INFO.load(deps.storage)?;
+    let position_response: mirror_protocol::mint::PositionResponse =
+        deps.querier.query_wasm_smart(
+            &context.mirror_mint_addr,
+            &mirror_protocol::mint::QueryMsg::Position {
+                position_idx: position_info.cdp_idx,
+            },
+        )?;
+    Ok(
+        Response::new().add_messages(increase_uusd_balance_from_aust_collateral(
+            &context,
+            position_info.cdp_idx,
+            position_response.collateral.amount * proportion,
+        )),
+    )
 }
 
 pub fn withdraw_funds_in_uusd(
@@ -629,21 +654,20 @@ pub fn withdraw_funds_in_uusd(
         funds: vec![],
     }));
 
-    // Withdraw aUST collateral and redeem for UST.
-    response = response.add_messages(increase_uusd_balance_from_aust_collateral(
-        &context,
-        cdp_idx,
-        state.collateral_anchor_ust_amount * proportion,
-    ));
-
     // Send uusd to recipient.
-    response = response.add_message(create_internal_execute_message(
-        &env,
-        InternalExecuteMsg::WithdrawUusd {
-            proportion,
-            recipient,
-        },
-    ));
+    response = response.add_messages(vec![
+        create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd { proportion },
+        ),
+        create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::SendUusdToRecipient {
+                proportion,
+                recipient,
+            },
+        ),
+    ]);
 
     Ok(response)
 }

@@ -18,7 +18,10 @@ pub enum InternalExecuteMsg {
         proportion: Decimal,
         recipient: String,
     },
-    WithdrawUusd {
+    WithdrawCollateralAndRedeemForUusd {
+        proportion: Decimal,
+    },
+    SendUusdToRecipient {
         proportion: Decimal,
         recipient: String,
     },
