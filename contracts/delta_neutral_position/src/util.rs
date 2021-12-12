@@ -106,7 +106,7 @@ pub fn find_collateral_uusd_amount(
     mirror_asset_cw20_addr: &str,
     target_collateral_ratio_range: &TargetCollateralRatioRange,
     mut uusd_amount: Uint128,
-) -> StdResult<Uint128> {
+) -> StdResult<(Uint128, Uint128)> {
     let terraswap_pair_asset_info =
         create_terraswap_cw20_uusd_pair_asset_info(mirror_asset_cw20_addr);
     let mirror_asset_info = &terraswap_pair_asset_info[0];
@@ -206,7 +206,7 @@ pub fn find_collateral_uusd_amount(
             b = m;
         }
     }
-    Ok(a * collateral_to_mirror_asset_amount_ratio)
+    Ok((a, a * collateral_to_mirror_asset_amount_ratio))
 }
 
 pub struct PositionState {
@@ -329,18 +329,11 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
     Ok(state)
 }
 
-pub fn increase_mirror_asset_balance_from_long_farm(
+fn unstake_lp_and_withdraw_liquidity(
     state: &PositionState,
     context: &Context,
-    target_mirror_asset_balance: Uint128,
+    withdraw_lp_token_amount: Uint128,
 ) -> Vec<CosmosMsg> {
-    if target_mirror_asset_balance <= state.mirror_asset_balance {
-        return vec![];
-    }
-    let withdraw_mirror_asset_amount = target_mirror_asset_balance - state.mirror_asset_balance;
-    let withdraw_lp_token_amount = state
-        .lp_token_amount
-        .multiply_ratio(withdraw_mirror_asset_amount, state.mirror_asset_long_farm);
     vec![
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: context.spectrum_mirror_farms_addr.to_string(),
@@ -362,6 +355,41 @@ pub fn increase_mirror_asset_balance_from_long_farm(
             .unwrap(),
         }),
     ]
+}
+
+pub fn increase_mirror_asset_balance_from_long_farm(
+    state: &PositionState,
+    context: &Context,
+    target_mirror_asset_balance: Uint128,
+) -> Vec<CosmosMsg> {
+    if target_mirror_asset_balance <= state.mirror_asset_balance {
+        return vec![];
+    }
+    let withdraw_mirror_asset_amount = target_mirror_asset_balance - state.mirror_asset_balance;
+    let withdraw_lp_token_amount = state
+        .lp_token_amount
+        .multiply_ratio(withdraw_mirror_asset_amount, state.mirror_asset_long_farm);
+    unstake_lp_and_withdraw_liquidity(state, context, withdraw_lp_token_amount)
+}
+
+pub fn increase_uusd_balance_from_long_farm(
+    querier: &QuerierWrapper,
+    state: &PositionState,
+    context: &Context,
+    target_uusd_balance: Uint128,
+) -> Vec<CosmosMsg> {
+    if target_uusd_balance <= state.uusd_balance {
+        return vec![];
+    }
+    let withdraw_uusd_amount = target_uusd_balance - state.uusd_balance;
+    let withdraw_lp_token_amount = state.lp_token_amount.multiply_ratio(
+        withdraw_uusd_amount
+            + get_uusd_asset_from_amount(withdraw_uusd_amount)
+                .compute_tax(querier)
+                .unwrap(),
+        state.uusd_long_farm,
+    );
+    unstake_lp_and_withdraw_liquidity(state, context, withdraw_lp_token_amount)
 }
 
 pub fn increase_uusd_balance_from_aust_collateral(

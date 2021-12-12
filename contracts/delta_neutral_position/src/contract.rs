@@ -12,7 +12,8 @@ use crate::util::{
     create_terraswap_cw20_uusd_pair_asset_info, decimal_division, decimal_inverse,
     decimal_multiplication, find_collateral_uusd_amount, get_mirror_asset_oracle_uusd_price,
     get_position_state, get_uusd_asset_from_amount, increase_mirror_asset_balance_from_long_farm,
-    increase_uusd_balance_from_aust_collateral, swap_cw20_token_for_uusd,
+    increase_uusd_balance_from_aust_collateral, increase_uusd_balance_from_long_farm,
+    swap_cw20_token_for_uusd,
 };
 use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
@@ -49,7 +50,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         });
     }
     match msg {
-        ExecuteMsg::OpenPosition { params } => delta_neutral_invest(
+        ExecuteMsg::OpenPosition { params } => open_position(
             deps,
             env,
             context,
@@ -89,19 +90,23 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             InternalExecuteMsg::AddAnchorUstBalanceToCollateral {} => {
                 add_anchor_ust_balance_to_collateral(deps.as_ref(), env, context)
             }
-            InternalExecuteMsg::OpenCdpWithAnchorUstBalanceAsCollateral {
+            InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
                 collateral_ratio,
                 mirror_asset_cw20_addr,
-            } => open_cdp_with_anchor_ust_balance_as_collateral(
+                cdp_idx,
+                mirror_asset_mint_amount,
+            } => open_or_increase_cdp_with_anchor_ust_balance_as_collateral(
                 deps.as_ref(),
                 env,
                 context,
                 collateral_ratio,
                 mirror_asset_cw20_addr,
+                cdp_idx,
+                mirror_asset_mint_amount,
             ),
-            InternalExecuteMsg::SwapUusdForMintedMirrorAsset {} => {
-                swap_uusd_for_minted_mirror_asset(deps, env, context)
-            }
+            InternalExecuteMsg::RecordPositionInfo {
+                mirror_asset_cw20_addr,
+            } => record_position_info(deps, env, context, mirror_asset_cw20_addr),
             InternalExecuteMsg::StakeTerraswapLpTokens { lp_token_cw20_addr } => {
                 stake_terraswap_lp_tokens(deps.as_ref(), env, context, lp_token_cw20_addr)
             }
@@ -310,8 +315,51 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             net_long_mirror_asset_amount,
         )?);
     } else if mirror_asset_long_amount < state.mirror_asset_short_amount {
-        // We are in a net short position.
-        // TODO.
+        // We are in a net short position, so we swap uusd for the difference amount of mAsset.
+        let net_short_mirror_asset_amount =
+            state.mirror_asset_short_amount - mirror_asset_long_amount;
+        let terraswap_pair_addr = deps.api.addr_validate(
+            &terraswap::querier::query_pair_info(
+                &deps.querier,
+                context.terraswap_factory_addr.clone(),
+                &create_terraswap_cw20_uusd_pair_asset_info(state.mirror_asset_cw20_addr.as_str()),
+            )?
+            .contract_addr,
+        )?;
+        let uusd_offer_amount = terraswap::querier::reverse_simulate(
+            &deps.querier,
+            terraswap_pair_addr.clone(),
+            &Asset {
+                info: AssetInfo::Token {
+                    contract_addr: state.mirror_asset_cw20_addr.to_string(),
+                },
+                amount: net_short_mirror_asset_amount,
+            },
+        )?
+        .offer_amount;
+
+        // If uusd balance is insufficient to cover `uuse_offer_amount` + tax, then increase uusd balance by unstaking LPs and withdrawing liquidity.
+        let uusd_offer_asset = get_uusd_asset_from_amount(uusd_offer_amount);
+        response = response
+            .add_messages(increase_uusd_balance_from_long_farm(
+                &deps.querier,
+                &state,
+                &context,
+                uusd_offer_amount + uusd_offer_asset.compute_tax(&deps.querier)?,
+            ))
+            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: terraswap_pair_addr.to_string(),
+                msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+                    offer_asset: get_uusd_asset_from_amount(uusd_offer_amount),
+                    max_spread: None,
+                    belief_price: None,
+                    to: None,
+                })?,
+                funds: vec![Coin {
+                    denom: String::from("uusd"),
+                    amount: uusd_offer_amount,
+                }],
+            }));
     }
     Ok(response)
 }
@@ -393,7 +441,7 @@ fn get_cdp_index(deps: Deps, env: Env, context: &Context) -> StdResult<Uint128> 
     Ok(positions_response.positions[0].idx)
 }
 
-pub fn delta_neutral_invest(
+pub fn open_position(
     deps: DepsMut,
     env: Env,
     context: Context,
@@ -406,150 +454,139 @@ pub fn delta_neutral_invest(
             msg: "delta_neutral_position_already_exists".to_string(),
         });
     }
-
     let target_collateral_ratio_range = TargetCollateralRatioRange {
         min: target_min_collateral_ratio,
         max: target_max_collateral_ratio,
     };
     TARGET_COLLATERAL_RATIO_RANGE.save(deps.storage, &target_collateral_ratio_range)?;
+    delta_neutral_invest(deps, env, context, mirror_asset_cw20_addr, None)
+}
 
+pub fn delta_neutral_invest(
+    deps: DepsMut,
+    env: Env,
+    context: Context,
+    mirror_asset_cw20_addr: String,
+    cdp_idx: Option<Uint128>,
+) -> StdResult<Response> {
     let uusd_balance = terraswap::querier::query_balance(
         &deps.querier,
         env.contract.address.clone(),
         String::from("uusd"),
     )?;
-    let collateral_uusd_amount = find_collateral_uusd_amount(
+    let target_collateral_ratio_range = TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
+    let (mirror_asset_mint_amount, collateral_uusd_amount) = find_collateral_uusd_amount(
         deps.as_ref(),
         &context,
         &mirror_asset_cw20_addr,
         &target_collateral_ratio_range,
         uusd_balance,
     )?;
-    Ok(Response::new()
-        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+    Ok(Response::new().add_messages(vec![
+        CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: context.anchor_market_addr.to_string(),
             msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
             funds: vec![Coin {
                 denom: String::from("uusd"),
                 amount: collateral_uusd_amount,
             }],
-        }))
-        .add_message(create_internal_execute_message(
+        }),
+        create_internal_execute_message(
             &env,
-            InternalExecuteMsg::OpenCdpWithAnchorUstBalanceAsCollateral {
+            InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
                 collateral_ratio: target_collateral_ratio_range.midpoint(),
+                mirror_asset_cw20_addr: mirror_asset_cw20_addr.clone(),
+                cdp_idx,
+                mirror_asset_mint_amount,
+            },
+        ),
+        create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::RecordPositionInfo {
                 mirror_asset_cw20_addr,
             },
-        ))
-        .add_message(create_internal_execute_message(
-            &env,
-            InternalExecuteMsg::SwapUusdForMintedMirrorAsset {},
-        )))
+        ),
+        create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
+    ]))
 }
 
-fn open_cdp_with_anchor_ust_balance_as_collateral(
+fn open_or_increase_cdp_with_anchor_ust_balance_as_collateral(
     deps: Deps,
     env: Env,
     context: Context,
     collateral_ratio: Decimal,
     mirror_asset_cw20_addr: String,
+    cdp_idx: Option<Uint128>,
+    mirror_asset_mint_amount: Uint128,
 ) -> StdResult<Response> {
-    Ok(
-        Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.anchor_ust_cw20_addr.to_string(),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: context.mirror_mint_addr.to_string(),
-                amount: terraswap::querier::query_token_balance(
-                    &deps.querier,
-                    context.anchor_ust_cw20_addr,
-                    env.contract.address,
-                )?,
-                msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
-                    asset_info: AssetInfo::Token {
-                        contract_addr: mirror_asset_cw20_addr,
+    let anchor_ust_balance = terraswap::querier::query_token_balance(
+        &deps.querier,
+        context.anchor_ust_cw20_addr.clone(),
+        env.contract.address,
+    )?;
+    match cdp_idx {
+        None => Ok(
+            Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: context.anchor_ust_cw20_addr.to_string(),
+                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                    contract: context.mirror_mint_addr.to_string(),
+                    amount: anchor_ust_balance,
+                    msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
+                        asset_info: AssetInfo::Token {
+                            contract_addr: mirror_asset_cw20_addr,
+                        },
+                        collateral_ratio,
+                        short_params: Some(mirror_protocol::mint::ShortParams {
+                            belief_price: None,
+                            max_spread: None,
+                        }),
+                    })?,
+                })?,
+                funds: vec![],
+            })),
+        ),
+        Some(position_idx) => Ok(Response::new()
+            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: context.anchor_ust_cw20_addr.to_string(),
+                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                    contract: context.mirror_mint_addr.to_string(),
+                    amount: anchor_ust_balance,
+                    msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Deposit { position_idx })?,
+                })?,
+                funds: vec![],
+            }))
+            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: context.mirror_mint_addr.to_string(),
+                msg: to_binary(&mirror_protocol::mint::ExecuteMsg::Mint {
+                    position_idx,
+                    asset: Asset {
+                        info: AssetInfo::Token {
+                            contract_addr: mirror_asset_cw20_addr,
+                        },
+                        amount: mirror_asset_mint_amount,
                     },
-                    collateral_ratio,
                     short_params: Some(mirror_protocol::mint::ShortParams {
                         belief_price: None,
                         max_spread: None,
                     }),
                 })?,
-            })?,
-            funds: vec![],
-        })),
-    )
+                funds: vec![],
+            }))),
+    }
 }
 
-fn swap_uusd_for_minted_mirror_asset(
+fn record_position_info(
     deps: DepsMut,
     env: Env,
     context: Context,
+    mirror_asset_cw20_addr: String,
 ) -> StdResult<Response> {
-    // Query position info.
-    let cdp_idx = get_cdp_index(deps.as_ref(), env, &context)?;
-    let position_response: mirror_protocol::mint::PositionResponse =
-        deps.querier.query_wasm_smart(
-            &context.mirror_mint_addr,
-            &mirror_protocol::mint::QueryMsg::Position {
-                position_idx: cdp_idx,
-            },
-        )?;
-    let mirror_asset_cw20_addr = if let AssetInfo::Token {
-        contract_addr: addr,
-    } = position_response.asset.info
-    {
-        addr
-    } else {
-        unreachable!()
-    };
-
-    // Write position info to storage.
     let position_info = PositionInfo {
-        cdp_idx,
+        cdp_idx: get_cdp_index(deps.as_ref(), env, &context)?,
         mirror_asset_cw20_addr: deps.api.addr_validate(&mirror_asset_cw20_addr)?,
     };
     POSITION_INFO.save(deps.storage, &position_info)?;
-
-    // Swap uusd for mAsset.
-    let mirror_asset_uusd_terraswap_pair_addr = terraswap::querier::query_pair_info(
-        &deps.querier,
-        context.terraswap_factory_addr,
-        &create_terraswap_cw20_uusd_pair_asset_info(&mirror_asset_cw20_addr),
-    )?
-    .contract_addr;
-    let reverse_simulation_response: terraswap::pair::ReverseSimulationResponse =
-        deps.querier.query_wasm_smart(
-            &mirror_asset_uusd_terraswap_pair_addr,
-            &terraswap::pair::QueryMsg::ReverseSimulation {
-                ask_asset: Asset {
-                    amount: position_response.asset.amount,
-                    info: AssetInfo::Token {
-                        contract_addr: mirror_asset_cw20_addr,
-                    },
-                },
-            },
-        )?;
-    let uusd_offer_amount: Uint128 = reverse_simulation_response.offer_amount;
-    Ok(
-        Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: mirror_asset_uusd_terraswap_pair_addr,
-            msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                offer_asset: Asset {
-                    info: AssetInfo::NativeToken {
-                        denom: String::from("uusd"),
-                    },
-                    amount: uusd_offer_amount,
-                },
-                max_spread: None,
-                belief_price: None,
-                to: None,
-            })?,
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount: uusd_offer_amount,
-            }],
-        })),
-    )
+    Ok(Response::default())
 }
 
 pub fn decrease_position(env: Env, proportion: Decimal, recipient: String) -> StdResult<Response> {

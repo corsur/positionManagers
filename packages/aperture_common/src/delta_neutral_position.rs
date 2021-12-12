@@ -1,4 +1,4 @@
-use cosmwasm_std::Decimal;
+use cosmwasm_std::{Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -24,11 +24,15 @@ pub enum InternalExecuteMsg {
     },
     DepositUusdBalanceToAnchor {},
     AddAnchorUstBalanceToCollateral {},
-    OpenCdpWithAnchorUstBalanceAsCollateral {
+    OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
         collateral_ratio: Decimal,
         mirror_asset_cw20_addr: String,
+        cdp_idx: Option<Uint128>,
+        mirror_asset_mint_amount: Uint128,
     },
-    SwapUusdForMintedMirrorAsset {},
+    RecordPositionInfo {
+        mirror_asset_cw20_addr: String,
+    },
     StakeTerraswapLpTokens {
         lp_token_cw20_addr: String,
     },
