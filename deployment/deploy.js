@@ -114,7 +114,7 @@ async function instantiate_delta_neutral_position_manager(
           owner_addr: terra_manager_addr,
           delta_neutral_position_code_id: position_code_id,
           controller: test_wallet.key.accAddress,
-          min_uusd_amount: (100 * 1e6).toString(),
+          min_delta_neutral_uusd_amount: (1000 * 1e6).toString(),
           anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
           mirror_cw20_addr: "terra10llyp6v3j3her8u3ce66ragytu45kcmd9asj3u",
           spectrum_cw20_addr: "terra1kvsxd94ue6f4rtchv2l6me5k07uh26s7637cza",

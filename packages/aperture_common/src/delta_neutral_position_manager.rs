@@ -10,7 +10,6 @@ pub struct InstantiateMsg {
     pub owner_addr: String,
     pub delta_neutral_position_code_id: u64,
     pub controller: String,
-    pub min_uusd_amount: Uint128,
     pub anchor_ust_cw20_addr: String,
     pub mirror_cw20_addr: String,
     pub spectrum_cw20_addr: String,
