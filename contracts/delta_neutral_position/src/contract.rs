@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
     entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
@@ -107,6 +109,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             InternalExecuteMsg::RecordPositionInfo {
                 mirror_asset_cw20_addr,
             } => record_position_info(deps, env, context, mirror_asset_cw20_addr),
+            InternalExecuteMsg::PairUusdWithMirrorAssetToProvideLiquidityAndStake {} => {
+                pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
+                    deps.as_ref(),
+                    env,
+                    context,
+                )
+            }
             InternalExecuteMsg::StakeTerraswapLpTokens { lp_token_cw20_addr } => {
                 stake_terraswap_lp_tokens(deps.as_ref(), env, context, lp_token_cw20_addr)
             }
@@ -179,11 +188,13 @@ pub fn get_rebalance_internal_messages(env: &Env) -> Vec<CosmosMsg> {
     ]
 }
 
-pub fn get_reinvest_internal_messages(_env: &Env) -> Vec<CosmosMsg> {
+pub fn get_reinvest_internal_messages(env: &Env) -> Vec<CosmosMsg> {
+    vec![create_internal_execute_message(
+        env,
+        InternalExecuteMsg::PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
+    )]
     // TODO:
-    // (1) If possible, pair UST with mAsset balance and stake LP in Spectrum.
-    // (2) If uusd balance at this point is nontrivial and there is no pending short proceeds, increase delta-neutral position with uusd balance.
-    vec![]
+    // If uusd balance at this point is nontrivial and there is no pending short proceeds, increase delta-neutral position with uusd balance.
 }
 
 pub fn rebalance_and_reinvest(env: Env) -> StdResult<Response> {
@@ -698,19 +709,23 @@ pub fn stake_terraswap_lp_tokens(
     )
 }
 
-pub fn pair_ust_with_mirror_asset_and_stake(
+pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
     deps: Deps,
     env: Env,
     context: Context,
-    mirror_asset_amount: Uint128,
 ) -> StdResult<Response> {
-    let position_info = POSITION_INFO.load(deps.storage)?;
+    let state = get_position_state(deps, &env, &context)?;
+    let available_uusd_amount = get_uusd_asset_from_amount(state.uusd_balance)
+        .deduct_tax(&deps.querier)?
+        .amount;
     let mut response = Response::new();
+    if state.mirror_asset_balance.is_zero() || available_uusd_amount.is_zero() {
+        return Ok(response);
+    }
 
     // Find uusd amount to pair with mAsset of quantity `mirror_asset_amount`.
-    let terraswap_pair_asset_info = create_terraswap_cw20_uusd_pair_asset_info(
-        &position_info.mirror_asset_cw20_addr.to_string(),
-    );
+    let terraswap_pair_asset_info =
+        create_terraswap_cw20_uusd_pair_asset_info(&state.mirror_asset_cw20_addr.to_string());
     let terraswap_pair_info = terraswap::querier::query_pair_info(
         &deps.querier,
         context.terraswap_factory_addr,
@@ -728,15 +743,21 @@ pub fn pair_ust_with_mirror_asset_and_stake(
         deps.api,
         terraswap_pair_contract_addr,
     )?;
-    let uusd_amount_to_provide_liquidity =
-        mirror_asset_amount.multiply_ratio(pool_uusd_balance, pool_mirror_asset_balance);
+
+    // Find amount of uusd and mAsset to pair together and provide liquidity.
+    let uusd_ratio = Decimal::from_ratio(available_uusd_amount, pool_uusd_balance);
+    let mirror_asset_ratio =
+        Decimal::from_ratio(state.mirror_asset_balance, pool_mirror_asset_balance);
+    let ratio = min(uusd_ratio, mirror_asset_ratio);
+    let uusd_provide_amount = pool_uusd_balance * ratio;
+    let mirror_asset_provide_amount = pool_mirror_asset_balance * ratio;
 
     // Allow Terraswap mAsset-UST pair contract to transfer mAsset tokens from us.
     response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: position_info.mirror_asset_cw20_addr.to_string(),
+        contract_addr: state.mirror_asset_cw20_addr.to_string(),
         msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
             spender: terraswap_pair_info.contract_addr.clone(),
-            amount: mirror_asset_amount,
+            amount: mirror_asset_provide_amount,
             expires: None,
         })?,
         funds: vec![],
@@ -749,22 +770,22 @@ pub fn pair_ust_with_mirror_asset_and_stake(
             assets: [
                 Asset {
                     info: AssetInfo::Token {
-                        contract_addr: position_info.mirror_asset_cw20_addr.to_string(),
+                        contract_addr: state.mirror_asset_cw20_addr.to_string(),
                     },
-                    amount: mirror_asset_amount,
+                    amount: mirror_asset_provide_amount,
                 },
-                get_uusd_asset_from_amount(uusd_amount_to_provide_liquidity),
+                get_uusd_asset_from_amount(uusd_provide_amount),
             ],
             slippage_tolerance: None,
             receiver: None,
         })?,
         funds: vec![Coin {
             denom: String::from("uusd"),
-            amount: uusd_amount_to_provide_liquidity,
+            amount: uusd_provide_amount,
         }],
     }));
 
-    // Stake Terraswap LP tokens to Mirror Long Farm or Spectrum Mirror Vault.
+    // Stake Terraswap LP tokens at Spectrum Mirror Vault.
     Ok(response.add_message(create_internal_execute_message(
         &env,
         InternalExecuteMsg::StakeTerraswapLpTokens {

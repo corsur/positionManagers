@@ -33,6 +33,7 @@ pub enum InternalExecuteMsg {
     RecordPositionInfo {
         mirror_asset_cw20_addr: String,
     },
+    PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
     StakeTerraswapLpTokens {
         lp_token_cw20_addr: String,
     },
