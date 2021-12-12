@@ -441,3 +441,27 @@ pub fn increase_uusd_balance_from_aust_collateral(
         }),
     ]
 }
+
+pub fn compute_terraswap_uusd_offer_amount(
+    querier: &QuerierWrapper,
+    terraswap_pair_addr: Addr,
+    ask_mirror_asset_amount: Uint128,
+) -> StdResult<Uint128> {
+    let mut a = 1u128;
+    let mut b = u128::MAX / 2;
+    while a + 1 < b {
+        let offer_uusd_amount = (a + b) / 2;
+        let return_mirror_asset_amount = terraswap::querier::simulate(
+            querier,
+            terraswap_pair_addr.clone(),
+            &get_uusd_asset_from_amount(offer_uusd_amount.into()),
+        )?
+        .return_amount;
+        if return_mirror_asset_amount <= ask_mirror_asset_amount {
+            a = offer_uusd_amount;
+        } else {
+            b = offer_uusd_amount;
+        }
+    }
+    Ok(a.into())
+}

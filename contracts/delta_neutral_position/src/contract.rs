@@ -11,10 +11,10 @@ use crate::state::{
     PositionInfo, TargetCollateralRatioRange, MANAGER, POSITION_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    create_terraswap_cw20_uusd_pair_asset_info, decimal_division, decimal_inverse,
-    decimal_multiplication, find_collateral_uusd_amount, get_cdp_uusd_lock_info_result,
-    get_mirror_asset_oracle_uusd_price, get_position_state, get_uusd_asset_from_amount,
-    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
+    compute_terraswap_uusd_offer_amount, create_terraswap_cw20_uusd_pair_asset_info,
+    decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
+    get_cdp_uusd_lock_info_result, get_mirror_asset_oracle_uusd_price, get_position_state,
+    get_uusd_asset_from_amount, get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
     increase_uusd_balance_from_aust_collateral, increase_uusd_balance_from_long_farm,
     swap_cw20_token_for_uusd,
 };
@@ -315,17 +315,11 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             )?
             .contract_addr,
         )?;
-        let uusd_offer_amount = terraswap::querier::reverse_simulate(
+        let uusd_offer_amount = compute_terraswap_uusd_offer_amount(
             &deps.querier,
             terraswap_pair_addr.clone(),
-            &Asset {
-                info: AssetInfo::Token {
-                    contract_addr: state.mirror_asset_cw20_addr.to_string(),
-                },
-                amount: net_short_mirror_asset_amount,
-            },
-        )?
-        .offer_amount;
+            net_short_mirror_asset_amount,
+        )?;
 
         // If uusd balance is insufficient to cover `uuse_offer_amount` + tax, then increase uusd balance by unstaking LPs and withdrawing liquidity.
         let uusd_offer_asset = get_uusd_asset_from_amount(uusd_offer_amount);
