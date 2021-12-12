@@ -27,7 +27,6 @@ pub fn instantiate(
     let config = Config {
         owner: deps.api.addr_validate(&msg.owner_addr)?,
         delta_neutral_position_code_id: msg.delta_neutral_position_code_id,
-        min_uusd_amount: msg.min_uusd_amount,
         context: Context {
             controller: deps.api.addr_validate(&msg.controller)?,
             anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
@@ -46,6 +45,7 @@ pub fn instantiate(
             spectrum_staker_addr: deps.api.addr_validate(&msg.spectrum_staker_addr)?,
             terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
             collateral_ratio_safety_margin: msg.collateral_ratio_safety_margin,
+            min_delta_neutral_uusd_amount: msg.min_delta_neutral_uusd_amount,
         },
     };
     CONFIG.save(deps.storage, &config)?;
@@ -76,7 +76,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 let params: DeltaNeutralParams = from_binary(&data.unwrap())?;
                 open_position(env, info, deps.storage, position, params, assets)
             }
-            Action::IncreasePosition {} => increase_position(deps.as_ref(), info, position, assets),
+            Action::IncreasePosition { data } => {
+                increase_position(deps.as_ref(), info, position, assets, data)
+            }
             Action::DecreasePosition {
                 proportion,
                 recipient,
@@ -167,13 +169,16 @@ pub fn increase_position(
     info: MessageInfo,
     position: Position,
     assets: Vec<Asset>,
+    data: Option<Binary>,
 ) -> StdResult<Response> {
     let config = CONFIG.load(deps.storage)?;
     let uusd_asset = validate_assets(&info, &config, &assets)?;
     send_execute_message_to_position_contract(
         deps,
         position,
-        delta_neutral_position::ExecuteMsg::IncreasePosition {},
+        delta_neutral_position::ExecuteMsg::IncreasePosition {
+            ignore_uusd_pending_unlock: from_binary(&data.unwrap())?,
+        },
         Some(uusd_asset),
     )
 }
@@ -243,7 +248,7 @@ fn validate_assets(info: &MessageInfo, config: &Config, assets: &[Asset]) -> Std
         let asset = &assets[0];
         if let AssetInfo::NativeToken { denom } = &asset.info {
             if denom == "uusd"
-                && asset.amount >= config.min_uusd_amount
+                && asset.amount >= config.context.min_delta_neutral_uusd_amount
                 && asset.assert_sent_native_token_balance(info).is_ok()
             {
                 return Ok(asset.clone());

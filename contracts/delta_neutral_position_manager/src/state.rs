@@ -2,7 +2,7 @@ use aperture_common::{
     common::{Position, PositionKey},
     delta_neutral_position_manager::Context,
 };
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,6 @@ pub struct Config {
     pub owner: Addr,
     pub delta_neutral_position_code_id: u64,
     pub context: Context,
-    pub min_uusd_amount: Uint128,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");

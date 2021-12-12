@@ -25,6 +25,7 @@ pub struct InstantiateMsg {
     pub spectrum_staker_addr: String,
     pub terraswap_factory_addr: String,
     pub collateral_ratio_safety_margin: Decimal,
+    pub min_delta_neutral_uusd_amount: Uint128,
 }
 
 /// Internal execute messages that will only be processed if sent from the contract itself.
@@ -84,6 +85,7 @@ pub struct Context {
     pub spectrum_staker_addr: Addr,
     pub terraswap_factory_addr: Addr,
     pub collateral_ratio_safety_margin: Decimal,
+    pub min_delta_neutral_uusd_amount: Uint128,
 }
 
 /// Parameters of a delta-neutral position.

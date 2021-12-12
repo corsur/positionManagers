@@ -31,6 +31,10 @@ pub fn get_uusd_asset_from_amount(amount: Uint128) -> Asset {
     }
 }
 
+pub fn get_uusd_balance(querier: &QuerierWrapper, env: &Env) -> StdResult<Uint128> {
+    terraswap::querier::query_balance(querier, env.contract.address.clone(), "uusd".to_string())
+}
+
 /// Returns an array comprising two AssetInfo elements, representing a Terraswap token pair where the first token is a cw20 with contract address
 /// `cw20_token_addr` and the second token is the native "uusd" token. The returned array is useful for querying Terraswap for pair info.
 /// # Arguments
@@ -98,6 +102,19 @@ pub fn get_mirror_asset_oracle_uusd_price(
             },
         )?;
     Ok(mirror_asset_price_response.rate)
+}
+
+pub fn get_cdp_uusd_lock_info_result(
+    deps: Deps,
+    context: &Context,
+) -> StdResult<mirror_protocol::lock::PositionLockInfoResponse> {
+    let position_info = POSITION_INFO.load(deps.storage)?;
+    deps.querier.query_wasm_smart(
+        &context.mirror_lock_addr,
+        &mirror_protocol::lock::QueryMsg::PositionLockInfo {
+            position_idx: position_info.cdp_idx,
+        },
+    )
 }
 
 pub fn find_collateral_uusd_amount(

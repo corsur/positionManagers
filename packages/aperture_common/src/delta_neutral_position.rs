@@ -22,8 +22,6 @@ pub enum InternalExecuteMsg {
         proportion: Decimal,
         recipient: String,
     },
-    DepositUusdBalanceToAnchor {},
-    AddAnchorUstBalanceToCollateral {},
     OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
         collateral_ratio: Decimal,
         mirror_asset_cw20_addr: String,
@@ -37,6 +35,7 @@ pub enum InternalExecuteMsg {
     StakeTerraswapLpTokens {
         lp_token_cw20_addr: String,
     },
+    DeltaNeutralReinvest {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -51,7 +50,9 @@ pub enum ExecuteMsg {
     OpenPosition {
         params: DeltaNeutralParams,
     },
-    IncreasePosition {},
+    IncreasePosition {
+        ignore_uusd_pending_unlock: bool,
+    },
     DecreasePosition {
         proportion: Decimal,
         recipient: String,

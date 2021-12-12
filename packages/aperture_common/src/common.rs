@@ -72,7 +72,9 @@ pub enum Action {
     ClosePosition {
         recipient: String,
     },
-    IncreasePosition {},
+    IncreasePosition {
+        data: Option<Binary>,
+    },
     DecreasePosition {
         proportion: Decimal,
         recipient: String,
