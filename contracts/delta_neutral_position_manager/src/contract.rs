@@ -77,13 +77,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 open_position(env, info, deps.storage, position, params, assets)
             }
             Action::IncreasePosition { data } => {
-                increase_position(deps.as_ref(), info, position, assets, data)
+                increase_position(deps.as_ref(), info, &position, assets, data)
             }
             Action::DecreasePosition {
                 proportion,
                 recipient,
-            } => decrease_position(deps.as_ref(), position, proportion, recipient),
-            Action::ClosePosition { recipient } => close_position(deps, position, recipient),
+            } => decrease_position(deps.as_ref(), &position, proportion, recipient),
+            Action::ClosePosition { recipient } => close_position(deps, &position, recipient),
         },
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
             InternalExecuteMsg::SendOpenPositionToPositionContract {
@@ -92,7 +92,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 uusd_asset,
             } => send_execute_message_to_position_contract(
                 deps.as_ref(),
-                position,
+                &position,
                 delta_neutral_position::ExecuteMsg::OpenPosition { params },
                 Some(uusd_asset),
             ),
@@ -102,12 +102,11 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
 
 fn send_execute_message_to_position_contract(
     deps: Deps,
-    position: Position,
+    position: &Position,
     position_contract_execute_msg: aperture_common::delta_neutral_position::ExecuteMsg,
     uusd_asset: Option<Asset>,
 ) -> StdResult<Response> {
-    let contract_addr =
-        POSITION_TO_CONTRACT_ADDR.load(deps.storage, get_position_key(&position))?;
+    let contract_addr = POSITION_TO_CONTRACT_ADDR.load(deps.storage, get_position_key(position))?;
     let mut funds: Vec<Coin> = vec![];
     if let Some(asset) = uusd_asset {
         funds.push(asset.deduct_tax(&deps.querier)?);
@@ -167,7 +166,7 @@ pub fn open_position(
 pub fn increase_position(
     deps: Deps,
     info: MessageInfo,
-    position: Position,
+    position: &Position,
     assets: Vec<Asset>,
     data: Option<Binary>,
 ) -> StdResult<Response> {
@@ -185,7 +184,7 @@ pub fn increase_position(
 
 pub fn decrease_position(
     deps: Deps,
-    position: Position,
+    position: &Position,
     proportion: Decimal,
     recipient: String,
 ) -> StdResult<Response> {
@@ -205,9 +204,14 @@ pub fn decrease_position(
     )
 }
 
-pub fn close_position(deps: DepsMut, position: Position, recipient: String) -> StdResult<Response> {
-    POSITION_TO_CONTRACT_ADDR.remove(deps.storage, get_position_key(&position));
-    decrease_position(deps.as_ref(), position, Decimal::one(), recipient)
+pub fn close_position(
+    deps: DepsMut,
+    position: &Position,
+    recipient: String,
+) -> StdResult<Response> {
+    let result = decrease_position(deps.as_ref(), position, Decimal::one(), recipient);
+    POSITION_TO_CONTRACT_ADDR.remove(deps.storage, get_position_key(position));
+    result
 }
 
 // To store instantiated contract address into state and initiate investment.

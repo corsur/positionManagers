@@ -1,8 +1,9 @@
 import {
   LCDClient,
   MnemonicKey,
-  MsgStoreCode,
+  MsgExecuteContract,
   MsgInstantiateContract,
+  MsgStoreCode,
   isTxError,
 } from "@terra-money/terra.js";
 import * as fs from "fs";
@@ -148,6 +149,35 @@ async function instantiate_delta_neutral_position_manager(
   }
   return getContractAddress(response);
 }
+async function add_delta_neutral_strategy_to_terra_manager(
+  terra_manager_addr,
+  delta_neutral_position_manager_addr,
+) {
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgExecuteContract(
+        /*sender=*/ test_wallet.key.accAddress,
+        /*contract=*/ terra_manager_addr,
+        {
+          add_strategy: {
+            name: "DN",
+            version: "v0",
+            manager_addr: delta_neutral_position_manager_addr
+          }
+        }
+      ),
+    ],
+    memo: "Add delta-neutral strategy",
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  if (isTxError(response)) {
+    throw new Error(
+      `add_delta_neutral_strategy_to_terra_manager failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+    );
+  }
+}
 
 async function deploy() {
   // Initialize sequence number.
@@ -204,6 +234,12 @@ async function deploy() {
   /*****************************************/
   /***** End of contract instantiation *****/
   /*****************************************/
+
+  // Add delta-neutral strategy to Terra manager.
+  await add_delta_neutral_strategy_to_terra_manager(terra_manager_addr, delta_neutral_position_manager_addr);
+  console.log(
+    "Registered delta-neutral strategy with Terra manager."
+  );
 }
 
 await deploy();
