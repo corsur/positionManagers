@@ -1,10 +1,12 @@
+use std::str::FromStr;
+
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
-    to_binary, Addr, CosmosMsg, Decimal, Deps, Env, QuerierWrapper, StdError, StdResult, Uint128,
-    WasmMsg,
+    to_binary, Addr, CosmosMsg, Decimal, Decimal256, Deps, Env, QuerierWrapper, StdError,
+    StdResult, Uint128, Uint256, WasmMsg,
 };
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
-use terraswap::asset::{Asset, AssetInfo};
+use terraswap::asset::{Asset, AssetInfo, PairInfo};
 
 use crate::state::{TargetCollateralRatioRange, POSITION_INFO};
 
@@ -40,7 +42,7 @@ pub fn get_uusd_balance(querier: &QuerierWrapper, env: &Env) -> StdResult<Uint12
 /// # Arguments
 ///
 /// * `cw20_token_addr` - Contract address of the specified cw20 token
-pub fn create_terraswap_cw20_uusd_pair_asset_info(cw20_token_addr: &str) -> [AssetInfo; 2] {
+fn create_terraswap_cw20_uusd_pair_asset_info(cw20_token_addr: &str) -> [AssetInfo; 2] {
     [
         terraswap::asset::AssetInfo::Token {
             contract_addr: cw20_token_addr.to_string(),
@@ -115,6 +117,37 @@ pub fn get_cdp_uusd_lock_info_result(
             position_idx: position_info.cdp_idx,
         },
     )
+}
+
+pub fn get_terraswap_uusd_mirror_asset_pool_balance_info(
+    deps: Deps,
+    context: &Context,
+    mirror_asset_cw20_addr: &str,
+) -> StdResult<(PairInfo, Uint128, Uint128)> {
+    let terraswap_pair_asset_info =
+        create_terraswap_cw20_uusd_pair_asset_info(mirror_asset_cw20_addr);
+    let terraswap_pair_info = terraswap::querier::query_pair_info(
+        &deps.querier,
+        context.terraswap_factory_addr.clone(),
+        &terraswap_pair_asset_info,
+    )?;
+    let terraswap_pair_contract_addr =
+        deps.api.addr_validate(&terraswap_pair_info.contract_addr)?;
+    let pool_mirror_asset_balance = terraswap_pair_asset_info[0].query_pool(
+        &deps.querier,
+        deps.api,
+        terraswap_pair_contract_addr.clone(),
+    )?;
+    let pool_uusd_balance = terraswap_pair_asset_info[1].query_pool(
+        &deps.querier,
+        deps.api,
+        terraswap_pair_contract_addr,
+    )?;
+    Ok((
+        terraswap_pair_info,
+        pool_mirror_asset_balance,
+        pool_uusd_balance,
+    ))
 }
 
 pub fn find_collateral_uusd_amount(
@@ -443,25 +476,31 @@ pub fn increase_uusd_balance_from_aust_collateral(
 }
 
 pub fn compute_terraswap_uusd_offer_amount(
-    querier: &QuerierWrapper,
-    terraswap_pair_addr: Addr,
+    deps: Deps,
+    context: &Context,
+    mirror_asset_cw20_addr: &str,
     ask_mirror_asset_amount: Uint128,
-) -> StdResult<Uint128> {
-    let mut a = 1u128;
-    let mut b = u128::MAX / 2;
-    while a + 1 < b {
-        let offer_uusd_amount = (a + b) / 2;
-        let return_mirror_asset_amount = terraswap::querier::simulate(
-            querier,
-            terraswap_pair_addr.clone(),
-            &get_uusd_asset_from_amount(offer_uusd_amount.into()),
-        )?
-        .return_amount;
-        if return_mirror_asset_amount <= ask_mirror_asset_amount {
+) -> StdResult<(PairInfo, Uint128)> {
+    let (terraswap_pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
+        get_terraswap_uusd_mirror_asset_pool_balance_info(deps, context, mirror_asset_cw20_addr)?;
+    let commission_rate = Decimal256::from_str("0.003").unwrap();
+    let cp =
+        Uint256::from(pool_mirror_asset_balance.u128()) * Uint256::from(pool_uusd_balance.u128());
+
+    let mut a = Uint128::from(1u128);
+    let mut b = pool_uusd_balance;
+    while b - a > 1u128.into() {
+        let offer_uusd_amount = (a + b).multiply_ratio(1u128, 2u128);
+        let mut return_mirror_asset_amount =
+            (Decimal256::from_ratio(pool_mirror_asset_balance, 1u128)
+                - Decimal256::from_ratio(cp, pool_uusd_balance + offer_uusd_amount))
+                * Uint256::from(1u128);
+        return_mirror_asset_amount -= return_mirror_asset_amount * commission_rate;
+        if return_mirror_asset_amount <= ask_mirror_asset_amount.into() {
             a = offer_uusd_amount;
         } else {
             b = offer_uusd_amount;
         }
     }
-    Ok(a.into())
+    Ok((terraswap_pair_info, a))
 }

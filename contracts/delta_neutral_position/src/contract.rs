@@ -11,10 +11,11 @@ use crate::state::{
     PositionInfo, TargetCollateralRatioRange, MANAGER, POSITION_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    compute_terraswap_uusd_offer_amount, create_terraswap_cw20_uusd_pair_asset_info,
+    compute_terraswap_uusd_offer_amount,
     decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
     get_cdp_uusd_lock_info_result, get_mirror_asset_oracle_uusd_price, get_position_state,
-    get_uusd_asset_from_amount, get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
+    get_terraswap_uusd_mirror_asset_pool_balance_info, get_uusd_asset_from_amount,
+    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
     increase_uusd_balance_from_aust_collateral, increase_uusd_balance_from_long_farm,
     swap_cw20_token_for_uusd,
 };
@@ -307,17 +308,10 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
         // We are in a net short position, so we swap uusd for the difference amount of mAsset.
         let net_short_mirror_asset_amount =
             state.mirror_asset_short_amount - mirror_asset_long_amount;
-        let terraswap_pair_addr = deps.api.addr_validate(
-            &terraswap::querier::query_pair_info(
-                &deps.querier,
-                context.terraswap_factory_addr.clone(),
-                &create_terraswap_cw20_uusd_pair_asset_info(state.mirror_asset_cw20_addr.as_str()),
-            )?
-            .contract_addr,
-        )?;
-        let uusd_offer_amount = compute_terraswap_uusd_offer_amount(
-            &deps.querier,
-            terraswap_pair_addr.clone(),
+        let (terraswap_pair_info, uusd_offer_amount) = compute_terraswap_uusd_offer_amount(
+            deps,
+            &context,
+            state.mirror_asset_cw20_addr.as_str(),
             net_short_mirror_asset_amount,
         )?;
 
@@ -331,7 +325,7 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                 uusd_offer_amount + uusd_offer_asset.compute_tax(&deps.querier)?,
             ))
             .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: terraswap_pair_addr.to_string(),
+                contract_addr: terraswap_pair_info.contract_addr,
                 msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
                     offer_asset: get_uusd_asset_from_amount(uusd_offer_amount),
                     max_spread: None,
@@ -698,28 +692,13 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
         return Ok(response);
     }
 
-    // Find uusd amount to pair with mAsset of quantity `mirror_asset_amount`.
-    let terraswap_pair_asset_info =
-        create_terraswap_cw20_uusd_pair_asset_info(&state.mirror_asset_cw20_addr.to_string());
-    let terraswap_pair_info = terraswap::querier::query_pair_info(
-        &deps.querier,
-        context.terraswap_factory_addr,
-        &terraswap_pair_asset_info,
-    )?;
-    let terraswap_pair_contract_addr =
-        deps.api.addr_validate(&terraswap_pair_info.contract_addr)?;
-    let pool_mirror_asset_balance = terraswap_pair_asset_info[0].query_pool(
-        &deps.querier,
-        deps.api,
-        terraswap_pair_contract_addr.clone(),
-    )?;
-    let pool_uusd_balance = terraswap_pair_asset_info[1].query_pool(
-        &deps.querier,
-        deps.api,
-        terraswap_pair_contract_addr,
-    )?;
-
     // Find amount of uusd and mAsset to pair together and provide liquidity.
+    let (terraswap_pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
+        get_terraswap_uusd_mirror_asset_pool_balance_info(
+            deps,
+            &context,
+            state.mirror_asset_cw20_addr.as_str(),
+        )?;
     let uusd_ratio = Decimal::from_ratio(available_uusd_amount, pool_uusd_balance);
     let mirror_asset_ratio =
         Decimal::from_ratio(state.mirror_asset_balance, pool_mirror_asset_balance);
