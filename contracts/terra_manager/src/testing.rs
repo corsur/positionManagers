@@ -1,8 +1,11 @@
-use crate::contract::instantiate;
+use crate::contract::{instantiate, reply};
 use crate::msg::InstantiateMsg;
+use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
+use crate::state::NFT_ADDR;
 
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
-use cosmwasm_std::{to_binary, Addr, ReplyOn, SubMsg, WasmMsg};
+use cosmwasm_std::{to_binary, Addr, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse, WasmMsg};
+use protobuf::Message;
 
 #[test]
 fn test_initialization() {
@@ -40,5 +43,35 @@ fn test_initialization() {
             id: 1, // The reply id.
             reply_on: ReplyOn::Success,
         }]
+    );
+}
+
+#[test]
+fn test_reply() {
+    // Baisc test setup.
+    let mut deps = mock_dependencies(&[]);
+    let mut instantiate_response = MsgInstantiateContractResponse::new();
+    instantiate_response.set_contract_address(MOCK_CONTRACT_ADDR.to_string());
+
+    let reply_msg = Reply {
+        id: 1,
+        result: cosmwasm_std::ContractResult::Ok(SubMsgExecutionResponse {
+            events: vec![],
+            data: Some(
+                // Convert into binary parseable by Protobuf.
+                Message::write_to_bytes(&instantiate_response)
+                    .unwrap()
+                    .into(),
+            ),
+        }),
+    };
+
+    // Trigger reply's side effect. Response is not needed.
+    let _reply_response = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+
+    // Upon successfully reply() execution, we can check mutated state.
+    assert_eq!(
+        NFT_ADDR.load(deps.as_mut().storage).unwrap(),
+        MOCK_CONTRACT_ADDR
     );
 }
