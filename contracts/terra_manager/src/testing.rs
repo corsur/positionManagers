@@ -1,10 +1,12 @@
-use crate::contract::{instantiate, reply};
+use crate::contract::{add_strategy, instantiate, reply};
 use crate::msg::InstantiateMsg;
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
-use crate::state::NFT_ADDR;
+use crate::state::{NEXT_STRATEGY_ID, NFT_ADDR};
 
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
-use cosmwasm_std::{to_binary, Addr, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse, WasmMsg};
+use cosmwasm_std::{
+    to_binary, Addr, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse, Uint64, WasmMsg,
+};
 use protobuf::Message;
 
 #[test]
@@ -67,11 +69,27 @@ fn test_reply() {
     };
 
     // Trigger reply's side effect. Response is not needed.
-    let _reply_response = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
+    let _res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
 
     // Upon successfully reply() execution, we can check mutated state.
     assert_eq!(
         NFT_ADDR.load(deps.as_mut().storage).unwrap(),
         MOCK_CONTRACT_ADDR
     );
+}
+
+#[test]
+fn test_add_strategy() {
+    let mut deps = mock_dependencies(&[]);
+    let strategy_name = "test_strat".to_string();
+    let version = "1.0.1".to_string();
+    let position_manager_addr = "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string();
+
+    let _res = add_strategy(deps.as_mut(), strategy_name, version, position_manager_addr);
+
+    // Test that next position id should be incremented by 1.
+    // assert_eq!(
+    //     NEXT_STRATEGY_ID.load(deps.as_mut().storage).unwrap(),
+    //     Uint64::from(1u64)
+    // );
 }
