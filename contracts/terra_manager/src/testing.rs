@@ -3,18 +3,15 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{NEXT_STRATEGY_ID, NFT_ADDR};
 
-use aperture_common::common::StrategyMetadata;
+use aperture_common::common::{Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg, Position, Action};
+use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
+use aperture_common::nft::Metadata;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, DepsMut, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse, Uint64,
-    WasmMsg,
+    from_binary, to_binary, Addr, CosmosMsg, Decimal, Reply, ReplyOn, SubMsg,
+    SubMsgExecutionResponse, Uint64, WasmMsg, Uint128,
 };
 use protobuf::Message;
-
-fn init(deps: DepsMut) {
-    let msg = InstantiateMsg { code_id: 1234u64 };
-    let _res = instantiate(deps, mock_env(), mock_info(MOCK_CONTRACT_ADDR, &[]), msg).unwrap();
-}
 
 #[test]
 fn test_initialization() {
@@ -86,9 +83,15 @@ fn test_reply() {
 }
 
 #[test]
-fn test_add_strategy() {
+fn test_manipuate_strategy() {
     let mut deps = mock_dependencies(&[]);
-    init(deps.as_mut());
+    let _res = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(MOCK_CONTRACT_ADDR, &[]),
+        InstantiateMsg { code_id: 1234u64 },
+    )
+    .unwrap();
 
     let msg = ExecuteMsg::AddStrategy {
         name: "test_strat".to_string(),
@@ -161,5 +164,96 @@ fn test_add_strategy() {
     assert!(
         bad_query_response.is_err(),
         "Strategy metadata should not exist."
+    );
+}
+
+#[test]
+fn test_create_terra_nft_position() {
+    let mut deps = mock_dependencies(&[]);
+    let _res = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(MOCK_CONTRACT_ADDR, &[]),
+        InstantiateMsg { code_id: 1234u64 },
+    )
+    .unwrap();
+    NFT_ADDR
+        .save(deps.as_mut().storage, &Addr::unchecked(MOCK_CONTRACT_ADDR))
+        .unwrap();
+
+    let _res = execute(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(MOCK_CONTRACT_ADDR, &[]),
+        ExecuteMsg::AddStrategy {
+            name: "test_strat".to_string(),
+            version: "1.0.1".to_string(),
+            manager_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string(),
+        },
+    );
+
+    let delta_neutral_params_binary = to_binary(&DeltaNeutralParams {
+        target_min_collateral_ratio: Decimal::one(),
+        target_max_collateral_ratio: Decimal::one(),
+        mirror_asset_cw20_addr: MOCK_CONTRACT_ADDR.to_string(),
+    })
+    .unwrap();
+
+    let execute_res = execute(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(MOCK_CONTRACT_ADDR, &[]),
+        ExecuteMsg::CreateTerraNFTPosition {
+            strategy: Strategy {
+                chain_id: crate::msg::TERRA_CHAIN_ID,
+                strategy_id: Uint64::from(0u64),
+            },
+            data: Some(delta_neutral_params_binary.clone()),
+            assets: vec![],
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        execute_res.messages,
+        vec![
+            SubMsg {
+                msg: CosmosMsg::Wasm(WasmMsg::Execute {
+                    // NFT position manager's contract address.
+                    contract_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string(),
+                    msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
+                        position: Position{chain_id: 0u32, position_id: Uint128::from(0u128)},
+                        action: Action::OpenPosition{data: Some(delta_neutral_params_binary.clone())},
+                        assets: vec![],
+                    })
+                    .unwrap(),
+                    funds: vec![],
+                })
+                .into(),
+                gas_limit: None,
+                id: 0, // The reply id.
+                reply_on: ReplyOn::Never,
+            },
+            SubMsg {
+                msg: CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: MOCK_CONTRACT_ADDR.to_string(),
+                    msg: to_binary(&cw721_base::ExecuteMsg::Mint(cw721_base::MintMsg {
+                        token_id: "0".to_string(),
+                        owner: MOCK_CONTRACT_ADDR.to_string(),
+                        token_uri: None,
+                        extension: Some(Metadata {
+                            name: Some("ApertureNFT".to_string()),
+                            description: None
+                        }),
+                    }))
+                    .unwrap(),
+                    funds: vec![],
+                })
+                .into(),
+                gas_limit: None,
+                id: 0, // The reply id.
+                reply_on: ReplyOn::Never,
+            }
+        ]
     );
 }
