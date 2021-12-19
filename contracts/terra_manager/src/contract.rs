@@ -106,9 +106,6 @@ pub fn add_strategy(
     manager_addr: String,
 ) -> StdResult<Response> {
     let strategy_id = NEXT_STRATEGY_ID.load(deps.storage)?;
-    println!("--- add_strate ---");
-    println!("{}", strategy_id.to_string());
-    assert_eq!(strategy_id, Uint64::from(2000u64));
     NEXT_STRATEGY_ID.save(deps.storage, &(strategy_id.checked_add(1u64.into())?))?;
     STRATEGY_ID_TO_METADATA_MAP.save(
         deps.storage,

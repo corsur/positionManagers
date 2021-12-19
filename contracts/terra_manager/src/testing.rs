@@ -1,13 +1,20 @@
-use crate::contract::{add_strategy, instantiate, reply};
-use crate::msg::InstantiateMsg;
+use crate::contract::{execute, instantiate, query, reply};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{NEXT_STRATEGY_ID, NFT_ADDR};
 
+use aperture_common::common::StrategyMetadata;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    to_binary, Addr, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse, Uint64, WasmMsg,
+    from_binary, to_binary, Addr, DepsMut, Reply, ReplyOn, SubMsg, SubMsgExecutionResponse, Uint64,
+    WasmMsg,
 };
 use protobuf::Message;
+
+fn init(deps: DepsMut) {
+    let msg = InstantiateMsg { code_id: 1234u64 };
+    let _res = instantiate(deps, mock_env(), mock_info(MOCK_CONTRACT_ADDR, &[]), msg).unwrap();
+}
 
 #[test]
 fn test_initialization() {
@@ -81,15 +88,78 @@ fn test_reply() {
 #[test]
 fn test_add_strategy() {
     let mut deps = mock_dependencies(&[]);
-    let strategy_name = "test_strat".to_string();
-    let version = "1.0.1".to_string();
-    let position_manager_addr = "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string();
+    init(deps.as_mut());
 
-    let _res = add_strategy(deps.as_mut(), strategy_name, version, position_manager_addr);
+    let msg = ExecuteMsg::AddStrategy {
+        name: "test_strat".to_string(),
+        version: "1.0.1".to_string(),
+        manager_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string(),
+    };
 
-    // Test that next position id should be incremented by 1.
-    // assert_eq!(
-    //     NEXT_STRATEGY_ID.load(deps.as_mut().storage).unwrap(),
-    //     Uint64::from(1u64)
-    // );
+    // Position id should be 0 intially.
+    assert_eq!(
+        NEXT_STRATEGY_ID.load(deps.as_mut().storage).unwrap(),
+        Uint64::from(0u64)
+    );
+
+    let _res = execute(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(MOCK_CONTRACT_ADDR, &[]),
+        msg,
+    );
+    // Position id should be 1 now.
+    assert_eq!(
+        NEXT_STRATEGY_ID.load(deps.as_mut().storage).unwrap(),
+        Uint64::from(1u64)
+    );
+
+    // Test querying metadata against newly added strategy.
+    let query_response = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::GetStrategyMetadata {
+            strategy_id: Uint64::from(0u64),
+        },
+    )
+    .unwrap();
+
+    let parsed_query_response: StrategyMetadata = from_binary(&query_response).unwrap();
+    assert_eq!(
+        parsed_query_response,
+        StrategyMetadata {
+            name: "test_strat".to_string(),
+            version: "1.0.1".to_string(),
+            manager_addr: Addr::unchecked("terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g"),
+        }
+    );
+
+    // Now, we remove the strategy.
+    let _remove_res = execute(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(MOCK_CONTRACT_ADDR, &[]),
+        ExecuteMsg::RemoveStrategy {
+            strategy_id: Uint64::from(0u64),
+        },
+    )
+    .unwrap();
+
+    // Next position id should remain unchanged.
+    assert_eq!(
+        NEXT_STRATEGY_ID.load(deps.as_mut().storage).unwrap(),
+        Uint64::from(1u64)
+    );
+
+    let bad_query_response = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::GetStrategyMetadata {
+            strategy_id: Uint64::from(0u64),
+        },
+    );
+    assert!(
+        bad_query_response.is_err(),
+        "Strategy metadata should not exist."
+    );
 }
