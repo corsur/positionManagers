@@ -1,15 +1,18 @@
 use crate::contract::{execute, instantiate, query, reply};
+use crate::mock_querier::custom_mock_dependencies;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{NEXT_STRATEGY_ID, NFT_ADDR};
 
-use aperture_common::common::{Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg, Position, Action};
+use aperture_common::common::{
+    Action, Position, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg,
+};
 use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
 use aperture_common::nft::Metadata;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
     from_binary, to_binary, Addr, CosmosMsg, Decimal, Reply, ReplyOn, SubMsg,
-    SubMsgExecutionResponse, Uint64, WasmMsg, Uint128,
+    SubMsgExecutionResponse, Uint128, Uint64, WasmMsg,
 };
 use protobuf::Message;
 
@@ -169,7 +172,9 @@ fn test_manipuate_strategy() {
 
 #[test]
 fn test_create_terra_nft_position() {
-    let mut deps = mock_dependencies(&[]);
+    // Use customized querier enable wasm query. The built-in mock querier
+    // doesn't support wasm query yet.
+    let mut deps = custom_mock_dependencies();
     let _res = instantiate(
         deps.as_mut(),
         mock_env(),
@@ -219,11 +224,16 @@ fn test_create_terra_nft_position() {
         vec![
             SubMsg {
                 msg: CosmosMsg::Wasm(WasmMsg::Execute {
-                    // NFT position manager's contract address.
+                    // Position manager's contract address.
                     contract_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string(),
                     msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
-                        position: Position{chain_id: 0u32, position_id: Uint128::from(0u128)},
-                        action: Action::OpenPosition{data: Some(delta_neutral_params_binary.clone())},
+                        position: Position {
+                            chain_id: 0u32,
+                            position_id: Uint128::from(0u128)
+                        },
+                        action: Action::OpenPosition {
+                            data: Some(delta_neutral_params_binary.clone())
+                        },
                         assets: vec![],
                     })
                     .unwrap(),
@@ -255,5 +265,49 @@ fn test_create_terra_nft_position() {
                 reply_on: ReplyOn::Never,
             }
         ]
+    );
+
+    // Test execute strategy on top of existing positions.
+    let execute_res = execute(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(MOCK_CONTRACT_ADDR, &[]),
+        ExecuteMsg::ExecuteStrategy {
+            position: Position {
+                chain_id: 0u32,
+                position_id: Uint128::from(0u128),
+            },
+            action: Action::ClosePosition {
+                recipient: MOCK_CONTRACT_ADDR.to_string()
+            },
+            assets: vec![],
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        execute_res.messages,
+        vec![SubMsg {
+            msg: CosmosMsg::Wasm(WasmMsg::Execute {
+                //Position manager's contract address.
+                contract_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string(),
+                msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
+                    position: Position {
+                        chain_id: 0u32,
+                        position_id: Uint128::from(0u128)
+                    },
+                    action: Action::ClosePosition {
+                        recipient: MOCK_CONTRACT_ADDR.to_string()
+                    },
+                    assets: vec![],
+                })
+                .unwrap(),
+                funds: vec![],
+            })
+            .into(),
+            gas_limit: None,
+            id: 0, // The reply id.
+            reply_on: ReplyOn::Never,
+        }]
     );
 }
