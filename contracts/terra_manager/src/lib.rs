@@ -1,9 +1,11 @@
 pub mod contract;
 pub mod msg;
 pub mod state;
-pub mod mock_querier;
+
+mod msg_instantiate_contract_response;
 
 #[cfg(test)]
 mod testing;
 
-mod msg_instantiate_contract_response;
+#[cfg(test)]
+mod mock_querier;
