@@ -25,6 +25,7 @@ pub struct InstantiateMsg {
     pub terraswap_factory_addr: String,
     pub collateral_ratio_safety_margin: Decimal,
     pub min_delta_neutral_uusd_amount: Uint128,
+    pub fee_collection_config: FeeCollectionConfig,
 }
 
 /// Internal execute messages that will only be processed if sent from the contract itself.
@@ -85,6 +86,12 @@ pub struct Context {
     pub terraswap_factory_addr: Addr,
     pub collateral_ratio_safety_margin: Decimal,
     pub min_delta_neutral_uusd_amount: Uint128,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct FeeCollectionConfig {
+    pub performance_rate: Decimal,
 }
 
 /// Parameters of a delta-neutral position.

@@ -71,7 +71,8 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetPositionState {},
+    // Returns PositionInfoResponse.
+    GetPositionInfo {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -103,4 +104,25 @@ pub struct PositionState {
     pub lp_token_cw20_addr: String,
     // Address of the mAsset-UST Terraswap pair contract.
     pub terraswap_pair_addr: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct TargetCollateralRatioRange {
+    pub min: Decimal,
+    pub max: Decimal,
+}
+
+impl TargetCollateralRatioRange {
+    pub fn midpoint(&self) -> Decimal {
+        (self.min + self.max) / 2u128.into()
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct PositionInfoResponse {
+    pub state: PositionState,
+    pub target_collateral_ratio_range: TargetCollateralRatioRange,
+    pub mirror_asset_long_amount: Uint128,
 }

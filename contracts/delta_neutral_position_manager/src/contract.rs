@@ -47,6 +47,7 @@ pub fn instantiate(
             collateral_ratio_safety_margin: msg.collateral_ratio_safety_margin,
             min_delta_neutral_uusd_amount: msg.min_delta_neutral_uusd_amount,
         },
+        fee_collection: msg.fee_collection_config,
     };
     CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())

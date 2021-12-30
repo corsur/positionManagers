@@ -1,6 +1,6 @@
 use aperture_common::{
     common::{Position, PositionKey},
-    delta_neutral_position_manager::Context,
+    delta_neutral_position_manager::{Context, FeeCollectionConfig},
 };
 use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
@@ -14,6 +14,7 @@ pub struct Config {
     pub owner: Addr,
     pub delta_neutral_position_code_id: u64,
     pub context: Context,
+    pub fee_collection: FeeCollectionConfig,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");

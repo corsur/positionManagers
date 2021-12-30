@@ -7,9 +7,7 @@ use cosmwasm_std::{
 };
 use terraswap::asset::{Asset, AssetInfo};
 
-use crate::state::{
-    PositionInfo, TargetCollateralRatioRange, MANAGER, POSITION_INFO, TARGET_COLLATERAL_RATIO_RANGE,
-};
+use crate::state::{PositionInfo, MANAGER, POSITION_INFO, TARGET_COLLATERAL_RATIO_RANGE};
 use crate::util::{
     compute_terraswap_uusd_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
     find_collateral_uusd_amount, get_cdp_uusd_lock_info_result, get_mirror_asset_oracle_uusd_price,
@@ -19,7 +17,8 @@ use crate::util::{
     swap_cw20_token_for_uusd,
 };
 use aperture_common::delta_neutral_position::{
-    ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
+    ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
+    PositionInfoResponse, QueryMsg, TargetCollateralRatioRange,
 };
 use aperture_common::delta_neutral_position_manager::QueryMsg as ManagerQueryMsg;
 
@@ -778,7 +777,16 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         .querier
         .query_wasm_smart(&manager_addr, &ManagerQueryMsg::GetContext {})?;
     match msg {
-        QueryMsg::GetPositionState {} => to_binary(&(get_position_state(deps, &env, &context)?)),
+        QueryMsg::GetPositionInfo {} => {
+            let state = get_position_state(deps, &env, &context)?;
+            let mirror_asset_long_amount =
+                state.mirror_asset_balance + state.mirror_asset_long_farm;
+            to_binary(&PositionInfoResponse {
+                state,
+                target_collateral_ratio_range: TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?,
+                mirror_asset_long_amount,
+            })
+        }
     }
 }
 

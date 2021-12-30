@@ -1,4 +1,4 @@
-use aperture_common::common::{Action, ChainId, Position, Strategy};
+use aperture_common::common::{Action, ChainId, Position, PositionId, Strategy};
 use cosmwasm_std::{Binary, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -55,4 +55,11 @@ pub struct MigrateMsg {}
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     GetStrategyMetadata { strategy_id: Uint64 },
+    GetNextPositionId {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct NextPositionIdResponse {
+    pub next_position_id: PositionId,
 }

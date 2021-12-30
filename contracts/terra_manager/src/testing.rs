@@ -278,7 +278,7 @@ fn test_create_terra_nft_position() {
                 position_id: Uint128::from(0u128),
             },
             action: Action::ClosePosition {
-                recipient: MOCK_CONTRACT_ADDR.to_string()
+                recipient: MOCK_CONTRACT_ADDR.to_string(),
             },
             assets: vec![],
         },

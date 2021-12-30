@@ -1,7 +1,8 @@
 use std::str::FromStr;
 
 use aperture_common::{
-    delta_neutral_position::PositionState, delta_neutral_position_manager::Context,
+    delta_neutral_position::{PositionState, TargetCollateralRatioRange},
+    delta_neutral_position_manager::Context,
 };
 use cosmwasm_std::{
     to_binary, Addr, CosmosMsg, Decimal, Decimal256, Deps, Env, QuerierWrapper, StdError,
@@ -10,7 +11,7 @@ use cosmwasm_std::{
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo, PairInfo};
 
-use crate::state::{TargetCollateralRatioRange, POSITION_INFO};
+use crate::state::POSITION_INFO;
 
 const DECIMAL_FRACTIONAL: Uint128 = Uint128::new(1_000_000_000u128);
 

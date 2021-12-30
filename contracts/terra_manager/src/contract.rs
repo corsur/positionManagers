@@ -10,7 +10,10 @@ use cosmwasm_std::{
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
-use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg, APERTURE_NFT, TERRA_CHAIN_ID};
+use crate::msg::{
+    ExecuteMsg, InstantiateMsg, MigrateMsg, NextPositionIdResponse, QueryMsg, APERTURE_NFT,
+    TERRA_CHAIN_ID,
+};
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{
     get_strategy_id_key, NEXT_POSITION_ID, NEXT_STRATEGY_ID, NFT_ADDR, OWNER,
@@ -208,6 +211,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetStrategyMetadata { strategy_id } => to_binary(
             &STRATEGY_ID_TO_METADATA_MAP.load(deps.storage, get_strategy_id_key(strategy_id))?,
         ),
+        QueryMsg::GetNextPositionId {} => to_binary(&NextPositionIdResponse {
+            next_position_id: NEXT_POSITION_ID.load(deps.storage)?,
+        }),
     }
 }
 
