@@ -7,23 +7,25 @@ name = "aperture-common"
 version = "0.2.0"
 dependencies = [
  "cosmwasm-std",
- "cw-storage-plus",
+ "cw-storage-plus 0.9.1",
  "schemars",
  "serde",
  "terraswap",
 ]
 
 [[package]]
-name = "aperture-position-nft"
-version = "0.2.0"
+name = "astroport"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e584f958fdd1eba188f5c45fd174f670e04db9bf5ca5d60edcc89de581135434"
 dependencies = [
- "aperture-common",
- "cosmwasm-schema",
  "cosmwasm-std",
- "cw-storage-plus",
- "cw721-base",
+ "cw-storage-plus 0.8.1",
+ "cw20 0.8.1",
  "schemars",
  "serde",
+ "terra-cosmwasm",
+ "uint",
 ]
 
 [[package]]
@@ -89,9 +91,9 @@ dependencies = [
 
 [[package]]
 name = "cosmwasm-crypto"
-version = "0.16.2"
+version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ec9bdd1f4da5fc0d085251b0322661c5aaf773ab299e3e205fb18130b7f6ba3"
+checksum = "3703ca1b98c8d890b82c3978f3c5bd47116f8767340dfaa4fd9bdcaa15ebcc64"
 dependencies = [
  "digest",
  "ed25519-zebra",
@@ -102,9 +104,9 @@ dependencies = [
 
 [[package]]
 name = "cosmwasm-derive"
-version = "0.16.2"
+version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ac17a14b4ab09a5d89b5301218067acca33d9311376e5c34c9877f09e562395"
+checksum = "c04f4923c080df70b04ff3e0680c92e3b8357f3b125ed65ce4bd4aa1f522c06f"
 dependencies = [
  "syn",
 ]
@@ -121,9 +123,9 @@ dependencies = [
 
 [[package]]
 name = "cosmwasm-std"
-version = "0.16.2"
+version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e47306c113f4d964c35a74a87ceb8ccfb5811e9810a9dc427101148b5b9134ca"
+checksum = "c80dbbb380c23a4f10ae6178dd411ed90c9f9931ddf4932156cc5e5ab78d1c19"
 dependencies = [
  "base64",
  "cosmwasm-crypto",
@@ -203,6 +205,17 @@ dependencies = [
 
 [[package]]
 name = "cw-storage-plus"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1e867b9972b83b32e00e878dfbff48299ba26618dabeb19b9c56fae176dc225"
+dependencies = [
+ "cosmwasm-std",
+ "schemars",
+ "serde",
+]
+
+[[package]]
+name = "cw-storage-plus"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8e401ed71bd64abb9b91151a9ff4f7b34e81b2b3eceab23e3cb67fe47e39938"
@@ -237,18 +250,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cw2"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c6380164fb236412ff43c7ca075d95847c6fa8c51b2d3a513c23127a0f2a8f6"
-dependencies = [
- "cosmwasm-std",
- "cw-storage-plus",
- "schemars",
- "serde",
-]
-
-[[package]]
 name = "cw20"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,41 +274,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "cw721"
-version = "0.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44a81e5d775c056f5c1dd5eaaf68b82599cbc21d21c9a38eca0b74808d934806"
-dependencies = [
- "cosmwasm-std",
- "cw0 0.9.1",
- "schemars",
- "serde",
-]
-
-[[package]]
-name = "cw721-base"
-version = "0.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "239bdfcae1ba72cfcdd3e4eb6300eea2673b63f74425ece5b6bc45cf964fbc1a"
-dependencies = [
- "cosmwasm-std",
- "cw-storage-plus",
- "cw0 0.9.1",
- "cw2",
- "cw721",
- "schemars",
- "serde",
- "thiserror",
-]
-
-[[package]]
 name = "delta-neutral-position"
 version = "0.9.1"
 dependencies = [
  "aperture-common",
+ "astroport",
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-storage-plus",
+ "cw-storage-plus 0.9.1",
  "cw20 0.9.1",
  "mirror-protocol",
  "moneymarket",
@@ -325,7 +299,7 @@ dependencies = [
  "aperture-common",
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-storage-plus",
+ "cw-storage-plus 0.9.1",
  "cw20 0.9.1",
  "protobuf",
  "schemars",
@@ -623,9 +597,9 @@ dependencies = [
 
 [[package]]
 name = "serde-json-wasm"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50eef3672ec8fa45f3457fd423ba131117786784a895548021976117c1ded449"
+checksum = "042ac496d97e5885149d34139bad1d617192770d7eb8f1866da2317ff4501853"
 dependencies = [
  "serde",
 ]
@@ -748,11 +722,8 @@ dependencies = [
  "aperture-common",
  "cosmwasm-schema",
  "cosmwasm-std",
- "cw-storage-plus",
+ "cw-storage-plus 0.9.1",
  "cw20 0.9.1",
- "cw721",
- "cw721-base",
- "protobuf",
  "schemars",
  "serde",
  "terraswap",

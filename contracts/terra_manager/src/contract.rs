@@ -1,70 +1,48 @@
+use aperture_common::bytes_util::ByteUtils;
 use aperture_common::common::{
-    get_position_key, Action, Position, Strategy, StrategyMetadata,
-    StrategyPositionManagerExecuteMsg,
+    get_position_key, Action, Position, PositionId, Strategy, StrategyId, StrategyLocation,
+    StrategyMetadata, StrategyPositionManagerExecuteMsg,
 };
-use aperture_common::nft::{Extension, Metadata};
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply,
-    ReplyOn, Response, StdError, StdResult, SubMsg, Uint128, Uint64, WasmMsg,
+    entry_point, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
+    StdError, StdResult, Uint128, Uint64, WasmMsg,
 };
-use protobuf::Message;
+use cw_storage_plus::{Bound, PrimaryKey, U128Key};
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::msg::{
-    ExecuteMsg, InstantiateMsg, MigrateMsg, NextPositionIdResponse, QueryMsg, APERTURE_NFT,
-    TERRA_CHAIN_ID,
+    ExecuteMsg, InstantiateMsg, MigrateMsg, NextPositionIdResponse, PositionHolderResponse,
+    PositionsResponse, QueryMsg, TERRA_CHAIN_ID,
 };
-use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{
-    get_strategy_id_key, NEXT_POSITION_ID, NEXT_STRATEGY_ID, NFT_ADDR, OWNER,
-    POSITION_TO_STRATEGY_MAP, STRATEGY_ID_TO_METADATA_MAP,
+    get_strategy_id_key, ADMIN, HOLDER_POSITION_ID_PAIR_SET, NEXT_POSITION_ID, NEXT_STRATEGY_ID,
+    POSITION_ID_TO_HOLDER, POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP,
 };
-
-const INSTANTIATE_REPLY_ID: u64 = 1;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
-    msg: InstantiateMsg,
+    _msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    OWNER.save(deps.storage, &info.sender)?;
+    ADMIN.save(deps.storage, &info.sender)?;
     NEXT_STRATEGY_ID.save(deps.storage, &Uint64::zero())?;
     NEXT_POSITION_ID.save(deps.storage, &Uint128::zero())?;
-    // Instantiate NFT contract and store its address in the state through reply.
-    Ok(Response::new().add_submessage(SubMsg {
-        msg: WasmMsg::Instantiate {
-            admin: None,
-            code_id: msg.code_id,
-            msg: to_binary(&cw721_base::InstantiateMsg {
-                name: "Aperture NFT".to_string(),
-                symbol: "APT_NFT".to_string(),
-                // Minter will be the Terra Manager itself.
-                minter: env.contract.address.to_string(),
-            })?,
-            funds: vec![],
-            label: String::new(),
-        }
-        .into(),
-        gas_limit: None,
-        id: INSTANTIATE_REPLY_ID,
-        reply_on: ReplyOn::Success,
-    }))
+    Ok(Response::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
-    // TODO(lipeiqian): Move owner-only messages under a separate enum.
+    // ACL check.
+    // CreatePosition and ExecuteStrategy are open to the public; others can only be called by the admin.
     let is_authorized: bool = match msg {
-        ExecuteMsg::CreateTerraNFTPosition { .. } => true,
+        ExecuteMsg::CreatePosition { .. } => true,
         ExecuteMsg::ExecuteStrategy { .. } => true,
-        _ => info.sender == OWNER.load(deps.storage)?,
+        _ => info.sender == ADMIN.load(deps.storage)?,
     };
     if !is_authorized {
-        return Err(StdError::GenericErr {
-            msg: "Unauthorized".to_string(),
-        });
+        return Err(StdError::generic_err("unauthorized"));
     }
     match msg {
         ExecuteMsg::AddStrategy {
@@ -73,33 +51,17 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             manager_addr,
         } => add_strategy(deps, name, version, manager_addr),
         ExecuteMsg::RemoveStrategy { strategy_id } => remove_strategy(deps, strategy_id),
-        ExecuteMsg::CreateTerraNFTPosition {
+        ExecuteMsg::CreatePosition {
             strategy,
             data,
             assets,
-        } => create_terra_nft_position(deps, env, info, strategy, data, assets),
+        } => create_position(deps, env, info, strategy, data, assets),
         ExecuteMsg::ExecuteStrategy {
             position,
             action,
             assets,
         } => execute_strategy(deps.as_ref(), env, info, position, action, assets),
     }
-}
-
-// To store instantiated NFT contract address into state.
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
-    let data = msg.result.unwrap().data.unwrap();
-    let res: MsgInstantiateContractResponse =
-        Message::parse_from_bytes(data.as_slice()).map_err(|_| {
-            StdError::parse_err(
-                "MsgInstantiateContractResponse",
-                "Terra Manager failed to parse MsgInstantiateContractResponse",
-            )
-        })?;
-    let contract_addr = deps.api.addr_validate(res.get_contract_address())?;
-    NFT_ADDR.save(deps.storage, &contract_addr)?;
-    Ok(Response::default())
 }
 
 pub fn add_strategy(
@@ -127,7 +89,7 @@ pub fn remove_strategy(deps: DepsMut, strategy_id: Uint64) -> StdResult<Response
     Ok(Response::default())
 }
 
-pub fn create_terra_nft_position(
+pub fn create_position(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -135,44 +97,44 @@ pub fn create_terra_nft_position(
     data: Option<Binary>,
     assets: Vec<Asset>,
 ) -> StdResult<Response> {
+    if strategy.chain_id != TERRA_CHAIN_ID {
+        return Err(StdError::generic_err(
+            "cross-chain strategy not yet supported",
+        ));
+    }
+
     // Assign position id.
     let position_id = NEXT_POSITION_ID.load(deps.storage)?;
     NEXT_POSITION_ID.save(deps.storage, &position_id.checked_add(1u128.into())?)?;
 
-    // Craft message that mints a cw-721 Aperture NFT token with the position id.
-    let metadata: Extension = Some(Metadata {
-        name: Some(APERTURE_NFT.to_string()),
-        description: None,
-    });
-    let nft_mint_msg = cw721_base::ExecuteMsg::Mint(cw721_base::MintMsg {
-        token_id: position_id.to_string(),
-        owner: info.sender.to_string(),
-        token_uri: None,
-        extension: metadata,
-    });
-
-    // Update POSITION_TO_STRATEGY_MAP.
+    // Save position -> strategy mapping.
     let position = Position {
         chain_id: TERRA_CHAIN_ID,
         position_id,
     };
-    POSITION_TO_STRATEGY_MAP.save(deps.storage, get_position_key(&position), &strategy)?;
+    let position_key = get_position_key(&position);
+    POSITION_TO_STRATEGY_LOCATION_MAP.save(
+        deps.storage,
+        position_key.clone(),
+        &StrategyLocation::TerraChain(strategy.strategy_id),
+    )?;
+
+    // Save position holder information.
+    let position_id_key = U128Key::from(position_id.u128());
+    POSITION_ID_TO_HOLDER.save(deps.storage, position_id_key.clone(), &info.sender)?;
+    HOLDER_POSITION_ID_PAIR_SET.save(deps.storage, (info.sender.clone(), position_id_key), &())?;
 
     // Emit messages that execute the strategy and issues a cw-721 token to the user at the end.
-    Ok(Response::new()
-        .add_messages(create_execute_strategy_messages(
+    Ok(
+        Response::new().add_messages(create_execute_strategy_messages(
             deps.as_ref(),
             env,
             info,
             position,
             Action::OpenPosition { data },
             assets,
-        )?)
-        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: (NFT_ADDR.load(deps.storage)?).to_string(),
-            msg: to_binary(&nft_mint_msg)?,
-            funds: vec![],
-        })))
+        )?),
+    )
 }
 
 pub fn execute_strategy(
@@ -183,21 +145,10 @@ pub fn execute_strategy(
     action: Action,
     assets: Vec<Asset>,
 ) -> StdResult<Response> {
-    // Verify that the message sender owns an Aperture NFT with the specified position id.
-    let owner_of_response: cw721::OwnerOfResponse = deps.querier.query_wasm_smart(
-        NFT_ADDR.load(deps.storage)?,
-        &cw721_base::QueryMsg::OwnerOf {
-            token_id: position.position_id.to_string(),
-            include_expired: Some(false),
-        },
-    )?;
-    if owner_of_response.owner != info.sender {
-        return Err(StdError::GenericErr {
-            msg: "Only position owner may make changes to the position".to_string(),
-        });
+    let holder = POSITION_ID_TO_HOLDER.load(deps.storage, position.position_id.u128().into())?;
+    if holder != info.sender {
+        return Err(StdError::generic_err("unauthorized"));
     }
-
-    // Emit messages that execute the strategy.
     Ok(
         Response::new().add_messages(create_execute_strategy_messages(
             deps, env, info, position, action, assets,
@@ -214,12 +165,74 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetNextPositionId {} => to_binary(&NextPositionIdResponse {
             next_position_id: NEXT_POSITION_ID.load(deps.storage)?,
         }),
+        QueryMsg::GetHolderByTerraPositionId { position_id } => {
+            to_binary(&PositionHolderResponse {
+                holder: POSITION_ID_TO_HOLDER
+                    .load(deps.storage, position_id.u128().into())?
+                    .to_string(),
+            })
+        }
+        QueryMsg::GetTerraPositionsByHolder {
+            holder,
+            position_id_lower_bound,
+            limit,
+        } => {
+            let mut position_id_vec: Vec<PositionId> = vec![];
+            let mut strategy_location_vec: Vec<StrategyLocation> = vec![];
+            let min_bound = match position_id_lower_bound {
+                Some(lower_bound) => Some(Bound::Inclusive(
+                    U128Key::from(lower_bound.u128()).joined_key(),
+                )),
+                None => None,
+            };
+            let positions_range = HOLDER_POSITION_ID_PAIR_SET
+                .prefix(deps.api.addr_validate(&holder)?)
+                .range(
+                    deps.storage,
+                    min_bound,
+                    None,
+                    cosmwasm_std::Order::Ascending,
+                );
+            let mut remaining = match limit {
+                Some(value) => value,
+                None => usize::MAX,
+            };
+            for position in positions_range {
+                if remaining == 0 {
+                    break;
+                }
+                remaining = remaining - 1;
+                let (position_id_key, ()) = position?;
+                let position_id = Uint128::from(position_id_key.as_slice().get_u128_be(0));
+                position_id_vec.push(position_id);
+                strategy_location_vec.push(POSITION_TO_STRATEGY_LOCATION_MAP.load(
+                    deps.storage,
+                    get_position_key(&Position {
+                        chain_id: TERRA_CHAIN_ID,
+                        position_id,
+                    }),
+                )?);
+            }
+            to_binary(&PositionsResponse {
+                position_id_vec,
+                strategy_location_vec,
+            })
+        }
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
     Ok(Response::default())
+}
+
+fn get_terra_strategy_id(strategy_location: StrategyLocation) -> StdResult<StrategyId> {
+    match strategy_location {
+        StrategyLocation::ExternalChain(_) => Err(StdError::generic_err(
+            "Cross-chain action not yet supported",
+        )),
+        StrategyLocation::TerraChain(strategy_id) => Ok(strategy_id),
+    }
 }
 
 fn create_execute_strategy_messages(
@@ -230,15 +243,11 @@ fn create_execute_strategy_messages(
     action: Action,
     assets: Vec<Asset>,
 ) -> StdResult<Vec<CosmosMsg>> {
-    let strategy = POSITION_TO_STRATEGY_MAP.load(deps.storage, get_position_key(&position))?;
-    if strategy.chain_id != TERRA_CHAIN_ID {
-        return Err(StdError::GenericErr {
-            msg: "Cross-chain action not yet supported".to_string(),
-        });
-    }
-
+    let strategy_location =
+        POSITION_TO_STRATEGY_LOCATION_MAP.load(deps.storage, get_position_key(&position))?;
+    let strategy_id = get_terra_strategy_id(strategy_location)?;
     let manager_addr = STRATEGY_ID_TO_METADATA_MAP
-        .load(deps.storage, get_strategy_id_key(strategy.strategy_id))?
+        .load(deps.storage, get_strategy_id_key(strategy_id))?
         .manager_addr;
     let mut messages: Vec<CosmosMsg> = vec![];
 

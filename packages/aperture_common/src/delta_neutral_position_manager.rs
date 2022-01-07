@@ -92,6 +92,7 @@ pub struct Context {
 #[serde(rename_all = "snake_case")]
 pub struct FeeCollectionConfig {
     pub performance_rate: Decimal,
+    pub treasury_addr: String,
 }
 
 /// Parameters of a delta-neutral position.

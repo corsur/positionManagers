@@ -1,29 +1,24 @@
-use crate::contract::{execute, instantiate, query, reply};
+use crate::contract::{execute, instantiate, query};
 use crate::mock_querier::custom_mock_dependencies;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
-use crate::state::{NEXT_STRATEGY_ID, NFT_ADDR};
+use crate::state::NEXT_STRATEGY_ID;
 
 use aperture_common::common::{
     Action, Position, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg,
 };
 use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
-use aperture_common::nft::Metadata;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, CosmosMsg, Decimal, Reply, ReplyOn, SubMsg,
-    SubMsgExecutionResponse, Uint128, Uint64, WasmMsg,
+    from_binary, to_binary, Addr, CosmosMsg, Decimal, ReplyOn, SubMsg, Uint128, Uint64, WasmMsg,
 };
-use protobuf::Message;
 
 #[test]
 fn test_initialization() {
-    let code_id: u64 = 1234;
     let mut deps = mock_dependencies(&[]);
     let mut env = mock_env();
     // Explicit set env's contract address.
     env.contract.address = Addr::unchecked(MOCK_CONTRACT_ADDR);
-    let msg = InstantiateMsg { code_id: code_id };
+    let msg = InstantiateMsg {};
     let init_response = instantiate(
         deps.as_mut(),
         mock_env(),
@@ -31,58 +26,7 @@ fn test_initialization() {
         msg,
     )
     .unwrap();
-    assert_eq!(
-        init_response.messages,
-        vec![SubMsg {
-            msg: WasmMsg::Instantiate {
-                admin: None,
-                code_id: code_id,
-                msg: to_binary(&cw721_base::InstantiateMsg {
-                    name: "Aperture NFT".to_string(),
-                    symbol: "APT_NFT".to_string(),
-                    // Minter will be the Terra Manager itself.
-                    minter: MOCK_CONTRACT_ADDR.to_string(),
-                })
-                .unwrap(),
-                funds: vec![],
-                label: String::new(),
-            }
-            .into(),
-            gas_limit: None,
-            id: 1, // The reply id.
-            reply_on: ReplyOn::Success,
-        }]
-    );
-}
-
-#[test]
-fn test_reply() {
-    // Baisc test setup.
-    let mut deps = mock_dependencies(&[]);
-    let mut instantiate_response = MsgInstantiateContractResponse::new();
-    instantiate_response.set_contract_address(MOCK_CONTRACT_ADDR.to_string());
-
-    let reply_msg = Reply {
-        id: 1,
-        result: cosmwasm_std::ContractResult::Ok(SubMsgExecutionResponse {
-            events: vec![],
-            data: Some(
-                // Convert into binary parseable by Protobuf.
-                Message::write_to_bytes(&instantiate_response)
-                    .unwrap()
-                    .into(),
-            ),
-        }),
-    };
-
-    // Trigger reply's side effect. Response is not needed.
-    let _res = reply(deps.as_mut(), mock_env(), reply_msg).unwrap();
-
-    // Upon successfully reply() execution, we can check mutated state.
-    assert_eq!(
-        NFT_ADDR.load(deps.as_mut().storage).unwrap(),
-        MOCK_CONTRACT_ADDR
-    );
+    assert_eq!(init_response.messages, vec![]);
 }
 
 #[test]
@@ -92,7 +36,7 @@ fn test_manipuate_strategy() {
         deps.as_mut(),
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
-        InstantiateMsg { code_id: 1234u64 },
+        InstantiateMsg {},
     )
     .unwrap();
 
@@ -171,7 +115,7 @@ fn test_manipuate_strategy() {
 }
 
 #[test]
-fn test_create_terra_nft_position() {
+fn test_create_position() {
     // Use customized querier enable wasm query. The built-in mock querier
     // doesn't support wasm query yet.
     let mut deps = custom_mock_dependencies();
@@ -179,7 +123,7 @@ fn test_create_terra_nft_position() {
         deps.as_mut(),
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
-        InstantiateMsg { code_id: 1234u64 },
+        InstantiateMsg {},
     )
     .unwrap();
     NFT_ADDR
@@ -208,7 +152,7 @@ fn test_create_terra_nft_position() {
         deps.as_mut(),
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
-        ExecuteMsg::CreateTerraNFTPosition {
+        ExecuteMsg::CreatePosition {
             strategy: Strategy {
                 chain_id: crate::msg::TERRA_CHAIN_ID,
                 strategy_id: Uint64::from(0u64),

@@ -1,16 +1,13 @@
-use aperture_common::common::{Action, ChainId, Position, PositionId, Strategy};
+use aperture_common::common::{Action, ChainId, Position, PositionId, Strategy, StrategyLocation};
 use cosmwasm_std::{Binary, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub static TERRA_CHAIN_ID: ChainId = 0;
-pub static APERTURE_NFT: &str = "ApertureNFT";
+pub static TERRA_CHAIN_ID: ChainId = 3;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct InstantiateMsg {
-    pub code_id: u64,
-}
+pub struct InstantiateMsg {}
 
 /// Terra manager is the entry point for a user to initiate an investment
 /// transaction. It is responsible for locating the underlying contract strategy
@@ -32,15 +29,15 @@ pub enum ExecuteMsg {
     ///
     /// Only contract owner may execute `RemoveStrategy`.
     RemoveStrategy { strategy_id: Uint64 },
-    /// For existing positions or positions created from a different chain.
-    /// Essentially, use this when creation of NFT position id is not needed.
+    /// Perform an action on an existing positions held by a Terra address.
+    /// Only the position holder is able to call this.
     ExecuteStrategy {
         position: Position,
         action: Action,
         assets: Vec<terraswap::asset::Asset>,
     },
-    /// Terra local entry point for creating strategies.
-    CreateTerraNFTPosition {
+    /// Create a new position with the specified strategy.
+    CreatePosition {
         strategy: Strategy,
         data: Option<Binary>,
         assets: Vec<terraswap::asset::Asset>,
@@ -54,12 +51,35 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetStrategyMetadata { strategy_id: Uint64 },
+    GetStrategyMetadata {
+        strategy_id: Uint64,
+    },
     GetNextPositionId {},
+    GetHolderByTerraPositionId {
+        position_id: PositionId,
+    },
+    GetTerraPositionsByHolder {
+        holder: String,
+        position_id_lower_bound: Option<PositionId>,
+        limit: Option<usize>,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct NextPositionIdResponse {
     pub next_position_id: PositionId,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct PositionHolderResponse {
+    pub holder: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct PositionsResponse {
+    pub position_id_vec: Vec<PositionId>,
+    pub strategy_location_vec: Vec<StrategyLocation>,
 }

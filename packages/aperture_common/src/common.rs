@@ -27,9 +27,7 @@ pub struct Position {
 }
 
 /// The strategy id and chain id can uniquely identify what strategy it is
-/// and on which chain is it located. Chain id would be needed because the same
-/// protocol/strategy can exist on multiple chains. And increasingly, this is
-/// becoming more popular.
+/// and on which chain is it located.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct Strategy {
@@ -44,6 +42,13 @@ pub struct StrategyMetadata {
     pub name: String,
     pub version: String,
     pub manager_addr: Addr,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StrategyLocation {
+    TerraChain(StrategyId),
+    ExternalChain(ChainId),
 }
 
 /// Execute message that all strategy position manager contracts MUST be
