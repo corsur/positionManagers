@@ -34,23 +34,13 @@ pub fn instantiate(
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
-    // ACL check.
-    // CreatePosition and ExecuteStrategy are open to the public; others can only be called by the admin.
-    let is_authorized: bool = match msg {
-        ExecuteMsg::CreatePosition { .. } => true,
-        ExecuteMsg::ExecuteStrategy { .. } => true,
-        _ => info.sender == ADMIN.load(deps.storage)?,
-    };
-    if !is_authorized {
-        return Err(StdError::generic_err("unauthorized"));
-    }
     match msg {
         ExecuteMsg::AddStrategy {
             name,
             version,
             manager_addr,
-        } => add_strategy(deps, name, version, manager_addr),
-        ExecuteMsg::RemoveStrategy { strategy_id } => remove_strategy(deps, strategy_id),
+        } => add_strategy(deps, info, name, version, manager_addr),
+        ExecuteMsg::RemoveStrategy { strategy_id } => remove_strategy(deps, info, strategy_id),
         ExecuteMsg::CreatePosition {
             strategy,
             data,
@@ -66,10 +56,15 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
 
 pub fn add_strategy(
     deps: DepsMut,
+    info: MessageInfo,
     name: String,
     version: String,
     manager_addr: String,
 ) -> StdResult<Response> {
+    if info.sender != ADMIN.load(deps.storage)? {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+
     let strategy_id = NEXT_STRATEGY_ID.load(deps.storage)?;
     NEXT_STRATEGY_ID.save(deps.storage, &(strategy_id.checked_add(1u64.into())?))?;
     STRATEGY_ID_TO_METADATA_MAP.save(
@@ -84,7 +79,15 @@ pub fn add_strategy(
     Ok(Response::default())
 }
 
-pub fn remove_strategy(deps: DepsMut, strategy_id: Uint64) -> StdResult<Response> {
+pub fn remove_strategy(
+    deps: DepsMut,
+    info: MessageInfo,
+    strategy_id: Uint64,
+) -> StdResult<Response> {
+    if info.sender != ADMIN.load(deps.storage)? {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+
     STRATEGY_ID_TO_METADATA_MAP.remove(deps.storage, get_strategy_id_key(strategy_id));
     Ok(Response::default())
 }
