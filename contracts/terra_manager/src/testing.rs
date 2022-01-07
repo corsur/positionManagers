@@ -1,6 +1,6 @@
 use crate::contract::{execute, instantiate, query};
 use crate::mock_querier::custom_mock_dependencies;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, TERRA_CHAIN_ID};
 use crate::state::NEXT_STRATEGY_ID;
 
 use aperture_common::common::{
@@ -126,9 +126,6 @@ fn test_create_position() {
         InstantiateMsg {},
     )
     .unwrap();
-    NFT_ADDR
-        .save(deps.as_mut().storage, &Addr::unchecked(MOCK_CONTRACT_ADDR))
-        .unwrap();
 
     let _res = execute(
         deps.as_mut(),
@@ -165,50 +162,28 @@ fn test_create_position() {
 
     assert_eq!(
         execute_res.messages,
-        vec![
-            SubMsg {
-                msg: CosmosMsg::Wasm(WasmMsg::Execute {
-                    // Position manager's contract address.
-                    contract_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string(),
-                    msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
-                        position: Position {
-                            chain_id: 0u32,
-                            position_id: Uint128::from(0u128)
-                        },
-                        action: Action::OpenPosition {
-                            data: Some(delta_neutral_params_binary.clone())
-                        },
-                        assets: vec![],
-                    })
-                    .unwrap(),
-                    funds: vec![],
+        vec![SubMsg {
+            msg: CosmosMsg::Wasm(WasmMsg::Execute {
+                // Position manager's contract address.
+                contract_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string(),
+                msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
+                    position: Position {
+                        chain_id: TERRA_CHAIN_ID,
+                        position_id: Uint128::from(0u128)
+                    },
+                    action: Action::OpenPosition {
+                        data: Some(delta_neutral_params_binary.clone())
+                    },
+                    assets: vec![],
                 })
-                .into(),
-                gas_limit: None,
-                id: 0, // The reply id.
-                reply_on: ReplyOn::Never,
-            },
-            SubMsg {
-                msg: CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: MOCK_CONTRACT_ADDR.to_string(),
-                    msg: to_binary(&cw721_base::ExecuteMsg::Mint(cw721_base::MintMsg {
-                        token_id: "0".to_string(),
-                        owner: MOCK_CONTRACT_ADDR.to_string(),
-                        token_uri: None,
-                        extension: Some(Metadata {
-                            name: Some("ApertureNFT".to_string()),
-                            description: None
-                        }),
-                    }))
-                    .unwrap(),
-                    funds: vec![],
-                })
-                .into(),
-                gas_limit: None,
-                id: 0, // The reply id.
-                reply_on: ReplyOn::Never,
-            }
-        ]
+                .unwrap(),
+                funds: vec![],
+            })
+            .into(),
+            gas_limit: None,
+            id: 0, // The reply id.
+            reply_on: ReplyOn::Never,
+        }]
     );
 
     // Test execute strategy on top of existing positions.
@@ -218,7 +193,7 @@ fn test_create_position() {
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         ExecuteMsg::ExecuteStrategy {
             position: Position {
-                chain_id: 0u32,
+                chain_id: TERRA_CHAIN_ID,
                 position_id: Uint128::from(0u128),
             },
             action: Action::ClosePosition {
@@ -233,11 +208,11 @@ fn test_create_position() {
         execute_res.messages,
         vec![SubMsg {
             msg: CosmosMsg::Wasm(WasmMsg::Execute {
-                //Position manager's contract address.
+                // Position manager's contract address.
                 contract_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g".to_string(),
                 msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
                     position: Position {
-                        chain_id: 0u32,
+                        chain_id: TERRA_CHAIN_ID,
                         position_id: Uint128::from(0u128)
                     },
                     action: Action::ClosePosition {

@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::cmp::{min, Ordering};
 
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
@@ -267,56 +267,62 @@ pub fn claim_and_increase_uusd_balance(
 
 pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
     let state = get_position_state(deps, &env, &context)?;
-    let mirror_asset_long_amount = state.mirror_asset_balance + state.mirror_asset_long_farm;
     let mut response = Response::new();
-    if mirror_asset_long_amount > state.mirror_asset_short_amount {
-        // We are in a net long position, so we swap the difference, i.e. `offer_mirror_asset_amount` for UST.
-        let net_long_mirror_asset_amount =
-            mirror_asset_long_amount - state.mirror_asset_short_amount;
-        response = response.add_messages(increase_mirror_asset_balance_from_long_farm(
-            &state,
-            &context,
-            net_long_mirror_asset_amount,
-        ));
-        response = response.add_message(swap_cw20_token_for_uusd(
-            &deps.querier,
-            context.terraswap_factory_addr,
-            state.mirror_asset_cw20_addr.as_str(),
-            net_long_mirror_asset_amount,
-        )?);
-    } else if mirror_asset_long_amount < state.mirror_asset_short_amount {
-        // We are in a net short position, so we swap uusd for the difference amount of mAsset.
-        let net_short_mirror_asset_amount =
-            state.mirror_asset_short_amount - mirror_asset_long_amount;
-        let (terraswap_pair_info, uusd_offer_amount) = compute_terraswap_uusd_offer_amount(
-            deps,
-            &context,
-            state.mirror_asset_cw20_addr.as_str(),
-            net_short_mirror_asset_amount,
-        )?;
-
-        // If uusd balance is insufficient to cover `uuse_offer_amount` + tax, then increase uusd balance by unstaking LPs and withdrawing liquidity.
-        let uusd_offer_asset = get_uusd_asset_from_amount(uusd_offer_amount);
-        response = response
-            .add_messages(increase_uusd_balance_from_long_farm(
-                &deps.querier,
+    match state
+        .mirror_asset_long_amount
+        .cmp(&state.mirror_asset_short_amount)
+    {
+        Ordering::Greater => {
+            // We are in a net long position, so we swap the difference, i.e. `offer_mirror_asset_amount` for UST.
+            let net_long_mirror_asset_amount =
+                state.mirror_asset_long_amount - state.mirror_asset_short_amount;
+            response = response.add_messages(increase_mirror_asset_balance_from_long_farm(
                 &state,
                 &context,
-                uusd_offer_amount + uusd_offer_asset.compute_tax(&deps.querier)?,
-            ))
-            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: terraswap_pair_info.contract_addr,
-                msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                    offer_asset: get_uusd_asset_from_amount(uusd_offer_amount),
-                    max_spread: None,
-                    belief_price: None,
-                    to: None,
-                })?,
-                funds: vec![Coin {
-                    denom: String::from("uusd"),
-                    amount: uusd_offer_amount,
-                }],
-            }));
+                net_long_mirror_asset_amount,
+            ));
+            response = response.add_message(swap_cw20_token_for_uusd(
+                &deps.querier,
+                context.terraswap_factory_addr,
+                state.mirror_asset_cw20_addr.as_str(),
+                net_long_mirror_asset_amount,
+            )?);
+        }
+        Ordering::Less => {
+            // We are in a net short position, so we swap uusd for the difference amount of mAsset.
+            let net_short_mirror_asset_amount =
+                state.mirror_asset_short_amount - state.mirror_asset_long_amount;
+            let (terraswap_pair_info, uusd_offer_amount) = compute_terraswap_uusd_offer_amount(
+                deps,
+                &context,
+                state.mirror_asset_cw20_addr.as_str(),
+                net_short_mirror_asset_amount,
+            )?;
+
+            // If uusd balance is insufficient to cover `uuse_offer_amount` + tax, then increase uusd balance by unstaking LPs and withdrawing liquidity.
+            let uusd_offer_asset = get_uusd_asset_from_amount(uusd_offer_amount);
+            response = response
+                .add_messages(increase_uusd_balance_from_long_farm(
+                    &deps.querier,
+                    &state,
+                    &context,
+                    uusd_offer_amount + uusd_offer_asset.compute_tax(&deps.querier)?,
+                ))
+                .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: terraswap_pair_info.contract_addr,
+                    msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+                        offer_asset: get_uusd_asset_from_amount(uusd_offer_amount),
+                        max_spread: None,
+                        belief_price: None,
+                        to: None,
+                    })?,
+                    funds: vec![Coin {
+                        denom: String::from("uusd"),
+                        amount: uusd_offer_amount,
+                    }],
+                }));
+        }
+        Ordering::Equal => {}
     }
     Ok(response)
 }

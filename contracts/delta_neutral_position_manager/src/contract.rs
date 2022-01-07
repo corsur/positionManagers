@@ -258,12 +258,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             position_id_lower_bound,
             limit,
         } => {
-            let min_bound = match position_id_lower_bound {
-                Some(lower_bound) => Some(Bound::Inclusive(
-                    U128Key::from(lower_bound.u128()).joined_key(),
-                )),
-                None => None,
-            };
+            let min_bound = position_id_lower_bound.map(|lower_bound| {
+                Bound::Inclusive(U128Key::from(lower_bound.u128()).joined_key())
+            });
             let positions = POSITION_TO_CONTRACT_ADDR.range(
                 deps.storage,
                 min_bound,
@@ -279,7 +276,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 if remaining == 0 {
                     break;
                 }
-                remaining = remaining - 1;
+                remaining -= 1;
                 let (_, contract) = position?;
                 let position_info: delta_neutral_position::PositionInfoResponse =
                     deps.querier.query_wasm_smart(

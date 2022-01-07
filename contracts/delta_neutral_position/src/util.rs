@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{cmp::Ordering, str::FromStr};
 
 use aperture_common::{
     delta_neutral_position::{PositionState, TargetCollateralRatioRange},
@@ -570,25 +570,32 @@ pub fn get_position_uusd_value(
         mir_amount,
     )?)?;
     // mAsset value.
-    if state.mirror_asset_long_amount > state.mirror_asset_short_amount {
-        let net_long_amount = state.mirror_asset_long_amount - state.mirror_asset_short_amount;
-        value = value.checked_add(find_cw20_token_uusd_value(
-            &deps.querier,
-            context.terraswap_factory_addr.clone(),
-            state.mirror_asset_cw20_addr.as_str(),
-            net_long_amount,
-        )?)?;
-    } else if state.mirror_asset_long_amount < state.mirror_asset_short_amount {
-        let net_short_amount = state.mirror_asset_short_amount - state.mirror_asset_long_amount;
-        value = value.checked_sub(
-            compute_terraswap_uusd_offer_amount(
-                deps,
-                context,
+    match state
+        .mirror_asset_long_amount
+        .cmp(&state.mirror_asset_short_amount)
+    {
+        Ordering::Greater => {
+            let net_long_amount = state.mirror_asset_long_amount - state.mirror_asset_short_amount;
+            value = value.checked_add(find_cw20_token_uusd_value(
+                &deps.querier,
+                context.terraswap_factory_addr.clone(),
                 state.mirror_asset_cw20_addr.as_str(),
-                net_short_amount,
-            )?
-            .1,
-        )?;
+                net_long_amount,
+            )?)?;
+        }
+        Ordering::Less => {
+            let net_short_amount = state.mirror_asset_short_amount - state.mirror_asset_long_amount;
+            value = value.checked_sub(
+                compute_terraswap_uusd_offer_amount(
+                    deps,
+                    context,
+                    state.mirror_asset_cw20_addr.as_str(),
+                    net_short_amount,
+                )?
+                .1,
+            )?;
+        }
+        Ordering::Equal => {}
     }
     Ok(value)
 }

@@ -1,4 +1,4 @@
-use cosmwasm_std::testing::{MockApi, MockStorage, MOCK_CONTRACT_ADDR};
+use cosmwasm_std::testing::{MockApi, MockStorage};
 use cosmwasm_std::{
     from_slice, to_binary, ContractResult, Empty, OwnedDeps, Querier, QuerierResult, QueryRequest,
     SystemError, SystemResult,
@@ -36,14 +36,8 @@ impl Querier for WasmMockQuerier {
 impl WasmMockQuerier {
     pub fn handle_query(&self, request: &QueryRequest<Empty>) -> QuerierResult {
         match &request {
-            QueryRequest::Wasm(_) => SystemResult::Ok(ContractResult::Ok(
-                to_binary(&cw721::OwnerOfResponse {
-                    owner: MOCK_CONTRACT_ADDR.to_string(),
-                    approvals: vec![],
-                })
-                .unwrap(),
-            )),
-            _ => panic!("DO NOT ENTER HERE"),
+            QueryRequest::Wasm(_) => SystemResult::Ok(ContractResult::Ok(to_binary(&()).unwrap())),
+            _ => unreachable!(),
         }
     }
 }

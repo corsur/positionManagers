@@ -118,7 +118,7 @@ pub fn create_position(
     let position_key = get_position_key(&position);
     POSITION_TO_STRATEGY_LOCATION_MAP.save(
         deps.storage,
-        position_key.clone(),
+        position_key,
         &StrategyLocation::TerraChain(strategy.strategy_id),
     )?;
 
@@ -182,12 +182,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         } => {
             let mut position_id_vec: Vec<PositionId> = vec![];
             let mut strategy_location_vec: Vec<StrategyLocation> = vec![];
-            let min_bound = match position_id_lower_bound {
-                Some(lower_bound) => Some(Bound::Inclusive(
-                    U128Key::from(lower_bound.u128()).joined_key(),
-                )),
-                None => None,
-            };
+            let min_bound = position_id_lower_bound.map(|lower_bound| {
+                Bound::Inclusive(U128Key::from(lower_bound.u128()).joined_key())
+            });
             let positions_range = HOLDER_POSITION_ID_PAIR_SET
                 .prefix(deps.api.addr_validate(&holder)?)
                 .range(
@@ -204,7 +201,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 if remaining == 0 {
                     break;
                 }
-                remaining = remaining - 1;
+                remaining -= 1;
                 let (position_id_key, ()) = position?;
                 let position_id = Uint128::from(position_id_key.as_slice().get_u128_be(0));
                 position_id_vec.push(position_id);
