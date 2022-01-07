@@ -7,7 +7,10 @@ use cosmwasm_std::{
 };
 use terraswap::asset::{Asset, AssetInfo};
 
-use crate::state::{PositionInfo, MANAGER, POSITION_INFO, TARGET_COLLATERAL_RATIO_RANGE};
+use crate::state::{
+    PositionInfo, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
+    TARGET_COLLATERAL_RATIO_RANGE,
+};
 use crate::util::{
     compute_terraswap_uusd_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
     find_collateral_uusd_amount, get_cdp_uusd_lock_info_result, get_mirror_asset_oracle_uusd_price,
@@ -17,7 +20,7 @@ use crate::util::{
     swap_cw20_token_for_uusd,
 };
 use aperture_common::delta_neutral_position::{
-    ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
+    BlockInfo, ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
     PositionInfoResponse, QueryMsg, TargetCollateralRatioRange,
 };
 use aperture_common::delta_neutral_position_manager::QueryMsg as ManagerQueryMsg;
@@ -66,7 +69,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::DecreasePosition {
             proportion,
             recipient,
-        } => decrease_position(env, proportion, recipient),
+        } => decrease_position(deps, env, proportion, recipient),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
             ControllerExecuteMsg::RebalanceAndReinvest {} => {
                 rebalance_and_reinvest(deps.as_ref(), env, context, false)
@@ -404,7 +407,7 @@ pub fn achieve_safe_collateral_ratios(
     Ok(response)
 }
 
-fn get_cdp_index(deps: Deps, env: Env, context: &Context) -> StdResult<Uint128> {
+fn get_cdp_index(deps: Deps, env: &Env, context: &Context) -> StdResult<Uint128> {
     let positions_response: mirror_protocol::mint::PositionsResponse =
         deps.querier.query_wasm_smart(
             &context.mirror_mint_addr,
@@ -565,14 +568,34 @@ fn record_position_info(
     mirror_asset_cw20_addr: String,
 ) -> StdResult<Response> {
     let position_info = PositionInfo {
-        cdp_idx: get_cdp_index(deps.as_ref(), env, &context)?,
+        cdp_idx: get_cdp_index(deps.as_ref(), &env, &context)?,
         mirror_asset_cw20_addr: deps.api.addr_validate(&mirror_asset_cw20_addr)?,
     };
     POSITION_INFO.save(deps.storage, &position_info)?;
+    let position_open_block_info = BlockInfo {
+        height: env.block.height,
+        time_nanoseconds: env.block.time.nanos(),
+    };
+    POSITION_OPEN_BLOCK_INFO.save(deps.storage, &position_open_block_info)?;
     Ok(Response::default())
 }
 
-pub fn decrease_position(env: Env, proportion: Decimal, recipient: String) -> StdResult<Response> {
+pub fn decrease_position(
+    deps: DepsMut,
+    env: Env,
+    proportion: Decimal,
+    recipient: String,
+) -> StdResult<Response> {
+    if proportion == Decimal::one() {
+        // Position is being closed; save position close block info.
+        POSITION_CLOSE_BLOCK_INFO.save(
+            deps.storage,
+            &BlockInfo {
+                height: env.block.height,
+                time_nanoseconds: env.block.time.nanos(),
+            },
+        )?;
+    }
     Ok(Response::new()
         .add_messages(get_rebalance_internal_messages(&env))
         .add_message(create_internal_execute_message(
@@ -785,6 +808,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 state,
                 target_collateral_ratio_range: TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?,
                 mirror_asset_long_amount,
+                position_open_block_info: POSITION_OPEN_BLOCK_INFO.load(deps.storage)?,
+                position_close_block_info: POSITION_CLOSE_BLOCK_INFO.may_load(deps.storage)?,
             })
         }
     }

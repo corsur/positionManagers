@@ -1,4 +1,4 @@
-use aperture_common::delta_neutral_position::TargetCollateralRatioRange;
+use aperture_common::delta_neutral_position::{BlockInfo, TargetCollateralRatioRange};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -14,5 +14,7 @@ pub struct PositionInfo {
 
 pub const MANAGER: Item<Addr> = Item::new("manager");
 pub const POSITION_INFO: Item<PositionInfo> = Item::new("position_info");
+pub const POSITION_OPEN_BLOCK_INFO: Item<BlockInfo> = Item::new("position_open_block_info");
+pub const POSITION_CLOSE_BLOCK_INFO: Item<BlockInfo> = Item::new("position_close_block_info");
 pub const TARGET_COLLATERAL_RATIO_RANGE: Item<TargetCollateralRatioRange> =
     Item::new("target_collateral_ratio_range");

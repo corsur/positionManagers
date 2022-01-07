@@ -121,8 +121,17 @@ impl TargetCollateralRatioRange {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+pub struct BlockInfo {
+    pub height: u64,
+    pub time_nanoseconds: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct PositionInfoResponse {
     pub state: PositionState,
     pub target_collateral_ratio_range: TargetCollateralRatioRange,
     pub mirror_asset_long_amount: Uint128,
+    pub position_open_block_info: BlockInfo,
+    pub position_close_block_info: Option<BlockInfo>,
 }

@@ -12,7 +12,9 @@ use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
-use crate::state::{Config, CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION};
+use crate::state::{
+    AdminConfig, Config, ADMIN_CONFIG, CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION,
+};
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
 
@@ -23,10 +25,16 @@ pub fn instantiate(
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    // Store contextual informaiton.
-    let config = Config {
-        owner: deps.api.addr_validate(&msg.owner_addr)?,
+    let admin_config = AdminConfig {
+        admin: deps.api.addr_validate(&msg.admin_addr)?,
+        manager: deps.api.addr_validate(&msg.manager_addr)?,
         delta_neutral_position_code_id: msg.delta_neutral_position_code_id,
+        allow_position_increase: msg.allow_position_increase,
+        allow_position_decrease: msg.allow_position_decrease,
+    };
+    ADMIN_CONFIG.save(deps.storage, &admin_config)?;
+
+    let config = Config {
         context: Context {
             controller: deps.api.addr_validate(&msg.controller)?,
             anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
@@ -56,48 +64,56 @@ pub fn instantiate(
 /// Dispatch enum message to its corresponding functions.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
-    let owner = CONFIG.load(deps.storage)?.owner;
-    let is_authorized = match msg {
-        ExecuteMsg::PerformAction { .. } => info.sender == owner,
-        ExecuteMsg::Internal(_) => info.sender == env.contract.address,
-    };
-    if !is_authorized {
-        return Err(StdError::GenericErr {
-            msg: "Unauthorized delta-neutral position manager call".to_string(),
-        });
-    }
-
     match msg {
         ExecuteMsg::PerformAction {
             position,
             action,
             assets,
-        } => match action {
-            Action::OpenPosition { data } => {
-                let params: DeltaNeutralParams = from_binary(&data.unwrap())?;
-                open_position(env, info, deps.storage, position, params, assets)
+        } => {
+            let admin_config = ADMIN_CONFIG.load(deps.storage)?;
+            if info.sender != admin_config.manager {
+                return Err(StdError::generic_err("unauthorized"));
             }
-            Action::IncreasePosition { data } => {
-                increase_position(deps.as_ref(), info, &position, assets, data)
+            match action {
+                Action::OpenPosition { data } => {
+                    let params: DeltaNeutralParams = from_binary(&data.unwrap())?;
+                    open_position(env, info, deps.storage, position, params, assets)
+                }
+                Action::IncreasePosition { data } => {
+                    if !admin_config.allow_position_increase {
+                        return Err(StdError::generic_err("unauthorized"));
+                    }
+                    increase_position(deps.as_ref(), info, &position, assets, data)
+                }
+                Action::DecreasePosition {
+                    proportion,
+                    recipient,
+                } => {
+                    if !admin_config.allow_position_decrease {
+                        return Err(StdError::generic_err("unauthorized"));
+                    }
+                    decrease_position(deps.as_ref(), &position, proportion, recipient)
+                }
+                Action::ClosePosition { recipient } => close_position(deps, &position, recipient),
             }
-            Action::DecreasePosition {
-                proportion,
-                recipient,
-            } => decrease_position(deps.as_ref(), &position, proportion, recipient),
-            Action::ClosePosition { recipient } => close_position(deps, &position, recipient),
-        },
-        ExecuteMsg::Internal(internal_msg) => match internal_msg {
-            InternalExecuteMsg::SendOpenPositionToPositionContract {
-                position,
-                params,
-                uusd_asset,
-            } => send_execute_message_to_position_contract(
-                deps.as_ref(),
-                &position,
-                delta_neutral_position::ExecuteMsg::OpenPosition { params },
-                Some(uusd_asset),
-            ),
-        },
+        }
+        ExecuteMsg::Internal(internal_msg) => {
+            if info.sender != env.contract.address {
+                return Err(StdError::generic_err("unauthorized"));
+            }
+            match internal_msg {
+                InternalExecuteMsg::SendOpenPositionToPositionContract {
+                    position,
+                    params,
+                    uusd_asset,
+                } => send_execute_message_to_position_contract(
+                    deps.as_ref(),
+                    &position,
+                    delta_neutral_position::ExecuteMsg::OpenPosition { params },
+                    Some(uusd_asset),
+                ),
+            }
+        }
     }
 }
 
@@ -138,7 +154,7 @@ pub fn open_position(
     response = response.add_submessage(SubMsg {
         msg: WasmMsg::Instantiate {
             admin: None,
-            code_id: config.delta_neutral_position_code_id,
+            code_id: ADMIN_CONFIG.load(storage)?.delta_neutral_position_code_id,
             msg: to_binary(&aperture_common::delta_neutral_position::InstantiateMsg {})?,
             funds: vec![],
             label: String::new(),
@@ -210,9 +226,7 @@ pub fn close_position(
     position: &Position,
     recipient: String,
 ) -> StdResult<Response> {
-    let result = decrease_position(deps.as_ref(), position, Decimal::one(), recipient);
-    POSITION_TO_CONTRACT_ADDR.remove(deps.storage, get_position_key(position));
-    result
+    decrease_position(deps.as_ref(), position, Decimal::one(), recipient)
 }
 
 // To store instantiated contract address into state and initiate investment.

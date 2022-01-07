@@ -7,7 +7,10 @@ use crate::common::{Action, Position};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
-    pub owner_addr: String,
+    pub admin_addr: String,
+    pub manager_addr: String,
+    pub allow_position_increase: bool,
+    pub allow_position_decrease: bool,
     pub delta_neutral_position_code_id: u64,
     pub controller: String,
     pub anchor_ust_cw20_addr: String,
