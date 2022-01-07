@@ -54,6 +54,7 @@
       "additionalProperties": false
     },
     {
+      "description": "Perform an action on an existing positions held by a Terra address. Only the position holder is able to call this.",
       "type": "object",
       "required": [
         "execute_strategy"
@@ -85,12 +86,13 @@
       "additionalProperties": false
     },
     {
+      "description": "Create a new position with the specified strategy.",
       "type": "object",
       "required": [
-        "create_terra_n_f_t_position"
+        "create_position"
       ],
       "properties": {
-        "create_terra_n_f_t_position": {
+        "create_position": {
           "type": "object",
           "required": [
             "assets",
@@ -129,10 +131,10 @@
         {
           "type": "object",
           "required": [
-            "OpenPosition"
+            "open_position"
           ],
           "properties": {
-            "OpenPosition": {
+            "open_position": {
               "type": "object",
               "properties": {
                 "data": {
@@ -153,10 +155,10 @@
         {
           "type": "object",
           "required": [
-            "ClosePosition"
+            "close_position"
           ],
           "properties": {
-            "ClosePosition": {
+            "close_position": {
               "type": "object",
               "required": [
                 "recipient"
@@ -173,11 +175,23 @@
         {
           "type": "object",
           "required": [
-            "IncreasePosition"
+            "increase_position"
           ],
           "properties": {
-            "IncreasePosition": {
-              "type": "object"
+            "increase_position": {
+              "type": "object",
+              "properties": {
+                "data": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/definitions/Binary"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
             }
           },
           "additionalProperties": false
@@ -185,10 +199,10 @@
         {
           "type": "object",
           "required": [
-            "DecreasePosition"
+            "decrease_position"
           ],
           "properties": {
-            "DecreasePosition": {
+            "decrease_position": {
               "type": "object",
               "required": [
                 "proportion",
@@ -277,6 +291,7 @@
       "type": "string"
     },
     "Position": {
+      "description": "The pair (chain id, position id) can uniquely identify a position across all chains.",
       "type": "object",
       "required": [
         "chain_id",
@@ -294,6 +309,7 @@
       }
     },
     "Strategy": {
+      "description": "The strategy id and chain id can uniquely identify what strategy it is and on which chain is it located.",
       "type": "object",
       "required": [
         "chain_id",

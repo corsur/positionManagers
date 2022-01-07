@@ -323,6 +323,11 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         }
     }
 
+    let mirror_asset_balance = terraswap::querier::query_token_balance(
+        &deps.querier,
+        position_info.mirror_asset_cw20_addr.clone(),
+        env.contract.address.clone(),
+    )?;
     let state = PositionState {
         uusd_balance: terraswap::querier::query_balance(
             &deps.querier,
@@ -331,12 +336,9 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         )?,
         uusd_long_farm,
         mirror_asset_short_amount: position_response.asset.amount,
-        mirror_asset_balance: terraswap::querier::query_token_balance(
-            &deps.querier,
-            position_info.mirror_asset_cw20_addr.clone(),
-            env.contract.address.clone(),
-        )?,
+        mirror_asset_balance,
         mirror_asset_long_farm,
+        mirror_asset_long_amount: mirror_asset_balance.checked_add(mirror_asset_long_farm)?,
         collateral_anchor_ust_amount: position_response.collateral.amount,
         collateral_uusd_value: position_response.collateral.amount * collateral_price_response.rate,
         mirror_asset_cw20_addr: position_info.mirror_asset_cw20_addr.clone(),
@@ -477,4 +479,116 @@ pub fn compute_terraswap_uusd_offer_amount(
         }
     }
     Ok((terraswap_pair_info, a))
+}
+
+pub fn find_unclaimed_spec_amount(deps: Deps, env: &Env, context: &Context) -> StdResult<Uint128> {
+    // Find claimable SPEC reward.
+    let spec_reward_info_response: spectrum_protocol::mirror_farm::RewardInfoResponse =
+        deps.querier.query_wasm_smart(
+            &context.spectrum_mirror_farms_addr,
+            &spectrum_protocol::mirror_farm::QueryMsg::reward_info {
+                staker_addr: env.contract.address.to_string(),
+                asset_token: None,
+            },
+        )?;
+    let mut spec_reward = Uint128::zero();
+    for reward_info in spec_reward_info_response.reward_infos.iter() {
+        spec_reward += reward_info.pending_spec_reward;
+    }
+    Ok(spec_reward)
+}
+
+pub fn find_unclaimed_mir_amount(deps: Deps, env: &Env, context: &Context) -> StdResult<Uint128> {
+    // Find claimable MIR reward.
+    let mir_reward_info_response: mirror_protocol::staking::RewardInfoResponse =
+        deps.querier.query_wasm_smart(
+            &context.mirror_staking_addr,
+            &mirror_protocol::staking::QueryMsg::RewardInfo {
+                staker_addr: env.contract.address.to_string(),
+                asset_token: None,
+            },
+        )?;
+    let mut mir_reward = Uint128::zero();
+    for reward_info in mir_reward_info_response.reward_infos.iter() {
+        mir_reward += reward_info.pending_reward;
+    }
+    Ok(mir_reward)
+}
+
+pub fn find_cw20_token_uusd_value(
+    querier: &QuerierWrapper,
+    terraswap_factory_addr: Addr,
+    cw20_token_addr: &str,
+    amount: Uint128,
+) -> StdResult<Uint128> {
+    let terraswap_pair_info = terraswap::querier::query_pair_info(
+        querier,
+        terraswap_factory_addr,
+        &create_terraswap_cw20_uusd_pair_asset_info(cw20_token_addr),
+    )?;
+    Ok(terraswap::querier::simulate(
+        querier,
+        Addr::unchecked(terraswap_pair_info.contract_addr),
+        &Asset {
+            info: AssetInfo::Token {
+                contract_addr: cw20_token_addr.to_string(),
+            },
+            amount,
+        },
+    )?
+    .return_amount)
+}
+
+pub fn get_position_uusd_value(
+    deps: Deps,
+    env: &Env,
+    context: &Context,
+    state: &PositionState,
+    unclaimed_short_proceeds_uusd_amount: Uint128,
+) -> StdResult<Uint128> {
+    // Native UST.
+    let mut value = state
+        .uusd_balance
+        .checked_add(state.uusd_long_farm)?
+        .checked_add(unclaimed_short_proceeds_uusd_amount)?;
+    // Collateral aUST.
+    value = value.checked_add(state.collateral_uusd_value)?;
+    // Unclaimed SPEC reward.
+    let spec_amount = find_unclaimed_spec_amount(deps, env, context)?;
+    value = value.checked_add(find_cw20_token_uusd_value(
+        &deps.querier,
+        context.terraswap_factory_addr.clone(),
+        context.spectrum_cw20_addr.as_str(),
+        spec_amount,
+    )?)?;
+    // Unclaimed MIR reward.
+    let mir_amount = find_unclaimed_mir_amount(deps, env, context)?;
+    value = value.checked_add(find_cw20_token_uusd_value(
+        &deps.querier,
+        context.terraswap_factory_addr.clone(),
+        context.mirror_cw20_addr.as_str(),
+        mir_amount,
+    )?)?;
+    // mAsset value.
+    if state.mirror_asset_long_amount > state.mirror_asset_short_amount {
+        let net_long_amount = state.mirror_asset_long_amount - state.mirror_asset_short_amount;
+        value = value.checked_add(find_cw20_token_uusd_value(
+            &deps.querier,
+            context.terraswap_factory_addr.clone(),
+            state.mirror_asset_cw20_addr.as_str(),
+            net_long_amount,
+        )?)?;
+    } else if state.mirror_asset_long_amount < state.mirror_asset_short_amount {
+        let net_short_amount = state.mirror_asset_short_amount - state.mirror_asset_long_amount;
+        value = value.checked_sub(
+            compute_terraswap_uusd_offer_amount(
+                deps,
+                context,
+                state.mirror_asset_cw20_addr.as_str(),
+                net_short_amount,
+            )?
+            .1,
+        )?;
+    }
+    Ok(value)
 }

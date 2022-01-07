@@ -63,8 +63,22 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetPositionContractAddr { position: Position },
+    GetPositionContractAddr {
+        position: Position,
+    },
     GetContext {},
+    // Returns `OpenPositionsResponse`.
+    GetOpenPositions {
+        position_id_lower_bound: Option<Uint128>,
+        limit: Option<usize>,
+    },
+}
+
+// List of contract addresses serving positions that are currently open.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct OpenPositionsResponse {
+    pub contracts: Vec<Addr>,
 }
 
 /// Contextual information for delta neutral position manager. It contains

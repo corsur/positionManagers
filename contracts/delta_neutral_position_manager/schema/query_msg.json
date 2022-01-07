@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "QueryMsg",
-  "description": "Get basic information for a position.",
+  "description": "Get basic information from this position manager.",
   "oneOf": [
     {
       "type": "object",
@@ -34,10 +34,43 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "get_open_positions"
+      ],
+      "properties": {
+        "get_open_positions": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 0.0
+            },
+            "position_id_lower_bound": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Uint128"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {
     "Position": {
+      "description": "The pair (chain id, position id) can uniquely identify a position across all chains.",
       "type": "object",
       "required": [
         "chain_id",
