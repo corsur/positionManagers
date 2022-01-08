@@ -74,16 +74,14 @@ function getContractAddress(response) {
   return contract_address[0];
 }
 
-async function instantiate_terra_manager(terra_manager_id, nft_code_id) {
+async function instantiate_terra_manager(terra_manager_id) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
       new MsgInstantiateContract(
         /*sender=*/ test_wallet.key.accAddress,
         /*admin=*/ test_wallet.key.accAddress,
         terra_manager_id,
-        {
-          code_id: nft_code_id,
-        },
+        {},
         /*init_coins=*/ {}
       ),
     ],
@@ -112,7 +110,8 @@ async function instantiate_delta_neutral_position_manager(
         /*admin=*/ test_wallet.key.accAddress,
         manager_code_id,
         {
-          owner_addr: terra_manager_addr,
+          admin_addr: test_wallet.key.accAddress,
+          manager_addr: terra_manager_addr,
           delta_neutral_position_code_id: position_code_id,
           controller: test_wallet.key.accAddress,
           min_delta_neutral_uusd_amount: (1000 * 1e6).toString(),
@@ -133,6 +132,10 @@ async function instantiate_delta_neutral_position_manager(
           terraswap_factory_addr:
             "terra18qpjm4zkvqnpjpw0zn0tdr8gdzvt8au35v45xf",
           collateral_ratio_safety_margin: "0.3",
+          fee_collection_config: {
+            performance_rate: "0.1",
+            treasury_addr: test_wallet.key.accAddress
+          }
         },
         /*init_coins=*/ {}
       ),
@@ -187,16 +190,11 @@ async function deploy() {
   /******************************************/
   /***** Store bytecode onto blockchain *****/
   /******************************************/
-  const aperture_nft_id = await store_code(
-    "../artifacts/aperture_position_nft.wasm"
-  );
-  console.log("aperture_nft_id: ", aperture_nft_id);
-
-  const terra_manager_id = await store_code("../artifacts/terra_manager.wasm");
+  const terra_manager_id = await store_code("../artifacts/terra_manager-aarch64.wasm");
   console.log("terra_manager_id: ", terra_manager_id);
 
   const delta_neutral_position_manager_id = await store_code(
-    "../artifacts/delta_neutral_position_manager.wasm"
+    "../artifacts/delta_neutral_position_manager-aarch64.wasm"
   );
   console.log(
     "delta_neutral_position_manager_id: ",
@@ -204,7 +202,7 @@ async function deploy() {
   );
 
   const delta_neutral_position_id = await store_code(
-    "../artifacts/delta_neutral_position.wasm"
+    "../artifacts/delta_neutral_position-aarch64.wasm"
   );
   console.log("delta_neutral_position_id: ", delta_neutral_position_id);
   /***************************************************/
@@ -215,10 +213,7 @@ async function deploy() {
   /***** Instantiate contracts *****/
   /*********************************/
 
-  const terra_manager_addr = await instantiate_terra_manager(
-    terra_manager_id,
-    aperture_nft_id
-  );
+  const terra_manager_addr = await instantiate_terra_manager(terra_manager_id);
   console.log("Terra manager contract address: ", terra_manager_addr);
 
   const delta_neutral_position_manager_addr =
