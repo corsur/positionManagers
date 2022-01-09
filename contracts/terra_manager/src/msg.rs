@@ -55,7 +55,7 @@ pub enum QueryMsg {
         strategy_id: Uint64,
     },
     GetNextPositionId {},
-    GetHolderByTerraPositionId {
+    GetTerraPositionInfo {
         position_id: PositionId,
     },
     GetTerraPositionsByHolder {
@@ -73,8 +73,9 @@ pub struct NextPositionIdResponse {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct PositionHolderResponse {
+pub struct PositionInfoResponse {
     pub holder: String,
+    pub strategy_location: StrategyLocation,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

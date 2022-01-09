@@ -11,7 +11,7 @@ use cw_storage_plus::{Bound, PrimaryKey, U128Key};
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::msg::{
-    ExecuteMsg, InstantiateMsg, MigrateMsg, NextPositionIdResponse, PositionHolderResponse,
+    ExecuteMsg, InstantiateMsg, MigrateMsg, NextPositionIdResponse, PositionInfoResponse,
     PositionsResponse, QueryMsg, TERRA_CHAIN_ID,
 };
 use crate::state::{
@@ -168,13 +168,18 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetNextPositionId {} => to_binary(&NextPositionIdResponse {
             next_position_id: NEXT_POSITION_ID.load(deps.storage)?,
         }),
-        QueryMsg::GetHolderByTerraPositionId { position_id } => {
-            to_binary(&PositionHolderResponse {
-                holder: POSITION_ID_TO_HOLDER
-                    .load(deps.storage, position_id.u128().into())?
-                    .to_string(),
-            })
-        }
+        QueryMsg::GetTerraPositionInfo { position_id } => to_binary(&PositionInfoResponse {
+            holder: POSITION_ID_TO_HOLDER
+                .load(deps.storage, position_id.u128().into())?
+                .to_string(),
+            strategy_location: POSITION_TO_STRATEGY_LOCATION_MAP.load(
+                deps.storage,
+                get_position_key(&Position {
+                    chain_id: TERRA_CHAIN_ID,
+                    position_id,
+                }),
+            )?,
+        }),
         QueryMsg::GetTerraPositionsByHolder {
             holder,
             start_after,
