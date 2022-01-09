@@ -1,4 +1,5 @@
 import {
+  Coin,
   LCDClient,
   MnemonicKey,
   MsgExecuteContract,
@@ -113,6 +114,8 @@ async function instantiate_delta_neutral_position_manager(
           admin_addr: test_wallet.key.accAddress,
           manager_addr: terra_manager_addr,
           delta_neutral_position_code_id: position_code_id,
+          allow_position_increase: false,
+          allow_position_decrease: false,
           controller: test_wallet.key.accAddress,
           min_delta_neutral_uusd_amount: (1000 * 1e6).toString(),
           anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
@@ -235,6 +238,52 @@ async function deploy() {
   console.log(
     "Registered delta-neutral strategy with Terra manager."
   );
+  return terra_manager_addr;
 }
 
-await deploy();
+async function open_delta_neutral_position(terra_manager_addr, ust_amount) {
+  await initializeSequence(test_wallet);
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgExecuteContract(
+        /*sender=*/ test_wallet.key.accAddress,
+        /*contract=*/ terra_manager_addr,
+        {
+          "create_position": {
+            "data": "ewogICAgInRhcmdldF9taW5fY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjMiLAogICAgInRhcmdldF9tYXhfY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjciLAogICAgIm1pcnJvcl9hc3NldF9jdzIwX2FkZHIiOiAidGVycmExeXM0ZHd3emFlbmpnMmd5MDJtc2xtYzk2ZjI2N3h2cHNqYXQ3Z3giCn0=",
+            "assets": [
+              {
+                "info": {
+                  "native_token": {
+                    "denom": "uusd"
+                  }
+                },
+                "amount": (ust_amount * 1e6).toString()
+              }
+            ],
+            "strategy": {
+              "chain_id": 3,
+              "strategy_id": "0"
+            }
+          }
+        },
+        [new Coin("uusd", (ust_amount * 1e6).toString())]
+      ),
+    ],
+    memo: "Open delta neutral position",
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  if (isTxError(response)) {
+    throw new Error(
+      `open_delta_neutral_position failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+    );
+  }
+  console.log("Opened delta-neutral position with ust amount: ", ust_amount.toString());
+}
+
+const terra_manager_addr = await deploy();
+await open_delta_neutral_position(terra_manager_addr, 1000);
+await open_delta_neutral_position(terra_manager_addr, 2000);
+// await open_delta_neutral_position(terra_manager_addr, 9000000);

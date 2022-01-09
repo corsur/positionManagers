@@ -788,7 +788,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 position_close_block_info: POSITION_CLOSE_BLOCK_INFO.may_load(deps.storage)?,
                 detailed_info: None,
             };
-            if response.position_close_block_info != None {
+            if response.position_close_block_info == None {
                 let state = get_position_state(deps, &env, &context)?;
                 let position_lock_info_result = get_cdp_uusd_lock_info_result(deps, &context);
                 let unclaimed_short_proceeds_uusd_amount = match position_lock_info_result {
