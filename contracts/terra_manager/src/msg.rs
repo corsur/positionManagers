@@ -51,13 +51,17 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
+    // Returns `StrategyMetadata`.
     GetStrategyMetadata {
         strategy_id: Uint64,
     },
+    // Returns `NextPositionIdResponse`.
     GetNextPositionId {},
+    // Returns `PositionInfoResponse`.
     GetTerraPositionInfo {
         position_id: PositionId,
     },
+    // Returns `PositionsResponse`.
     GetTerraPositionsByHolder {
         holder: String,
         start_after: Option<PositionId>,
