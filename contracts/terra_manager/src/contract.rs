@@ -185,17 +185,18 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             let min = start_after.map(|position_id| {
                 Bound::Exclusive(U128Key::from(position_id.u128()).joined_key())
             });
-            let limit = match limit {
-                Some(value) => value as usize,
-                None => usize::MAX,
-            };
-            let positions: StdResult<Vec<_>> = HOLDER_POSITION_ID_PAIR_SET
+            const DEFAULT_LIMIT: u32 = 10;
+            const MAX_LIMIT: u32 = 30;
+            let mut remaining = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+            let positions = HOLDER_POSITION_ID_PAIR_SET
                 .prefix(deps.api.addr_validate(&holder)?)
-                .range(deps.storage, min, None, cosmwasm_std::Order::Ascending)
-                .take(limit)
-                .collect();
-            for position in positions? {
-                let (position_id_key, ()) = position;
+                .range(deps.storage, min, None, cosmwasm_std::Order::Ascending);
+            for position in positions {
+                if remaining == 0 {
+                    break;
+                }
+                remaining -= 1;
+                let (position_id_key, ()) = position?;
                 let position_id = Uint128::from(position_id_key.as_slice().get_u128_be(0));
                 position_id_vec.push(position_id);
                 strategy_location_vec.push(POSITION_TO_STRATEGY_LOCATION_MAP.load(

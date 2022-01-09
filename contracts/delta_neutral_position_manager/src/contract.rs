@@ -257,17 +257,22 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetOpenPositions { start_after, limit } => {
             let min = start_after
                 .map(|position| Bound::Exclusive(get_position_key(&position).joined_key()));
-            let limit = match limit {
-                Some(value) => value as usize,
-                None => usize::MAX,
-            };
-            let positions: StdResult<Vec<_>> = POSITION_TO_CONTRACT_ADDR
-                .range(deps.storage, min, None, cosmwasm_std::Order::Ascending)
-                .take(limit)
-                .collect();
+            const DEFAULT_LIMIT: u32 = 10;
+            const MAX_LIMIT: u32 = 30;
+            let mut remaining = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+            let positions = POSITION_TO_CONTRACT_ADDR.range(
+                deps.storage,
+                min,
+                None,
+                cosmwasm_std::Order::Ascending,
+            );
             let mut open_positions: Vec<String> = vec![];
-            for position in positions? {
-                let (_, contract) = position;
+            for position in positions {
+                if remaining == 0 {
+                    break;
+                }
+                remaining -= 1;
+                let (_, contract) = position?;
                 let position_info: delta_neutral_position::PositionInfoResponse =
                     deps.querier.query_wasm_smart(
                         contract.clone(),
