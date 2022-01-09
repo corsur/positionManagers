@@ -5,8 +5,8 @@ use aperture_common::delta_neutral_position_manager::{
     OpenPositionsResponse, QueryMsg,
 };
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut,
-    Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, WasmMsg,
+    entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, WasmMsg,
 };
 use cw_storage_plus::{Bound, PrimaryKey};
 use protobuf::Message;
@@ -254,25 +254,18 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_binary(&(POSITION_TO_CONTRACT_ADDR.load(deps.storage, get_position_key(&position))?))
         }
         QueryMsg::GetContext {} => to_binary(&(CONFIG.load(deps.storage)?).context),
-        QueryMsg::GetOpenPositions {
-            start_after,
-            limit,
-        } => {
-            let min = start_after.map(|position| {
-                Bound::Exclusive(get_position_key(&position).joined_key())
-            });
+        QueryMsg::GetOpenPositions { start_after, limit } => {
+            let min = start_after
+                .map(|position| Bound::Exclusive(get_position_key(&position).joined_key()));
             let limit = match limit {
-                Some(value) => value,
+                Some(value) => value as usize,
                 None => usize::MAX,
             };
-            let positions: StdResult<Vec<_>> = POSITION_TO_CONTRACT_ADDR.range(
-                deps.storage,
-                min,
-                None,
-                cosmwasm_std::Order::Ascending,
-            ).take(limit).collect();
-            let mut open_positions: Vec<Addr> = vec![];
-            
+            let positions: StdResult<Vec<_>> = POSITION_TO_CONTRACT_ADDR
+                .range(deps.storage, min, None, cosmwasm_std::Order::Ascending)
+                .take(limit)
+                .collect();
+            let mut open_positions: Vec<String> = vec![];
             for position in positions? {
                 let (_, contract) = position;
                 let position_info: delta_neutral_position::PositionInfoResponse =
@@ -281,7 +274,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                         &delta_neutral_position::QueryMsg::GetPositionInfo {},
                     )?;
                 if position_info.position_close_block_info == None {
-                    open_positions.push(contract);
+                    open_positions.push(contract.to_string());
                 }
             }
             to_binary(&OpenPositionsResponse {

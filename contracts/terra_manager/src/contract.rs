@@ -186,17 +186,14 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 Bound::Exclusive(U128Key::from(position_id.u128()).joined_key())
             });
             let limit = match limit {
-                Some(value) => value,
+                Some(value) => value as usize,
                 None => usize::MAX,
             };
             let positions: StdResult<Vec<_>> = HOLDER_POSITION_ID_PAIR_SET
                 .prefix(deps.api.addr_validate(&holder)?)
-                .range(
-                    deps.storage,
-                    min,
-                    None,
-                    cosmwasm_std::Order::Ascending,
-                ).take(limit).collect();
+                .range(deps.storage, min, None, cosmwasm_std::Order::Ascending)
+                .take(limit)
+                .collect();
             for position in positions? {
                 let (position_id_key, ()) = position;
                 let position_id = Uint128::from(position_id_key.as_slice().get_u128_be(0));

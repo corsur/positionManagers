@@ -70,7 +70,7 @@ pub enum QueryMsg {
     // Returns `OpenPositionsResponse`.
     GetOpenPositions {
         start_after: Option<Position>,
-        limit: Option<usize>,
+        limit: Option<u32>,
     },
 }
 
@@ -78,7 +78,7 @@ pub enum QueryMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct OpenPositionsResponse {
-    pub contracts: Vec<Addr>,
+    pub contracts: Vec<String>,
 }
 
 /// Contextual information for delta neutral position manager. It contains

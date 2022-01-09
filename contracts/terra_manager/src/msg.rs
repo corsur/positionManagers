@@ -61,7 +61,7 @@ pub enum QueryMsg {
     GetTerraPositionsByHolder {
         holder: String,
         start_after: Option<PositionId>,
-        limit: Option<usize>,
+        limit: Option<u32>,
     },
 }
 
