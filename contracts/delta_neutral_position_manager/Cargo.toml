@@ -16,7 +16,7 @@ exclude = [
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cosmwasm-std = { version = "0.16.2" }
+cosmwasm-std = { version = "0.16.3" }
 cw20 = "0.9.1"
 cw-storage-plus = { version = "0.9.1" }
 schemars = "0.8.1"
@@ -26,4 +26,4 @@ protobuf = { version = "2.25.2", features = ["with-bytes"] }
 terraswap = "2.4.0"
 
 [dev-dependencies]
-cosmwasm-schema = { version = "0.16.2" }
+cosmwasm-schema = { version = "0.16.3" }

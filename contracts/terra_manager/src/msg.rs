@@ -60,7 +60,7 @@ pub enum QueryMsg {
     },
     GetTerraPositionsByHolder {
         holder: String,
-        position_id_lower_bound: Option<PositionId>,
+        start_after: Option<PositionId>,
         limit: Option<usize>,
     },
 }

@@ -8,7 +8,7 @@ use cosmwasm_std::{
     entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut,
     Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, WasmMsg,
 };
-use cw_storage_plus::{Bound, PrimaryKey, U128Key};
+use cw_storage_plus::{Bound, PrimaryKey};
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -255,29 +255,26 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::GetContext {} => to_binary(&(CONFIG.load(deps.storage)?).context),
         QueryMsg::GetOpenPositions {
-            position_id_lower_bound,
+            start_after,
             limit,
         } => {
-            let min_bound = position_id_lower_bound.map(|lower_bound| {
-                Bound::Inclusive(U128Key::from(lower_bound.u128()).joined_key())
+            let min = start_after.map(|position| {
+                Bound::Exclusive(get_position_key(&position).joined_key())
             });
-            let positions = POSITION_TO_CONTRACT_ADDR.range(
-                deps.storage,
-                min_bound,
-                None,
-                cosmwasm_std::Order::Ascending,
-            );
-            let mut open_positions: Vec<Addr> = vec![];
-            let mut remaining = match limit {
+            let limit = match limit {
                 Some(value) => value,
                 None => usize::MAX,
             };
-            for position in positions {
-                if remaining == 0 {
-                    break;
-                }
-                remaining -= 1;
-                let (_, contract) = position?;
+            let positions: StdResult<Vec<_>> = POSITION_TO_CONTRACT_ADDR.range(
+                deps.storage,
+                min,
+                None,
+                cosmwasm_std::Order::Ascending,
+            ).take(limit).collect();
+            let mut open_positions: Vec<Addr> = vec![];
+            
+            for position in positions? {
+                let (_, contract) = position;
                 let position_info: delta_neutral_position::PositionInfoResponse =
                     deps.querier.query_wasm_smart(
                         contract.clone(),

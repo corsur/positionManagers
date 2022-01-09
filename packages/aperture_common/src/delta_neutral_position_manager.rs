@@ -69,7 +69,7 @@ pub enum QueryMsg {
     GetContext {},
     // Returns `OpenPositionsResponse`.
     GetOpenPositions {
-        position_id_lower_bound: Option<Uint128>,
+        start_after: Option<Position>,
         limit: Option<usize>,
     },
 }

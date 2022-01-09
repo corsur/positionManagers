@@ -177,32 +177,28 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::GetTerraPositionsByHolder {
             holder,
-            position_id_lower_bound,
+            start_after,
             limit,
         } => {
             let mut position_id_vec: Vec<PositionId> = vec![];
             let mut strategy_location_vec: Vec<StrategyLocation> = vec![];
-            let min_bound = position_id_lower_bound.map(|lower_bound| {
-                Bound::Inclusive(U128Key::from(lower_bound.u128()).joined_key())
+            let min = start_after.map(|position_id| {
+                Bound::Exclusive(U128Key::from(position_id.u128()).joined_key())
             });
-            let positions_range = HOLDER_POSITION_ID_PAIR_SET
-                .prefix(deps.api.addr_validate(&holder)?)
-                .range(
-                    deps.storage,
-                    min_bound,
-                    None,
-                    cosmwasm_std::Order::Ascending,
-                );
-            let mut remaining = match limit {
+            let limit = match limit {
                 Some(value) => value,
                 None => usize::MAX,
             };
-            for position in positions_range {
-                if remaining == 0 {
-                    break;
-                }
-                remaining -= 1;
-                let (position_id_key, ()) = position?;
+            let positions: StdResult<Vec<_>> = HOLDER_POSITION_ID_PAIR_SET
+                .prefix(deps.api.addr_validate(&holder)?)
+                .range(
+                    deps.storage,
+                    min,
+                    None,
+                    cosmwasm_std::Order::Ascending,
+                ).take(limit).collect();
+            for position in positions? {
+                let (position_id_key, ()) = position;
                 let position_id = Uint128::from(position_id_key.as_slice().get_u128_be(0));
                 position_id_vec.push(position_id);
                 strategy_location_vec.push(POSITION_TO_STRATEGY_LOCATION_MAP.load(
