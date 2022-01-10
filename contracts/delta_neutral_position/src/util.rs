@@ -173,16 +173,13 @@ pub fn find_collateral_uusd_amount(
     )?;
     let terraswap_pair_contract_addr =
         deps.api.addr_validate(&terraswap_pair_info.contract_addr)?;
-    let pool_mirror_asset_balance: Uint256 = mirror_asset_info
-        .query_pool(
-            &deps.querier,
-            deps.api,
-            terraswap_pair_contract_addr.clone(),
-        )?
-        .into();
-    let pool_uusd_balance: Uint256 = uusd_asset_info
-        .query_pool(&deps.querier, deps.api, terraswap_pair_contract_addr)?
-        .into();
+    let pool_mirror_asset_balance = mirror_asset_info.query_pool(
+        &deps.querier,
+        deps.api,
+        terraswap_pair_contract_addr.clone(),
+    )?;
+    let pool_uusd_balance =
+        uusd_asset_info.query_pool(&deps.querier, deps.api, terraswap_pair_contract_addr)?;
 
     // The amount of uusd set aside for tax payment.
     let buffer_amount = (terraswap::asset::Asset {
@@ -237,35 +234,33 @@ pub fn find_collateral_uusd_amount(
     // (1) uusd_amount_for_collateral = target_collateral_ratio * (mAsset amount * mAsset oracle price).
     // (2) uusd_amount_for_long_position which is able to get us the same mAsset amount from Terraswap after the short position is opened.
     // We perform a binary search for the amount of mAsset to find the maximum that satisfies these constraints.
-    let mut a = Uint256::zero();
-    let mut b = Uint256::from(u128::MAX);
-    let collateral_to_mirror_asset_amount_ratio: Decimal256 =
-        Decimal256::from(mirror_asset_oracle_price)
-            * Decimal256::from(target_collateral_ratio_range.midpoint());
-    let two: Decimal256 = Decimal256::from_str("2.0").unwrap();
+    // TODO: Consider whether Uint128 is enough for numerator and denominator.
+    let mut a = Uint128::zero();
+    let mut b = uusd_amount * decimal_inverse(mirror_asset_oracle_price);
+    let collateral_to_mirror_asset_amount_ratio = decimal_multiplication(
+        mirror_asset_oracle_price,
+        target_collateral_ratio_range.midpoint(),
+    );
     while b - a > 1u128.into() {
         // Check whether it is possible to mint m amount of mAsset.
-        let m = (a + b).div(two);
+        let m = (a + b).multiply_ratio(1u128, 2u128);
 
         let uusd_for_long_position = pool_uusd_balance
-            * Decimal256::from_ratio(
-                m * (pool_mirror_asset_balance * Uint256::from(1000u128)
-                    + m * Uint256::from(3u128)),
+            * Decimal::from_ratio(
+                m * (pool_mirror_asset_balance * Uint128::from(1000u128)
+                    + m * Uint128::from(3u128)),
                 (pool_mirror_asset_balance + m)
-                    * (pool_mirror_asset_balance * Uint256::from(997u128)
-                        - m * Uint256::from(3u128)),
+                    * (pool_mirror_asset_balance * Uint128::from(997u128)
+                        - m * Uint128::from(3u128)),
             );
         let uusd_for_collateral = m * collateral_to_mirror_asset_amount_ratio;
-        if uusd_for_collateral + uusd_for_long_position <= uusd_amount.into() {
+        if uusd_for_collateral + uusd_for_long_position <= uusd_amount {
             a = m;
         } else {
             b = m;
         }
     }
-    Ok((
-        a.into(),
-        (a * collateral_to_mirror_asset_amount_ratio).into(),
-    ))
+    Ok((a, a * collateral_to_mirror_asset_amount_ratio))
 }
 
 pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult<PositionState> {

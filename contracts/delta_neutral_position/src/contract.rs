@@ -281,12 +281,17 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                 &context,
                 net_long_mirror_asset_amount,
             ));
-            response = response.add_message(swap_cw20_token_for_uusd(
-                &deps.querier,
-                context.terraswap_factory_addr,
-                state.mirror_asset_cw20_addr.as_str(),
-                net_long_mirror_asset_amount,
-            )?);
+            response = response
+                .add_message(swap_cw20_token_for_uusd(
+                    &deps.querier,
+                    context.terraswap_factory_addr,
+                    state.mirror_asset_cw20_addr.as_str(),
+                    net_long_mirror_asset_amount,
+                )?)
+                .add_message(create_internal_execute_message(
+                    &env,
+                    InternalExecuteMsg::AchieveDeltaNeutral {},
+                ));
         }
         Ordering::Less => {
             // We are in a net short position, so we swap uusd for the difference amount of mAsset.
@@ -320,14 +325,15 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                         denom: String::from("uusd"),
                         amount: uusd_offer_amount,
                     }],
-                }));
+                }))
+                .add_message(create_internal_execute_message(
+                    &env,
+                    InternalExecuteMsg::AchieveDeltaNeutral {},
+                ));
         }
         Ordering::Equal => {}
     }
-    Ok(response.add_message(create_internal_execute_message(
-        &env,
-        InternalExecuteMsg::AchieveDeltaNeutral {},
-    )))
+    Ok(response)
 }
 
 pub fn achieve_safe_collateral_ratios(
@@ -453,26 +459,31 @@ pub fn delta_neutral_invest(
         &target_collateral_ratio_range,
         uusd_balance,
     )?;
-    Ok(Response::new().add_messages(vec![
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.anchor_market_addr.to_string(),
-            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount: collateral_uusd_amount,
-            }],
-        }),
-        create_internal_execute_message(
-            &env,
-            InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
-                collateral_ratio: target_collateral_ratio_range.midpoint(),
-                mirror_asset_cw20_addr,
-                cdp_idx,
-                mirror_asset_mint_amount,
-            },
-        ),
-        create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
-    ]))
+    Ok(Response::new()
+        .add_attributes(vec![
+            ("calc_mAsset_mint_amount", mirror_asset_mint_amount),
+            ("collateral_uusd_amount", collateral_uusd_amount),
+        ])
+        .add_messages(vec![
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: context.anchor_market_addr.to_string(),
+                msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
+                funds: vec![Coin {
+                    denom: String::from("uusd"),
+                    amount: collateral_uusd_amount,
+                }],
+            }),
+            create_internal_execute_message(
+                &env,
+                InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
+                    collateral_ratio: target_collateral_ratio_range.midpoint(),
+                    mirror_asset_cw20_addr,
+                    cdp_idx,
+                    mirror_asset_mint_amount,
+                },
+            ),
+            create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
+        ]))
 }
 
 fn open_or_increase_cdp_with_anchor_ust_balance_as_collateral(

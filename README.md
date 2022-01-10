@@ -46,6 +46,12 @@ sha256sum {contract_module}.wasm
 For production builds, run the following:
 
 M1 Mac (arm64):
+```
+./build_arm64.sh
+```
+
+OR
+
 ```sh
 docker run --rm -v "$(pwd)":/code \
   --mount type=volume,source="$(basename "$(pwd)")_cache",target=/code/target \
