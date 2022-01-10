@@ -1,12 +1,13 @@
-use std::{cmp::Ordering, str::FromStr};
+use std::{cmp::Ordering, ops::Div, str::FromStr};
 
 use aperture_common::{
     delta_neutral_position::{PositionState, TargetCollateralRatioRange},
     delta_neutral_position_manager::Context,
 };
+use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
-    to_binary, Addr, CosmosMsg, Decimal, Decimal256, Deps, Env, QuerierWrapper, StdError,
-    StdResult, Uint128, Uint256, WasmMsg,
+    to_binary, Addr, CosmosMsg, Decimal, Deps, Env, QuerierWrapper, StdError, StdResult, Uint128,
+    WasmMsg,
 };
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo, PairInfo};
@@ -172,13 +173,16 @@ pub fn find_collateral_uusd_amount(
     )?;
     let terraswap_pair_contract_addr =
         deps.api.addr_validate(&terraswap_pair_info.contract_addr)?;
-    let pool_mirror_asset_balance = mirror_asset_info.query_pool(
-        &deps.querier,
-        deps.api,
-        terraswap_pair_contract_addr.clone(),
-    )?;
-    let pool_uusd_balance =
-        uusd_asset_info.query_pool(&deps.querier, deps.api, terraswap_pair_contract_addr)?;
+    let pool_mirror_asset_balance: Uint256 = mirror_asset_info
+        .query_pool(
+            &deps.querier,
+            deps.api,
+            terraswap_pair_contract_addr.clone(),
+        )?
+        .into();
+    let pool_uusd_balance: Uint256 = uusd_asset_info
+        .query_pool(&deps.querier, deps.api, terraswap_pair_contract_addr)?
+        .into();
 
     // The amount of uusd set aside for tax payment.
     let buffer_amount = (terraswap::asset::Asset {
@@ -233,33 +237,35 @@ pub fn find_collateral_uusd_amount(
     // (1) uusd_amount_for_collateral = target_collateral_ratio * (mAsset amount * mAsset oracle price).
     // (2) uusd_amount_for_long_position which is able to get us the same mAsset amount from Terraswap after the short position is opened.
     // We perform a binary search for the amount of mAsset to find the maximum that satisfies these constraints.
-    // TODO: Consider whether Uint128 is enough for numerator and denominator.
-    let mut a = Uint128::zero();
-    let mut b = uusd_amount * decimal_inverse(mirror_asset_oracle_price);
-    let collateral_to_mirror_asset_amount_ratio = decimal_multiplication(
-        mirror_asset_oracle_price,
-        target_collateral_ratio_range.midpoint(),
-    );
+    let mut a = Uint256::zero();
+    let mut b = Uint256::from(u128::MAX);
+    let collateral_to_mirror_asset_amount_ratio: Decimal256 =
+        Decimal256::from(mirror_asset_oracle_price)
+            * Decimal256::from(target_collateral_ratio_range.midpoint());
+    let two: Decimal256 = Decimal256::from_str("2.0").unwrap();
     while b - a > 1u128.into() {
         // Check whether it is possible to mint m amount of mAsset.
-        let m = (a + b).multiply_ratio(1u128, 2u128);
+        let m = (a + b).div(two);
 
         let uusd_for_long_position = pool_uusd_balance
-            * Decimal::from_ratio(
-                m * (pool_mirror_asset_balance * Uint128::from(1000u128)
-                    + m * Uint128::from(3u128)),
+            * Decimal256::from_ratio(
+                m * (pool_mirror_asset_balance * Uint256::from(1000u128)
+                    + m * Uint256::from(3u128)),
                 (pool_mirror_asset_balance + m)
-                    * (pool_mirror_asset_balance * Uint128::from(997u128)
-                        - m * Uint128::from(3u128)),
+                    * (pool_mirror_asset_balance * Uint256::from(997u128)
+                        - m * Uint256::from(3u128)),
             );
         let uusd_for_collateral = m * collateral_to_mirror_asset_amount_ratio;
-        if uusd_for_collateral + uusd_for_long_position <= uusd_amount {
+        if uusd_for_collateral + uusd_for_long_position <= uusd_amount.into() {
             a = m;
         } else {
             b = m;
         }
     }
-    Ok((a, a * collateral_to_mirror_asset_amount_ratio))
+    Ok((
+        a.into(),
+        (a * collateral_to_mirror_asset_amount_ratio).into(),
+    ))
 }
 
 pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult<PositionState> {
@@ -459,26 +465,28 @@ pub fn compute_terraswap_uusd_offer_amount(
 ) -> StdResult<(PairInfo, Uint128)> {
     let (terraswap_pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
         get_terraswap_uusd_mirror_asset_pool_balance_info(deps, context, mirror_asset_cw20_addr)?;
+    let pool_mirror_asset_balance: Uint256 = pool_mirror_asset_balance.into();
+    let pool_uusd_balance: Uint256 = pool_uusd_balance.into();
     let commission_rate = Decimal256::from_str("0.003").unwrap();
-    let cp =
-        Uint256::from(pool_mirror_asset_balance.u128()) * Uint256::from(pool_uusd_balance.u128());
+    let cp = pool_mirror_asset_balance * pool_uusd_balance;
 
-    let mut a = Uint128::from(1u128);
+    let mut a = Uint256::zero();
     let mut b = pool_uusd_balance;
+    let two: Decimal256 = Decimal256::from_str("2.0").unwrap();
     while b - a > 1u128.into() {
-        let offer_uusd_amount = (a + b).multiply_ratio(1u128, 2u128);
-        let mut return_mirror_asset_amount =
-            (Decimal256::from_ratio(pool_mirror_asset_balance, 1u128)
-                - Decimal256::from_ratio(cp, pool_uusd_balance + offer_uusd_amount))
-                * Uint256::from(1u128);
-        return_mirror_asset_amount -= return_mirror_asset_amount * commission_rate;
+        let offer_uusd_amount = (a + b).div(two);
+        let mut return_mirror_asset_amount = (Decimal256::from_uint256(pool_mirror_asset_balance)
+            - Decimal256::from_ratio(cp, pool_uusd_balance + offer_uusd_amount))
+            * Uint256::one();
+        return_mirror_asset_amount =
+            return_mirror_asset_amount - return_mirror_asset_amount * commission_rate;
         if return_mirror_asset_amount <= ask_mirror_asset_amount.into() {
             a = offer_uusd_amount;
         } else {
             b = offer_uusd_amount;
         }
     }
-    Ok((terraswap_pair_info, a))
+    Ok((terraswap_pair_info, a.into()))
 }
 
 pub fn find_unclaimed_spec_amount(deps: Deps, env: &Env, context: &Context) -> StdResult<Uint128> {
