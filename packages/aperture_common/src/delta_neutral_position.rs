@@ -77,6 +77,21 @@ pub enum QueryMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
+pub struct TerraswapPoolInfo {
+    // Amount of LP token staked in Spectrum Mirror farm.
+    pub lp_token_amount: Uint128,
+    // Address of the LP cw20 token contract.
+    pub lp_token_cw20_addr: String,
+    // Total supply of the LP token.
+    pub lp_token_total_supply: Uint128,
+    // Address of the mAsset-UST Terraswap pair contract.
+    pub terraswap_pair_addr: String,
+    // Balance of uusd in the mAsset-UST Terraswap pool.
+    pub terraswap_pool_uusd_amount: Uint128,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub struct PositionState {
     // This contract's uusd balance.
     pub uusd_balance: Uint128,
@@ -100,12 +115,9 @@ pub struct PositionState {
     pub mirror_asset_oracle_price: Decimal,
     // Oracle price of aUST.
     pub anchor_ust_oracle_price: Decimal,
-    // Amount of LP token staked in Spectrum Mirror farm.
-    pub lp_token_amount: Uint128,
-    // Address of the LP cw20 token contract.
-    pub lp_token_cw20_addr: String,
-    // Address of the mAsset-UST Terraswap pair contract.
-    pub terraswap_pair_addr: String,
+    // Information about the Terraswap mAsset-UST pool.
+    // Only populated if long farm is active, i.e. `uusd_long_farm` > 0 and `mirror_asset_long_farm` > 0.
+    pub terraswap_pool_info: Option<TerraswapPoolInfo>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

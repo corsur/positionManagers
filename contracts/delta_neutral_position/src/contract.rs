@@ -308,7 +308,6 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             let uusd_offer_asset = get_uusd_asset_from_amount(uusd_offer_amount);
             response = response
                 .add_messages(increase_uusd_balance_from_long_farm(
-                    &deps.querier,
                     &state,
                     &context,
                     uusd_offer_amount + uusd_offer_asset.compute_tax(&deps.querier)?,
