@@ -413,20 +413,20 @@ pub fn open_position(
     mirror_asset_cw20_addr: String,
 ) -> StdResult<Response> {
     if POSITION_INFO.load(deps.storage).is_ok() {
-        return Err(StdError::GenericErr {
-            msg: "position is already open".to_string(),
-        });
+        return Err(StdError::generic_err("position is already open"));
     }
     if get_uusd_balance(&deps.querier, &env)? < context.min_delta_neutral_uusd_amount {
-        return Err(StdError::GenericErr {
-            msg: "UST amount too small to open a delta-neutral position".to_string(),
-        });
+        return Err(StdError::generic_err(
+            "UST amount too small to open a delta-neutral position",
+        ));
     }
-    let target_collateral_ratio_range = TargetCollateralRatioRange {
-        min: target_min_collateral_ratio,
-        max: target_max_collateral_ratio,
-    };
-    TARGET_COLLATERAL_RATIO_RANGE.save(deps.storage, &target_collateral_ratio_range)?;
+    TARGET_COLLATERAL_RATIO_RANGE.save(
+        deps.storage,
+        &TargetCollateralRatioRange {
+            min: target_min_collateral_ratio,
+            max: target_max_collateral_ratio,
+        },
+    )?;
     delta_neutral_invest(deps, env, context, mirror_asset_cw20_addr, None)
 }
 
@@ -468,12 +468,6 @@ pub fn delta_neutral_invest(
                 mirror_asset_mint_amount,
             },
         ),
-        create_internal_execute_message(
-            &env,
-            InternalExecuteMsg::RecordPositionInfo {
-                mirror_asset_cw20_addr,
-            },
-        ),
         create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
     ]))
 }
@@ -490,18 +484,18 @@ fn open_or_increase_cdp_with_anchor_ust_balance_as_collateral(
     let anchor_ust_balance = terraswap::querier::query_token_balance(
         &deps.querier,
         context.anchor_ust_cw20_addr.clone(),
-        env.contract.address,
+        env.contract.address.clone(),
     )?;
     match cdp_idx {
-        None => Ok(
-            Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+        None => Ok(Response::new()
+            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: context.anchor_ust_cw20_addr.to_string(),
                 msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
                     contract: context.mirror_mint_addr.to_string(),
                     amount: anchor_ust_balance,
                     msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
                         asset_info: AssetInfo::Token {
-                            contract_addr: mirror_asset_cw20_addr,
+                            contract_addr: mirror_asset_cw20_addr.clone(),
                         },
                         collateral_ratio,
                         short_params: Some(mirror_protocol::mint::ShortParams {
@@ -511,8 +505,13 @@ fn open_or_increase_cdp_with_anchor_ust_balance_as_collateral(
                     })?,
                 })?,
                 funds: vec![],
-            })),
-        ),
+            }))
+            .add_message(create_internal_execute_message(
+                &env,
+                InternalExecuteMsg::RecordPositionInfo {
+                    mirror_asset_cw20_addr,
+                },
+            ))),
         Some(position_idx) => Ok(Response::new()
             .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: context.anchor_ust_cw20_addr.to_string(),
