@@ -324,7 +324,10 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
         }
         Ordering::Equal => {}
     }
-    Ok(response)
+    Ok(response.add_message(create_internal_execute_message(
+        &env,
+        InternalExecuteMsg::AchieveDeltaNeutral {},
+    )))
 }
 
 pub fn achieve_safe_collateral_ratios(
@@ -463,7 +466,7 @@ pub fn delta_neutral_invest(
             &env,
             InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
                 collateral_ratio: target_collateral_ratio_range.midpoint(),
-                mirror_asset_cw20_addr: mirror_asset_cw20_addr.clone(),
+                mirror_asset_cw20_addr,
                 cdp_idx,
                 mirror_asset_mint_amount,
             },
