@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.46.0",
     "@terra-money/terra.js": "^3.0.1"
   }
 }
