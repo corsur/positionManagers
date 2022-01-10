@@ -98,6 +98,24 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 Action::ClosePosition { recipient } => close_position(deps, &position, recipient),
             }
         }
+        ExecuteMsg::MigratePositionContracts {
+            positions,
+            position_contracts,
+        } => migrate_position_contracts(deps.as_ref(), positions, position_contracts),
+        ExecuteMsg::UpdateAdminConfig {
+            admin_addr,
+            manager_addr,
+            delta_neutral_position_code_id,
+            allow_position_decrease,
+            allow_position_increase,
+        } => update_admin_config(
+            deps,
+            admin_addr,
+            manager_addr,
+            delta_neutral_position_code_id,
+            allow_position_decrease,
+            allow_position_increase,
+        ),
         ExecuteMsg::Internal(internal_msg) => {
             if info.sender != env.contract.address {
                 return Err(StdError::generic_err("unauthorized"));
@@ -116,6 +134,63 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             }
         }
     }
+}
+
+fn update_admin_config(
+    deps: DepsMut,
+    admin_addr: Option<String>,
+    manager_addr: Option<String>,
+    delta_neutral_position_code_id: Option<u64>,
+    allow_position_decrease: Option<bool>,
+    allow_position_increase: Option<bool>,
+) -> StdResult<Response> {
+    let mut config = ADMIN_CONFIG.load(deps.storage)?;
+    if let Some(admin_addr) = admin_addr {
+        config.admin = deps.api.addr_validate(&admin_addr)?;
+    }
+    if let Some(manager_addr) = manager_addr {
+        config.manager = deps.api.addr_validate(&manager_addr)?;
+    }
+    if let Some(delta_neutral_position_code_id) = delta_neutral_position_code_id {
+        config.delta_neutral_position_code_id = delta_neutral_position_code_id;
+    }
+    if let Some(allow_position_decrease) = allow_position_decrease {
+        config.allow_position_decrease = allow_position_decrease;
+    }
+    if let Some(allow_position_increase) = allow_position_increase {
+        config.allow_position_increase = allow_position_increase;
+    }
+    ADMIN_CONFIG.save(deps.storage, &config)?;
+    Ok(Response::default())
+}
+
+fn migrate_position_contracts(
+    deps: Deps,
+    positions: Vec<Position>,
+    position_contracts: Vec<String>,
+) -> StdResult<Response> {
+    let new_code_id = ADMIN_CONFIG
+        .load(deps.storage)?
+        .delta_neutral_position_code_id;
+    let msg = to_binary(&delta_neutral_position::MigrateMsg {})?;
+    Ok(Response::new()
+        .add_messages(positions.iter().map(|position| {
+            let contract = POSITION_TO_CONTRACT_ADDR
+                .load(deps.storage, get_position_key(position))
+                .unwrap();
+            CosmosMsg::Wasm(WasmMsg::Migrate {
+                contract_addr: contract.to_string(),
+                new_code_id,
+                msg: msg.clone(),
+            })
+        }))
+        .add_messages(position_contracts.iter().map(|contract| {
+            CosmosMsg::Wasm(WasmMsg::Migrate {
+                contract_addr: contract.to_string(),
+                new_code_id,
+                msg: msg.clone(),
+            })
+        })))
 }
 
 fn send_execute_message_to_position_contract(
@@ -154,7 +229,7 @@ pub fn open_position(
     let mut response = Response::new();
     response = response.add_submessage(SubMsg {
         msg: WasmMsg::Instantiate {
-            admin: None,
+            admin: Some(env.contract.address.to_string()),
             code_id: ADMIN_CONFIG.load(storage)?.delta_neutral_position_code_id,
             msg: to_binary(&aperture_common::delta_neutral_position::InstantiateMsg {})?,
             funds: vec![],

@@ -47,11 +47,28 @@ pub enum InternalExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
+    // Can only be called by the position holder through Terra manager.
     PerformAction {
         position: Position,
         action: Action,
         assets: Vec<terraswap::asset::Asset>,
     },
+    // Can be called by anyone to migrate position contracts to the current code id.
+    MigratePositionContracts {
+        // Can either specify a list of `positions` or the underlying `position_contracts`, or a mixture.
+        // Specifying `position_contracts` directly saves gas since this avoids a position -> contract lookup.
+        positions: Vec<Position>,
+        position_contracts: Vec<String>,
+    },
+    // Can only be called by admin.
+    UpdateAdminConfig {
+        admin_addr: Option<String>,
+        manager_addr: Option<String>,
+        allow_position_increase: Option<bool>,
+        allow_position_decrease: Option<bool>,
+        delta_neutral_position_code_id: Option<u64>,
+    },
+    // Can only be called by this contract itself.
     Internal(InternalExecuteMsg),
 }
 
