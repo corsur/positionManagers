@@ -1,0 +1,31 @@
+# Aperture Finance - Controller Scripts
+
+## Pre-requisite
+Install node v14. On Mac, node v14 can be installed via Homebrew:
+
+```sh
+brew install node@14
+```
+
+Check node version:
+```sh
+% node --version
+v14.18.2
+```
+
+## Install
+```sh
+npm install
+```
+
+## Deploy
+
+```sh
+node controller.js
+```
+
+OR
+
+``sh
+npm start
+```

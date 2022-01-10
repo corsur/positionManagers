@@ -1,14 +1,15 @@
 {
-  "name": "aperture-terra-controller",
+  "name": "aperture-data-pipeline",
   "version": "1.0.0",
   "type": "module",
-  "description": "Aperture smart contract controller.",
+  "description": "Process on-chain data.",
   "scripts": {
-    "start": "node controller.js"
+    "start": "node script.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.46.0",
     "@terra-money/terra.js": "^3.0.1"
   }
 }
