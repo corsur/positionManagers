@@ -1,7 +1,9 @@
 use std::{cmp::Ordering, ops::Div, str::FromStr};
 
 use aperture_common::{
-    delta_neutral_position::{PositionState, TargetCollateralRatioRange},
+    delta_neutral_position::{
+        DetailedPositionInfo, PositionInfoResponse, PositionState, TargetCollateralRatioRange,
+    },
     delta_neutral_position_manager::Context,
 };
 use cosmwasm_bignumber::{Decimal256, Uint256};
@@ -12,7 +14,10 @@ use cosmwasm_std::{
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo, PairInfo};
 
-use crate::state::POSITION_INFO;
+use crate::state::{
+    POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
+    TARGET_COLLATERAL_RATIO_RANGE,
+};
 
 const DECIMAL_FRACTIONAL: Uint128 = Uint128::new(1_000_000_000u128);
 
@@ -542,13 +547,31 @@ pub fn find_cw20_token_uusd_value(
     .return_amount)
 }
 
-pub fn get_position_uusd_value(
+pub fn query_position_info(
     deps: Deps,
     env: &Env,
     context: &Context,
-    state: &PositionState,
-    unclaimed_short_proceeds_uusd_amount: Uint128,
-) -> StdResult<Uint128> {
+) -> StdResult<PositionInfoResponse> {
+    let mut response = PositionInfoResponse {
+        position_open_block_info: POSITION_OPEN_BLOCK_INFO.load(deps.storage)?,
+        position_close_block_info: POSITION_CLOSE_BLOCK_INFO.may_load(deps.storage)?,
+        detailed_info: None,
+    };
+    if response.position_close_block_info.is_some() {
+        return Ok(response);
+    }
+
+    let state = get_position_state(deps, env, context)?;
+    let position_lock_info_result = get_cdp_uusd_lock_info_result(deps, context);
+    let mut unclaimed_short_proceeds_uusd_amount = Uint128::zero();
+    let mut claimable_short_proceeds_uusd_amount = Uint128::zero();
+    if let Ok(response) = position_lock_info_result {
+        unclaimed_short_proceeds_uusd_amount = response.locked_amount;
+        if response.unlock_time <= env.block.time.seconds() {
+            claimable_short_proceeds_uusd_amount = response.locked_amount;
+        }
+    };
+
     // Native UST.
     let mut value = state
         .uusd_balance
@@ -557,21 +580,21 @@ pub fn get_position_uusd_value(
     // Collateral aUST.
     value = value.checked_add(state.collateral_uusd_value)?;
     // Unclaimed SPEC reward.
-    let spec_amount = find_unclaimed_spec_amount(deps, env, context)?;
-    value = value.checked_add(find_cw20_token_uusd_value(
+    let spec_uusd_value = find_cw20_token_uusd_value(
         &deps.querier,
         context.terraswap_factory_addr.clone(),
         context.spectrum_cw20_addr.as_str(),
-        spec_amount,
-    )?)?;
+        find_unclaimed_spec_amount(deps, env, context)?,
+    )?;
+    value = value.checked_add(spec_uusd_value)?;
     // Unclaimed MIR reward.
-    let mir_amount = find_unclaimed_mir_amount(deps, env, context)?;
-    value = value.checked_add(find_cw20_token_uusd_value(
+    let mir_uusd_value = find_cw20_token_uusd_value(
         &deps.querier,
         context.terraswap_factory_addr.clone(),
         context.mirror_cw20_addr.as_str(),
-        mir_amount,
-    )?)?;
+        find_unclaimed_mir_amount(deps, env, context)?,
+    )?;
+    value = value.checked_add(mir_uusd_value)?;
     // mAsset value.
     match state
         .mirror_asset_long_amount
@@ -600,5 +623,21 @@ pub fn get_position_uusd_value(
         }
         Ordering::Equal => {}
     }
-    Ok(value)
+    // Current collateral ratio.
+    let collateral_ratio = Decimal::from_ratio(
+        state.collateral_uusd_value,
+        state.mirror_asset_short_amount * state.mirror_asset_oracle_price,
+    );
+
+    response.detailed_info = Some(DetailedPositionInfo {
+        state,
+        target_collateral_ratio_range: TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?,
+        collateral_ratio,
+        unclaimed_short_proceeds_uusd_amount,
+        claimable_short_proceeds_uusd_amount,
+        claimable_mir_reward_uusd_value: mir_uusd_value,
+        claimable_spec_reward_uusd_value: spec_uusd_value,
+        uusd_value: value,
+    });
+    Ok(response)
 }

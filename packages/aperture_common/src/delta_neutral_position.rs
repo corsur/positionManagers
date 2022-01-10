@@ -133,7 +133,11 @@ pub struct BlockInfo {
 pub struct DetailedPositionInfo {
     pub state: PositionState,
     pub target_collateral_ratio_range: TargetCollateralRatioRange,
+    pub collateral_ratio: Decimal,
     pub unclaimed_short_proceeds_uusd_amount: Uint128,
+    pub claimable_short_proceeds_uusd_amount: Uint128,
+    pub claimable_mir_reward_uusd_value: Uint128,
+    pub claimable_spec_reward_uusd_value: Uint128,
     pub uusd_value: Uint128,
 }
 
