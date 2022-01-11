@@ -287,11 +287,11 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                     context.terraswap_factory_addr,
                     state.mirror_asset_cw20_addr.as_str(),
                     net_long_mirror_asset_amount,
-                )?)
+                )?)/*
                 .add_message(create_internal_execute_message(
                     &env,
                     InternalExecuteMsg::AchieveDeltaNeutral {},
-                ));
+                ))*/;
         }
         Ordering::Less => {
             // We are in a net short position, so we swap uusd for the difference amount of mAsset.
@@ -311,7 +311,7 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                     &state,
                     &context,
                     uusd_offer_amount + uusd_offer_asset.compute_tax(&deps.querier)?,
-                ))
+                )?)
                 .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: terraswap_pair_info.contract_addr,
                     msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
@@ -324,11 +324,11 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                         denom: String::from("uusd"),
                         amount: uusd_offer_amount,
                     }],
-                }))
+                }))/*
                 .add_message(create_internal_execute_message(
                     &env,
                     InternalExecuteMsg::AchieveDeltaNeutral {},
-                ));
+                ))*/;
         }
         Ordering::Equal => {}
     }

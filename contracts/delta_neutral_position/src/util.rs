@@ -426,14 +426,14 @@ pub fn increase_uusd_balance_from_long_farm(
     state: &PositionState,
     context: &Context,
     target_uusd_balance: Uint128,
-) -> Vec<CosmosMsg> {
+) -> StdResult<Vec<CosmosMsg>> {
     if target_uusd_balance <= state.uusd_balance {
-        return vec![];
+        return Ok(vec![]);
     }
     let withdraw_uusd_amount = target_uusd_balance - state.uusd_balance;
     let pool_info = state.terraswap_pool_info.as_ref().unwrap();
     let one: Uint128 = Uint128::from(1u128);
-    let withdraw_lp_token_amount = {
+    let withdraw_lp_token_amount: StdResult<Uint128> = {
         let mut a = Uint128::zero();
         let mut b = pool_info.lp_token_amount + one;
         while b > a + one {
@@ -446,9 +446,10 @@ pub fn increase_uusd_balance_from_long_farm(
                 b = m
             }
         }
-        a
+        Ok(a * Decimal::from_ratio(10001u128, 10000u128))
     };
-    unstake_lp_and_withdraw_liquidity(state, context, withdraw_lp_token_amount)
+    // return Err(StdError::generic_err(format!("want_uusd: {} withdraw_lp: {}", withdraw_uusd_amount, withdraw_lp_token_amount?)));
+    Ok(unstake_lp_and_withdraw_liquidity(state, context, withdraw_lp_token_amount?))
 }
 
 pub fn increase_uusd_balance_from_aust_collateral(

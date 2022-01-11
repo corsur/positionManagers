@@ -284,4 +284,4 @@ async function open_delta_neutral_position(terra_manager_addr, ust_amount) {
 
 const terra_manager_addr = await deploy();
 await open_delta_neutral_position(terra_manager_addr, 1000);
-await open_delta_neutral_position(terra_manager_addr, 5000000);
+await open_delta_neutral_position(terra_manager_addr, 12000000);

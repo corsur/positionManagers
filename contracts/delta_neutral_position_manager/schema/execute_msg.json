@@ -37,6 +37,82 @@
     {
       "type": "object",
       "required": [
+        "migrate_position_contracts"
+      ],
+      "properties": {
+        "migrate_position_contracts": {
+          "type": "object",
+          "required": [
+            "position_contracts",
+            "positions"
+          ],
+          "properties": {
+            "position_contracts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "positions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Position"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "update_admin_config"
+      ],
+      "properties": {
+        "update_admin_config": {
+          "type": "object",
+          "properties": {
+            "admin_addr": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "allow_position_decrease": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "allow_position_increase": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "delta_neutral_position_code_id": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "manager_addr": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
         "internal"
       ],
       "properties": {

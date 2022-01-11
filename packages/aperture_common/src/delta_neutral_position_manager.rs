@@ -84,18 +84,6 @@ pub enum QueryMsg {
         position: Position,
     },
     GetContext {},
-    // Returns `OpenPositionsResponse`.
-    GetOpenPositions {
-        start_after: Option<Position>,
-        limit: Option<u32>,
-    },
-}
-
-// List of contract addresses serving positions that are currently open.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub struct OpenPositionsResponse {
-    pub contracts: Vec<String>,
 }
 
 /// Contextual information for delta neutral position manager. It contains

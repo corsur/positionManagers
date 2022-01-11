@@ -9,7 +9,7 @@ import {
 } from "@terra-money/terra.js";
 import * as fs from "fs";
 
-const gasAdjustment = 1.1;
+const gasAdjustment = 1.2;
 var sequence = -1;
 
 async function initializeSequence(wallet) {
@@ -217,13 +217,51 @@ async function rebalance_position(position_contract) {
   console.log("Rebalanced position: ", position_contract);
 }
 
+async function migrate_existing_position(position_manager_contract, position_id) {
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgExecuteContract(
+        /*sender=*/ test_wallet.key.accAddress,
+        /*contract=*/ position_manager_contract,
+        {
+          migrate_position_contracts: {
+            positions: [
+              {
+                chain_id: 3,
+                position_id: position_id.toString()
+              }
+            ],
+            position_contracts: []
+          }
+        },
+        []
+      ),
+    ],
+    memo: "Migrate existing position",
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  if (isTxError(response)) {
+    throw new Error(
+      `rebalance failed. code: ${response.code}, codespace: ${response.codespace}`//, raw_log: ${response.raw_log}`
+    );
+  }
+  console.log("Migrated position: ", position_id);
+}
+
 await initializeSequence(test_wallet);
-const position_manager = "terra1kkwdj0mvfldu3847m47jyzn9a8n6rrq8jh3ae5";
+const position_manager = "terra13u309m5zk7q975vq0p2dw0yg37cmxsq8ar0jhg";
 // await store_new_position_code(position_manager);
 
-const terra_manager_addr = "terra1cyegwsjg3gsae07vgk3fn6mh00j40at7qk7d32";
-// await open_delta_neutral_position(terra_manager_addr, 100);
+const terra_manager_addr = "terra1ettwsfevaz65sqf269m9txs8mv923zas44aaj0";
+await open_delta_neutral_position(terra_manager_addr, 100);
+await open_delta_neutral_position(terra_manager_addr, 1000);
+// await open_delta_neutral_position(terra_manager_addr, 10000);
 // await open_delta_neutral_position(terra_manager_addr, 12000000);
 
 // await close_position(terra_manager_addr, 1);
-await rebalance_position("terra1jjr5a4xw26s6enqzksyljy3fae3ppwvqqt75ez");
+
+// await migrate_existing_position(position_manager, 2);
+// await close_position(terra_manager_addr, 1);
+// await rebalance_position("terra1jjr5a4xw26s6enqzksyljy3fae3ppwvqqt75ez");

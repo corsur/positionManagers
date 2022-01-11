@@ -2,13 +2,12 @@ use aperture_common::common::{get_position_key, Action, Position};
 use aperture_common::delta_neutral_position;
 use aperture_common::delta_neutral_position_manager::{
     Context, DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
-    OpenPositionsResponse, QueryMsg,
+    QueryMsg,
 };
 use cosmwasm_std::{
     entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
     MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, WasmMsg,
 };
-use cw_storage_plus::{Bound, PrimaryKey};
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -329,38 +328,6 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_binary(&(POSITION_TO_CONTRACT_ADDR.load(deps.storage, get_position_key(&position))?))
         }
         QueryMsg::GetContext {} => to_binary(&(CONFIG.load(deps.storage)?).context),
-        QueryMsg::GetOpenPositions { start_after, limit } => {
-            let min = start_after
-                .map(|position| Bound::Exclusive(get_position_key(&position).joined_key()));
-            const DEFAULT_LIMIT: u32 = 10;
-            const MAX_LIMIT: u32 = 30;
-            let mut remaining = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
-            let positions = POSITION_TO_CONTRACT_ADDR.range(
-                deps.storage,
-                min,
-                None,
-                cosmwasm_std::Order::Ascending,
-            );
-            let mut open_positions: Vec<String> = vec![];
-            for position in positions {
-                if remaining == 0 {
-                    break;
-                }
-                remaining -= 1;
-                let (_, contract) = position?;
-                let position_info: delta_neutral_position::PositionInfoResponse =
-                    deps.querier.query_wasm_smart(
-                        contract.clone(),
-                        &delta_neutral_position::QueryMsg::GetPositionInfo {},
-                    )?;
-                if position_info.position_close_block_info == None {
-                    open_positions.push(contract.to_string());
-                }
-            }
-            to_binary(&OpenPositionsResponse {
-                contracts: open_positions,
-            })
-        }
     }
 }
 
