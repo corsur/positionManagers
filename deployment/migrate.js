@@ -252,11 +252,11 @@ async function migrate_existing_position(position_manager_contract, position_id)
 
 await initializeSequence(test_wallet);
 const position_manager = "terra13u309m5zk7q975vq0p2dw0yg37cmxsq8ar0jhg";
-// await store_new_position_code(position_manager);
+await store_new_position_code(position_manager);
 
 const terra_manager_addr = "terra1ettwsfevaz65sqf269m9txs8mv923zas44aaj0";
-await open_delta_neutral_position(terra_manager_addr, 100);
-await open_delta_neutral_position(terra_manager_addr, 1000);
+await open_delta_neutral_position(terra_manager_addr, 3000000);
+// await open_delta_neutral_position(terra_manager_addr, 1000);
 // await open_delta_neutral_position(terra_manager_addr, 10000);
 // await open_delta_neutral_position(terra_manager_addr, 12000000);
 

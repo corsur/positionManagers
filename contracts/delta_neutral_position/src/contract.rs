@@ -12,9 +12,9 @@ use crate::state::{
     TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
-    find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
-    get_mirror_asset_oracle_uusd_price, get_position_state,
+    compute_terraswap_uusd_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
+    find_collateral_uusd_amount, find_unclaimed_mir_amount, find_unclaimed_spec_amount,
+    get_cdp_uusd_lock_info_result, get_mirror_asset_oracle_uusd_price, get_position_state,
     get_terraswap_uusd_mirror_asset_pool_balance_info, get_uusd_asset_from_amount,
     get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
     increase_uusd_balance_from_aust_collateral, query_position_info, simulate_terraswap_swap,
@@ -269,6 +269,50 @@ pub fn claim_and_increase_uusd_balance(
 
 pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
     let state = get_position_state(deps, &env, &context)?;
+
+    if state.mirror_asset_long_farm.is_zero() {
+        // There are no staked LP tokens.
+        match state
+            .mirror_asset_long_amount
+            .cmp(&state.mirror_asset_short_amount)
+        {
+            Ordering::Greater => {
+                return Ok(Response::new().add_message(swap_cw20_token_for_uusd(
+                    &deps.querier,
+                    context.terraswap_factory_addr,
+                    state.mirror_asset_cw20_addr.as_str(),
+                    state.mirror_asset_balance - state.mirror_asset_short_amount,
+                )?))
+            }
+            Ordering::Less => {
+                let (pair_info, offer_uusd_amount) = compute_terraswap_uusd_offer_amount(
+                    deps,
+                    &context,
+                    state.mirror_asset_cw20_addr.as_str(),
+                    state.mirror_asset_short_amount - state.mirror_asset_balance,
+                )?;
+                return Ok(
+                    Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: pair_info.contract_addr,
+                        msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+                            offer_asset: get_uusd_asset_from_amount(offer_uusd_amount),
+                            max_spread: None,
+                            belief_price: None,
+                            to: None,
+                        })?,
+                        funds: vec![Coin {
+                            denom: String::from("uusd"),
+                            amount: offer_uusd_amount,
+                        }],
+                    })),
+                );
+            }
+            Ordering::Equal => {
+                return Ok(Response::default());
+            }
+        };
+    }
+
     let mut response = Response::new();
     match state
         .mirror_asset_long_amount
