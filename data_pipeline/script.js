@@ -1,12 +1,10 @@
 import {
   LCDClient,
   MnemonicKey,
-  MsgExecuteContract,
-  MsgInstantiateContract,
-  MsgStoreCode,
-  isTxError,
 } from "@terra-money/terra.js";
-import { DynamoDBClient, PutItemCommand} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import big from 'big.js';
+
 
 
 const client = new DynamoDBClient({ region: "us-west-2" });
@@ -39,9 +37,10 @@ const test_wallet = testnet.wallet(
 );
 
 async function run_pipeline() {
-  const terra_manager = "terra1pvq5zdh4frjh773nfhk2shqvv5jlm450v8a9yh";
+  const terra_manager = "terra1ettwsfevaz65sqf269m9txs8mv923zas44aaj0";
   const delta_neutral_strategy_id = "0";
   const terra_chain_id = 3;
+  var mAssetToTVL = {};
 
   // Get next position id to establish limit.
   const next_position_res = await testnet.wasm.contractQuery(terra_manager, {
@@ -74,8 +73,8 @@ async function run_pipeline() {
     const position_addr = await testnet.wasm.contractQuery(position_manager_addr, {
       "get_position_contract_addr": {
         "position": {
-            "chain_id": terra_chain_id,
-            "position_id": i.toString()
+          "chain_id": terra_chain_id,
+          "position_id": i.toString()
         }
       }
     });
@@ -86,21 +85,59 @@ async function run_pipeline() {
       get_position_info: {}
     });
     console.log('position info: ', position_info);
-    const uusd_value = position_info.detailed_info.uusd_value;
-    await write_to_dynamodb(i, new Date().getTime(), position_metadata_res.strategy_location.terra_chain, uusd_value);
+    if (position_info.detailed_info == null) {
+      console.log("Position id ", i, " is closed.");
+      continue;
+    }
+    // Process position ticks.
+    const uusd_value = big(position_info.detailed_info.uusd_value);
+    await write_position_ticks(i, parseInt(new Date().getTime() / 1e3), terra_chain_id, uusd_value);
+
+    // Process per-strategy level aggregate metrics.
+    const mirror_asset_addr = position_info.detailed_info.state.mirror_asset_cw20_addr;
+    console.log('Processing asset addr: ', mirror_asset_addr);
+    if (mirror_asset_addr in mAssetToTVL) {
+      mAssetToTVL[mirror_asset_addr] = mAssetToTVL[mirror_asset_addr].add(uusd_value);
+    } else {
+      mAssetToTVL[mirror_asset_addr] = uusd_value;
+    }
+  }
+
+  // Persist per-strategy level aggregate metrics.
+  for (var strategy_id in mAssetToTVL) {
+    const tvl_uusd = mAssetToTVL[strategy_id];
+    await write_strategy_metrics(strategy_id, tvl_uusd);
   }
 }
 
 await run_pipeline();
 
-async function write_to_dynamodb(position_id, timestamp_sec, chain_id, uusd_value) {
+async function write_strategy_metrics(strategy_id, tvl_uusd) {
+  const input = {
+    TableName: "strategy_tvl",
+    Item: {
+      strategy_id: { S: strategy_id.toString() },
+      tvl_uusd: { S: tvl_uusd.toString() },
+      timestamp_sec: { N: parseInt((new Date().getTime() / 1e3)).toString() }
+    }
+  };
+  const command = new PutItemCommand(input);
+  try {
+    const results = await client.send(command);
+    console.log(results);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+async function write_position_ticks(position_id, timestamp_sec, chain_id, uusd_value) {
   const input = {
     TableName: "position_ticks",
     Item: {
       position_id: { N: position_id.toString() },
       timestamp_sec: { N: timestamp_sec.toString() },
-      chain_id: {N: chain_id.toString()},
-      uusd_value: {N: uusd_value.toString()},
+      chain_id: { N: chain_id.toString() },
+      uusd_value: { N: uusd_value.toString() },
     }
   };
   const command = new PutItemCommand(input);
