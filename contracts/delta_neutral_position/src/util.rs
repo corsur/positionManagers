@@ -449,7 +449,11 @@ pub fn increase_uusd_balance_from_long_farm(
         Ok(a * Decimal::from_ratio(10001u128, 10000u128))
     };
     // return Err(StdError::generic_err(format!("want_uusd: {} withdraw_lp: {}", withdraw_uusd_amount, withdraw_lp_token_amount?)));
-    Ok(unstake_lp_and_withdraw_liquidity(state, context, withdraw_lp_token_amount?))
+    Ok(unstake_lp_and_withdraw_liquidity(
+        state,
+        context,
+        withdraw_lp_token_amount?,
+    ))
 }
 
 pub fn increase_uusd_balance_from_aust_collateral(

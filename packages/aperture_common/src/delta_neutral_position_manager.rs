@@ -80,9 +80,7 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetPositionContractAddr {
-        position: Position,
-    },
+    GetPositionContractAddr { position: Position },
     GetContext {},
 }
 

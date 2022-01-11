@@ -146,14 +146,6 @@ fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Cosmos
     })
 }
 
-pub fn get_rebalance_internal_messages(env: &Env) -> Vec<CosmosMsg> {
-    vec![
-        create_internal_execute_message(env, InternalExecuteMsg::ClaimAndIncreaseUusdBalance {}),
-        create_internal_execute_message(env, InternalExecuteMsg::AchieveDeltaNeutral {}),
-        create_internal_execute_message(env, InternalExecuteMsg::AchieveSafeCollateralRatio {}),
-    ]
-}
-
 pub fn get_reinvest_internal_messages(
     deps: Deps,
     env: &Env,
@@ -184,7 +176,17 @@ pub fn rebalance_and_reinvest(
     ignore_uusd_pending_unlock: bool,
 ) -> StdResult<Response> {
     Ok(Response::new()
-        .add_messages(get_rebalance_internal_messages(&env))
+        .add_messages(vec![
+            create_internal_execute_message(
+                &env,
+                InternalExecuteMsg::ClaimAndIncreaseUusdBalance {},
+            ),
+            create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
+            create_internal_execute_message(
+                &env,
+                InternalExecuteMsg::AchieveSafeCollateralRatio {},
+            ),
+        ])
         .add_messages(get_reinvest_internal_messages(
             deps,
             &env,
@@ -590,15 +592,17 @@ pub fn decrease_position(
             },
         )?;
     }
-    Ok(Response::new()
-        .add_messages(get_rebalance_internal_messages(&env))
-        .add_message(create_internal_execute_message(
+    Ok(Response::new().add_messages(vec![
+        create_internal_execute_message(&env, InternalExecuteMsg::ClaimAndIncreaseUusdBalance {}),
+        create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
+        create_internal_execute_message(
             &env,
             InternalExecuteMsg::WithdrawFundsInUusd {
                 proportion,
                 recipient,
             },
-        )))
+        ),
+    ]))
 }
 
 pub fn send_uusd_to_recipient(
