@@ -91,7 +91,7 @@ async function run_pipeline() {
     }
     // Process position ticks.
     const uusd_value = big(position_info.detailed_info.uusd_value);
-    await write_position_ticks(i, parseInt(new Date().getTime() / 10e3), terra_chain_id, uusd_value);
+    await write_position_ticks(i, parseInt(new Date().getTime() / 1e3), terra_chain_id, uusd_value);
 
     // Process per-strategy level aggregate metrics.
     const mirror_asset_addr = position_info.detailed_info.state.mirror_asset_cw20_addr;
@@ -118,7 +118,7 @@ async function write_strategy_metrics(strategy_id, tvl_uusd) {
     Item: {
       strategy_id: { S: strategy_id.toString() },
       tvl_uusd: { S: tvl_uusd.toString() },
-      timestamp_sec: { N: parseInt((new Date().getTime() / 10e3)).toString() }
+      timestamp_sec: { N: parseInt((new Date().getTime() / 1e3)).toString() }
     }
   };
   const command = new PutItemCommand(input);
