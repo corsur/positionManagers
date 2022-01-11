@@ -86,6 +86,8 @@ pub struct TerraswapPoolInfo {
     pub lp_token_total_supply: Uint128,
     // Address of the mAsset-UST Terraswap pair contract.
     pub terraswap_pair_addr: String,
+    // Balance of mAsset in the mAsset-UST Terraswap pool.
+    pub terraswap_pool_mirror_asset_amount: Uint128,
     // Balance of uusd in the mAsset-UST Terraswap pool.
     pub terraswap_pool_uusd_amount: Uint128,
 }
