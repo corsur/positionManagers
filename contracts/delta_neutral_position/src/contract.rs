@@ -14,7 +14,7 @@ use crate::state::{
 use crate::util::{
     compute_terraswap_uusd_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
     find_collateral_uusd_amount, find_unclaimed_mir_amount, find_unclaimed_spec_amount,
-    get_cdp_uusd_lock_info_result, get_mirror_asset_oracle_uusd_price, get_position_state,
+    get_cdp_uusd_lock_info_result, get_position_state,
     get_terraswap_uusd_mirror_asset_pool_balance_info, get_uusd_asset_from_amount,
     get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
     increase_uusd_balance_from_aust_collateral, query_position_info, simulate_terraswap_swap,
@@ -334,12 +334,11 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             let mut a = Uint128::zero();
             if need_to_withdraw_lp_token {
                 let mut b = info.lp_token_amount + one;
-                let mut withdrawn_mirror_asset_amount = Uint128::zero();
                 while b > a + one {
                     let withdraw_lp_token_amount = (a + b) >> 1;
                     let fraction =
                         Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
-                    withdrawn_mirror_asset_amount =
+                    let withdrawn_mirror_asset_amount =
                         info.terraswap_pool_mirror_asset_amount * fraction;
                     let new_lp_total_supply = info.lp_token_total_supply - withdraw_lp_token_amount;
                     let pool_mirror_asset_amount_after_withdrawal =
@@ -365,7 +364,9 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                         &deps.querier,
                         context.terraswap_factory_addr,
                         state.mirror_asset_cw20_addr.as_str(),
-                        withdrawn_mirror_asset_amount + state.mirror_asset_balance,
+                        info.terraswap_pool_mirror_asset_amount
+                            * Decimal::from_ratio(a, info.lp_token_total_supply)
+                            + state.mirror_asset_balance,
                     )?);
             } else {
                 let mut b = state.mirror_asset_balance + one;
@@ -413,14 +414,13 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             let one = Uint128::from(1u128);
             if need_to_withdraw_lp_token {
                 let mut b = info.lp_token_amount + one;
-                let mut withdrawn_uusd_amount = Uint128::zero();
                 while b > a + one {
                     let withdraw_lp_token_amount = (a + b) >> 1;
                     let fraction =
                         Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
                     let withdrawn_mirror_asset_amount =
                         info.terraswap_pool_mirror_asset_amount * fraction;
-                    withdrawn_uusd_amount = info.terraswap_pool_uusd_amount * fraction;
+                    let withdrawn_uusd_amount = info.terraswap_pool_uusd_amount * fraction;
                     let new_lp_total_supply = info.lp_token_total_supply - withdraw_lp_token_amount;
                     let pool_mirror_asset_amount_after_withdrawal =
                         info.terraswap_pool_mirror_asset_amount - withdrawn_mirror_asset_amount;
@@ -438,6 +438,7 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                             new_lp_total_supply,
                         );
                     let mirror_asset_long_amount = state.mirror_asset_balance
+                        + withdrawn_mirror_asset_amount
                         + return_mirror_asset_amount
                         + mirror_asset_long_farm_amount;
                     if mirror_asset_long_amount <= state.mirror_asset_short_amount {
@@ -447,7 +448,9 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                     }
                 }
 
-                let offer_uusd_amount = withdrawn_uusd_amount + state.uusd_balance;
+                let offer_uusd_amount = info.terraswap_pool_uusd_amount
+                    * Decimal::from_ratio(a, info.lp_token_total_supply)
+                    + state.uusd_balance;
                 response = response
                     .add_messages(unstake_lp_and_withdraw_liquidity(&state, &context, a))
                     .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
@@ -511,11 +514,7 @@ pub fn achieve_safe_collateral_ratios(
     let state = get_position_state(deps, &env, &context)?;
     let collateral_ratio = Decimal::from_ratio(
         state.collateral_uusd_value,
-        get_mirror_asset_oracle_uusd_price(
-            &deps.querier,
-            &context,
-            state.mirror_asset_cw20_addr.as_str(),
-        )? * state.mirror_asset_short_amount,
+        state.mirror_asset_oracle_price * state.mirror_asset_short_amount,
     );
     let target_collateral_ratio_range = TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
     let mut response = Response::new();
