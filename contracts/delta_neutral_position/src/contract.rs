@@ -2,11 +2,12 @@ use std::cmp::{min, Ordering};
 
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
-    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    entry_point, to_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
     MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use terraswap::asset::{Asset, AssetInfo};
 
+use crate::dex_util::swap_cw20_token_for_uusd;
 use crate::state::{
     PositionInfo, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
     TARGET_COLLATERAL_RATIO_RANGE,
@@ -18,7 +19,7 @@ use crate::util::{
     get_terraswap_uusd_mirror_asset_pool_balance_info, get_uusd_asset_from_amount,
     get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
     increase_uusd_balance_from_aust_collateral, query_position_info, simulate_terraswap_swap,
-    swap_cw20_token_for_uusd, unstake_lp_and_withdraw_liquidity,
+    unstake_lp_and_withdraw_liquidity,
 };
 use aperture_common::delta_neutral_position::{
     BlockInfo, ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
@@ -130,7 +131,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                     deps,
                     env,
                     context,
-                    position_info.mirror_asset_cw20_addr.to_string(),
+                    &position_info.mirror_asset_cw20_addr,
                     Some(position_info.cdp_idx),
                 )
             }
@@ -227,8 +228,9 @@ pub fn claim_and_increase_uusd_balance(
         // Swap SPEC reward for uusd.
         response = response.add_message(swap_cw20_token_for_uusd(
             &deps.querier,
-            context.terraswap_factory_addr.clone(),
-            context.spectrum_cw20_addr.as_str(),
+            &context.terraswap_factory_addr,
+            &context.astroport_factory_addr,
+            &context.spectrum_cw20_addr,
             spec_reward,
         )?);
     }
@@ -243,8 +245,9 @@ pub fn claim_and_increase_uusd_balance(
         // Swap MIR for uusd.
         response = response.add_message(swap_cw20_token_for_uusd(
             &deps.querier,
-            context.terraswap_factory_addr.clone(),
-            context.mirror_cw20_addr.as_str(),
+            &context.terraswap_factory_addr,
+            &context.astroport_factory_addr,
+            &context.mirror_cw20_addr,
             mir_reward,
         )?);
     }
@@ -279,8 +282,9 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             Ordering::Greater => {
                 return Ok(Response::new().add_message(swap_cw20_token_for_uusd(
                     &deps.querier,
-                    context.terraswap_factory_addr,
-                    state.mirror_asset_cw20_addr.as_str(),
+                    &context.terraswap_factory_addr,
+                    &context.astroport_factory_addr,
+                    &state.mirror_asset_cw20_addr,
                     state.mirror_asset_balance - state.mirror_asset_short_amount,
                 )?))
             }
@@ -288,7 +292,7 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                 let (pair_info, offer_uusd_amount) = compute_terraswap_uusd_offer_amount(
                     deps,
                     &context,
-                    state.mirror_asset_cw20_addr.as_str(),
+                    &state.mirror_asset_cw20_addr,
                     state.mirror_asset_short_amount - state.mirror_asset_balance,
                 )?;
                 return Ok(
@@ -362,8 +366,9 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                     .add_messages(unstake_lp_and_withdraw_liquidity(&state, &context, a))
                     .add_message(swap_cw20_token_for_uusd(
                         &deps.querier,
-                        context.terraswap_factory_addr,
-                        state.mirror_asset_cw20_addr.as_str(),
+                        &context.terraswap_factory_addr,
+                        &context.astroport_factory_addr,
+                        &state.mirror_asset_cw20_addr,
                         info.terraswap_pool_mirror_asset_amount
                             * Decimal::from_ratio(a, info.lp_token_total_supply)
                             + state.mirror_asset_balance,
@@ -386,8 +391,9 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                 }
                 response = response.add_message(swap_cw20_token_for_uusd(
                     &deps.querier,
-                    context.terraswap_factory_addr,
-                    state.mirror_asset_cw20_addr.as_str(),
+                    &context.terraswap_factory_addr,
+                    &context.astroport_factory_addr,
+                    &state.mirror_asset_cw20_addr,
                     a,
                 )?);
             }
@@ -602,14 +608,15 @@ pub fn open_position(
             max: target_max_collateral_ratio,
         },
     )?;
-    delta_neutral_invest(deps, env, context, mirror_asset_cw20_addr, None)
+    let mirror_asset_cw20_addr = deps.api.addr_validate(&mirror_asset_cw20_addr)?;
+    delta_neutral_invest(deps, env, context, &mirror_asset_cw20_addr, None)
 }
 
 pub fn delta_neutral_invest(
     deps: DepsMut,
     env: Env,
     context: Context,
-    mirror_asset_cw20_addr: String,
+    mirror_asset_cw20_addr: &Addr,
     cdp_idx: Option<Uint128>,
 ) -> StdResult<Response> {
     let uusd_balance = get_uusd_balance(&deps.querier, &env)?;
@@ -621,7 +628,7 @@ pub fn delta_neutral_invest(
     let (mirror_asset_mint_amount, collateral_uusd_amount) = find_collateral_uusd_amount(
         deps.as_ref(),
         &context,
-        &mirror_asset_cw20_addr,
+        mirror_asset_cw20_addr,
         &target_collateral_ratio_range,
         uusd_balance,
     )?;
@@ -643,7 +650,7 @@ pub fn delta_neutral_invest(
                 &env,
                 InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
                     collateral_ratio: target_collateral_ratio_range.midpoint(),
-                    mirror_asset_cw20_addr,
+                    mirror_asset_cw20_addr: mirror_asset_cw20_addr.to_string(),
                     cdp_idx,
                     mirror_asset_mint_amount,
                 },
@@ -905,7 +912,7 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
         get_terraswap_uusd_mirror_asset_pool_balance_info(
             deps,
             &context,
-            state.mirror_asset_cw20_addr.as_str(),
+            &state.mirror_asset_cw20_addr,
         )?;
     let uusd_ratio = Decimal::from_ratio(available_uusd_amount, pool_uusd_balance);
     let mirror_asset_ratio =

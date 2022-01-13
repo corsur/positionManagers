@@ -14,9 +14,12 @@ use cosmwasm_std::{
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo, PairInfo};
 
-use crate::state::{
-    POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
-    TARGET_COLLATERAL_RATIO_RANGE,
+use crate::{
+    dex_util::create_terraswap_cw20_uusd_pair_asset_info,
+    state::{
+        POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
+        TARGET_COLLATERAL_RATIO_RANGE,
+    },
 };
 
 const DECIMAL_FRACTIONAL: Uint128 = Uint128::new(1_000_000_000u128);
@@ -44,59 +47,6 @@ pub fn get_uusd_asset_from_amount(amount: Uint128) -> Asset {
 
 pub fn get_uusd_balance(querier: &QuerierWrapper, env: &Env) -> StdResult<Uint128> {
     terraswap::querier::query_balance(querier, env.contract.address.clone(), "uusd".to_string())
-}
-
-/// Returns an array comprising two AssetInfo elements, representing a Terraswap token pair where the first token is a cw20 with contract address
-/// `cw20_token_addr` and the second token is the native "uusd" token. The returned array is useful for querying Terraswap for pair info.
-/// # Arguments
-///
-/// * `cw20_token_addr` - Contract address of the specified cw20 token
-fn create_terraswap_cw20_uusd_pair_asset_info(cw20_token_addr: &str) -> [AssetInfo; 2] {
-    [
-        terraswap::asset::AssetInfo::Token {
-            contract_addr: cw20_token_addr.to_string(),
-        },
-        terraswap::asset::AssetInfo::NativeToken {
-            denom: String::from("uusd"),
-        },
-    ]
-}
-
-/// Returns a Wasm execute message that swaps the cw20 token at address `cw20_token_addr` in the amount of `amount` for uusd via Terraswap.
-///
-/// The contract address of the Terraswap cw20-uusd pair is first looked up from the factory. An error is returned if this query fails.
-/// If the pair contract lookup is successful, then a message that swaps the specified amount of cw20 tokens for uusd is returned.
-///
-/// # Arguments
-///
-/// * `querier` - Reference to a querier which is used to query Terraswap factory
-/// * `terraswap_factory_addr` - Address of the Terraswap factory contract
-/// * `cw20_token_addr` - Contract address of the cw20 token to be swapped
-/// * `amount` - Amount of the cw20 token to be swapped
-pub fn swap_cw20_token_for_uusd(
-    querier: &QuerierWrapper,
-    terraswap_factory_addr: Addr,
-    cw20_token_addr: &str,
-    amount: Uint128,
-) -> StdResult<CosmosMsg> {
-    let terraswap_pair_info = terraswap::querier::query_pair_info(
-        querier,
-        terraswap_factory_addr,
-        &create_terraswap_cw20_uusd_pair_asset_info(cw20_token_addr),
-    )?;
-    Ok(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: cw20_token_addr.to_string(),
-        msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-            contract: terraswap_pair_info.contract_addr,
-            amount,
-            msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
-                belief_price: None,
-                max_spread: None,
-                to: None,
-            })?,
-        })?,
-        funds: vec![],
-    }))
 }
 
 pub fn get_mirror_asset_oracle_uusd_price(
@@ -131,7 +81,7 @@ pub fn get_cdp_uusd_lock_info_result(
 pub fn get_terraswap_uusd_mirror_asset_pool_balance_info(
     deps: Deps,
     context: &Context,
-    mirror_asset_cw20_addr: &str,
+    mirror_asset_cw20_addr: &Addr,
 ) -> StdResult<(PairInfo, Uint128, Uint128)> {
     let terraswap_pair_asset_info =
         create_terraswap_cw20_uusd_pair_asset_info(mirror_asset_cw20_addr);
@@ -162,7 +112,7 @@ pub fn get_terraswap_uusd_mirror_asset_pool_balance_info(
 pub fn find_collateral_uusd_amount(
     deps: Deps,
     context: &Context,
-    mirror_asset_cw20_addr: &str,
+    mirror_asset_cw20_addr: &Addr,
     target_collateral_ratio_range: &TargetCollateralRatioRange,
     mut uusd_amount: Uint128,
 ) -> StdResult<(Uint128, Uint128)> {
@@ -219,8 +169,11 @@ pub fn find_collateral_uusd_amount(
     }
 
     // Obtain mAsset oracle price.
-    let mirror_asset_oracle_price =
-        get_mirror_asset_oracle_uusd_price(&deps.querier, context, mirror_asset_cw20_addr)?;
+    let mirror_asset_oracle_price = get_mirror_asset_oracle_uusd_price(
+        &deps.querier,
+        context,
+        mirror_asset_cw20_addr.as_str(),
+    )?;
 
     // Check that target_min_collateral_ratio meets the safety margin requirement, i.e. exceeds the minimum threshold by at least the configured safety margin.
     let min_collateral_ratio = decimal_multiplication(
@@ -300,9 +253,8 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         if info.asset_token == position_info.mirror_asset_cw20_addr {
             let lp_token_amount = info.bond_amount;
 
-            let asset_infos = create_terraswap_cw20_uusd_pair_asset_info(
-                position_info.mirror_asset_cw20_addr.as_str(),
-            );
+            let asset_infos =
+                create_terraswap_cw20_uusd_pair_asset_info(&position_info.mirror_asset_cw20_addr);
             let terraswap_pair_info = terraswap::querier::query_pair_info(
                 &deps.querier,
                 context.terraswap_factory_addr.clone(),
@@ -478,7 +430,7 @@ pub fn simulate_terraswap_swap(
 pub fn compute_terraswap_uusd_offer_amount(
     deps: Deps,
     context: &Context,
-    mirror_asset_cw20_addr: &str,
+    mirror_asset_cw20_addr: &Addr,
     ask_mirror_asset_amount: Uint128,
 ) -> StdResult<(PairInfo, Uint128)> {
     let (terraswap_pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
@@ -545,7 +497,7 @@ pub fn find_unclaimed_mir_amount(deps: Deps, env: &Env, context: &Context) -> St
 pub fn find_cw20_token_uusd_value(
     querier: &QuerierWrapper,
     terraswap_factory_addr: Addr,
-    cw20_token_addr: &str,
+    cw20_token_addr: &Addr,
     amount: Uint128,
 ) -> StdResult<Uint128> {
     let terraswap_pair_info = terraswap::querier::query_pair_info(
@@ -602,7 +554,7 @@ pub fn query_position_info(
     let spec_uusd_value = find_cw20_token_uusd_value(
         &deps.querier,
         context.terraswap_factory_addr.clone(),
-        context.spectrum_cw20_addr.as_str(),
+        &context.spectrum_cw20_addr,
         find_unclaimed_spec_amount(deps, env, context)?,
     )?;
     value = value.checked_add(spec_uusd_value)?;
@@ -610,7 +562,7 @@ pub fn query_position_info(
     let mir_uusd_value = find_cw20_token_uusd_value(
         &deps.querier,
         context.terraswap_factory_addr.clone(),
-        context.mirror_cw20_addr.as_str(),
+        &context.mirror_cw20_addr,
         find_unclaimed_mir_amount(deps, env, context)?,
     )?;
     value = value.checked_add(mir_uusd_value)?;
@@ -624,7 +576,7 @@ pub fn query_position_info(
             value = value.checked_add(find_cw20_token_uusd_value(
                 &deps.querier,
                 context.terraswap_factory_addr.clone(),
-                state.mirror_asset_cw20_addr.as_str(),
+                &state.mirror_asset_cw20_addr,
                 net_long_amount,
             )?)?;
         }
@@ -634,7 +586,7 @@ pub fn query_position_info(
                 compute_terraswap_uusd_offer_amount(
                     deps,
                     context,
-                    state.mirror_asset_cw20_addr.as_str(),
+                    &state.mirror_asset_cw20_addr,
                     net_short_amount,
                 )?
                 .1,

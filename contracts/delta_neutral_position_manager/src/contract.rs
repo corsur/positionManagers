@@ -52,6 +52,7 @@ pub fn instantiate(
             spectrum_mirror_farms_addr: deps.api.addr_validate(&msg.spectrum_mirror_farms_addr)?,
             spectrum_staker_addr: deps.api.addr_validate(&msg.spectrum_staker_addr)?,
             terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
+            astroport_factory_addr: deps.api.addr_validate(&msg.astroport_factory_addr)?,
             collateral_ratio_safety_margin: msg.collateral_ratio_safety_margin,
             min_delta_neutral_uusd_amount: msg.min_delta_neutral_uusd_amount,
         },
