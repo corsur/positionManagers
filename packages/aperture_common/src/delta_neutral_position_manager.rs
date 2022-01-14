@@ -65,8 +65,6 @@ pub enum ExecuteMsg {
     UpdateAdminConfig {
         admin_addr: Option<String>,
         manager_addr: Option<String>,
-        allow_position_increase: Option<bool>,
-        allow_position_decrease: Option<bool>,
         delta_neutral_position_code_id: Option<u64>,
     },
     // Can only be called by this contract itself.

@@ -20,8 +20,6 @@ pub struct AdminConfig {
     pub admin: Addr,
     pub manager: Addr,
     pub delta_neutral_position_code_id: u64,
-    pub allow_position_increase: bool,
-    pub allow_position_decrease: bool,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");

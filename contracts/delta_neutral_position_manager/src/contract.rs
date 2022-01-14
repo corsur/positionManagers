@@ -29,8 +29,6 @@ pub fn instantiate(
         admin: deps.api.addr_validate(&msg.admin_addr)?,
         manager: deps.api.addr_validate(&msg.manager_addr)?,
         delta_neutral_position_code_id: msg.delta_neutral_position_code_id,
-        allow_position_increase: msg.allow_position_increase,
-        allow_position_decrease: msg.allow_position_decrease,
     };
     ADMIN_CONFIG.save(deps.storage, &admin_config)?;
 
@@ -80,20 +78,11 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                     let params: DeltaNeutralParams = from_binary(&data.unwrap())?;
                     open_position(env, info, deps.storage, position, params, assets)
                 }
-                Action::IncreasePosition { data } => {
-                    if !admin_config.allow_position_increase {
-                        return Err(StdError::generic_err("unauthorized"));
-                    }
-                    increase_position(deps.as_ref(), info, &position, assets, data)
+                Action::IncreasePosition { .. } => {
+                    return Err(StdError::generic_err("not supported"));
                 }
-                Action::DecreasePosition {
-                    proportion,
-                    recipient,
-                } => {
-                    if !admin_config.allow_position_decrease {
-                        return Err(StdError::generic_err("unauthorized"));
-                    }
-                    decrease_position(deps.as_ref(), &position, proportion, recipient)
+                Action::DecreasePosition { .. } => {
+                    return Err(StdError::generic_err("not supported"));
                 }
                 Action::ClosePosition { recipient } => close_position(deps, &position, recipient),
             }
@@ -106,15 +95,11 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             admin_addr,
             manager_addr,
             delta_neutral_position_code_id,
-            allow_position_decrease,
-            allow_position_increase,
         } => update_admin_config(
             deps,
             admin_addr,
             manager_addr,
             delta_neutral_position_code_id,
-            allow_position_decrease,
-            allow_position_increase,
         ),
         ExecuteMsg::Internal(internal_msg) => {
             if info.sender != env.contract.address {
@@ -141,8 +126,6 @@ fn update_admin_config(
     admin_addr: Option<String>,
     manager_addr: Option<String>,
     delta_neutral_position_code_id: Option<u64>,
-    allow_position_decrease: Option<bool>,
-    allow_position_increase: Option<bool>,
 ) -> StdResult<Response> {
     let mut config = ADMIN_CONFIG.load(deps.storage)?;
     if let Some(admin_addr) = admin_addr {
@@ -153,12 +136,6 @@ fn update_admin_config(
     }
     if let Some(delta_neutral_position_code_id) = delta_neutral_position_code_id {
         config.delta_neutral_position_code_id = delta_neutral_position_code_id;
-    }
-    if let Some(allow_position_decrease) = allow_position_decrease {
-        config.allow_position_decrease = allow_position_decrease;
-    }
-    if let Some(allow_position_increase) = allow_position_increase {
-        config.allow_position_increase = allow_position_increase;
     }
     ADMIN_CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
@@ -256,53 +233,20 @@ pub fn open_position(
     Ok(response)
 }
 
-pub fn increase_position(
-    deps: Deps,
-    info: MessageInfo,
-    position: &Position,
-    assets: Vec<Asset>,
-    data: Option<Binary>,
-) -> StdResult<Response> {
-    let config = CONFIG.load(deps.storage)?;
-    let uusd_asset = validate_assets(&info, &config, &assets)?;
-    send_execute_message_to_position_contract(
-        deps,
-        position,
-        delta_neutral_position::ExecuteMsg::IncreasePosition {
-            ignore_uusd_pending_unlock: from_binary(&data.unwrap())?,
-        },
-        Some(uusd_asset),
-    )
-}
-
-pub fn decrease_position(
-    deps: Deps,
-    position: &Position,
-    proportion: Decimal,
-    recipient: String,
-) -> StdResult<Response> {
-    if proportion <= Decimal::zero() || proportion > Decimal::one() {
-        return Err(StdError::GenericErr {
-            msg: "`proportion` must safity `0 < proportion <= 1`.".to_string(),
-        });
-    }
-    send_execute_message_to_position_contract(
-        deps,
-        position,
-        delta_neutral_position::ExecuteMsg::DecreasePosition {
-            proportion,
-            recipient,
-        },
-        None,
-    )
-}
-
 pub fn close_position(
     deps: DepsMut,
     position: &Position,
     recipient: String,
 ) -> StdResult<Response> {
-    decrease_position(deps.as_ref(), position, Decimal::one(), recipient)
+    send_execute_message_to_position_contract(
+        deps.as_ref(),
+        position,
+        delta_neutral_position::ExecuteMsg::DecreasePosition {
+            proportion: Decimal::one(),
+            recipient,
+        },
+        None,
+    )
 }
 
 // To store instantiated contract address into state and initiate investment.

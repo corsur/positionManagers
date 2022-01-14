@@ -43,6 +43,7 @@ fn create_astroport_cw20_uusd_pair_asset_info(
 ///
 /// * `querier` - Reference to a querier which is used to query Terraswap factory
 /// * `terraswap_factory_addr` - Address of the Terraswap factory contract
+/// * `astroport_factory_addr` - Address of the Astroport factory contract
 /// * `cw20_token_addr` - Contract address of the cw20 token to be swapped
 /// * `amount` - Amount of the cw20 token to be swapped
 pub fn swap_cw20_token_for_uusd(
