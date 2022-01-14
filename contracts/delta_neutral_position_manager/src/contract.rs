@@ -79,10 +79,10 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                     open_position(env, info, deps.storage, position, params, assets)
                 }
                 Action::IncreasePosition { .. } => {
-                    return Err(StdError::generic_err("not supported"));
+                    Err(StdError::generic_err("not supported"))
                 }
                 Action::DecreasePosition { .. } => {
-                    return Err(StdError::generic_err("not supported"));
+                    Err(StdError::generic_err("not supported"))
                 }
                 Action::ClosePosition { recipient } => close_position(deps, &position, recipient),
             }

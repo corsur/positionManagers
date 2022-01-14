@@ -124,3 +124,109 @@ pub fn swap_cw20_token_for_uusd(
         funds: vec![],
     }))
 }
+
+#[test]
+fn test_create_cw20_uusd_pair_asset_info() {
+    let cw20_token_addr = Addr::unchecked("mock_addr");
+    assert_eq!(
+        create_astroport_cw20_uusd_pair_asset_info(&cw20_token_addr),
+        [
+            astroport::asset::AssetInfo::Token {
+                contract_addr: cw20_token_addr.clone(),
+            },
+            astroport::asset::AssetInfo::NativeToken {
+                denom: String::from("uusd"),
+            }
+        ]
+    );
+    assert_eq!(
+        create_terraswap_cw20_uusd_pair_asset_info(&cw20_token_addr),
+        [
+            terraswap::asset::AssetInfo::Token {
+                contract_addr: cw20_token_addr.to_string(),
+            },
+            terraswap::asset::AssetInfo::NativeToken {
+                denom: String::from("uusd"),
+            }
+        ]
+    );
+}
+
+#[test]
+fn test_swap_cw20_token_for_uusd() {
+    let terraswap_factory_addr = Addr::unchecked("mock_terraswap_factory");
+    let astroport_factory_addr = Addr::unchecked("mock_astroport_factory");
+    let cw20_token_addr = Addr::unchecked("mock_cw20_addr");
+    let amount = Uint128::from(100u128);
+    let terraswap_pair_addr = Addr::unchecked("mock_terraswap_pair");
+    let astroport_pair_addr = Addr::unchecked("mock_astroport_pair");
+
+    let querier_terraswap_better_rate = crate::mock_querier::WasmMockQuerier::new(
+        terraswap_factory_addr.to_string(),
+        astroport_factory_addr.to_string(),
+        terraswap_pair_addr.to_string(),
+        astroport_pair_addr.to_string(),
+        Uint128::from(10u128),
+        Uint128::from(9u128),
+        cw20_token_addr.to_string(),
+    );
+    let querier_astroport_better_rate = crate::mock_querier::WasmMockQuerier::new(
+        terraswap_factory_addr.to_string(),
+        astroport_factory_addr.to_string(),
+        terraswap_pair_addr.to_string(),
+        astroport_pair_addr.to_string(),
+        Uint128::from(9u128),
+        Uint128::from(10u128),
+        cw20_token_addr.to_string(),
+    );
+    assert_eq!(
+        swap_cw20_token_for_uusd(
+            &QuerierWrapper::new(&querier_terraswap_better_rate),
+            &terraswap_factory_addr,
+            &astroport_factory_addr,
+            &cw20_token_addr,
+            amount
+        )
+        .unwrap(),
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: cw20_token_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: terraswap_pair_addr.to_string(),
+                amount,
+                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
+                    belief_price: None,
+                    max_spread: None,
+                    to: None,
+                })
+                .unwrap(),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        swap_cw20_token_for_uusd(
+            &QuerierWrapper::new(&querier_astroport_better_rate),
+            &terraswap_factory_addr,
+            &astroport_factory_addr,
+            &cw20_token_addr,
+            amount
+        )
+        .unwrap(),
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: cw20_token_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: astroport_pair_addr.to_string(),
+                amount,
+                msg: to_binary(&astroport::pair::Cw20HookMsg::Swap {
+                    belief_price: None,
+                    max_spread: None,
+                    to: None,
+                })
+                .unwrap(),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+}

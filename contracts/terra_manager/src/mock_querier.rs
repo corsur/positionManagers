@@ -40,9 +40,7 @@ impl WasmMockQuerier {
             _ => unreachable!(),
         }
     }
-}
 
-impl WasmMockQuerier {
     pub fn new() -> Self {
         WasmMockQuerier {}
     }
