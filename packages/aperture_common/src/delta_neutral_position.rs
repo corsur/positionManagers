@@ -158,6 +158,7 @@ pub struct DetailedPositionInfo {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct PositionInfoResponse {
+    pub initial_deposit_uusd_amount: Uint128,
     pub position_open_block_info: BlockInfo,
     pub position_close_block_info: Option<BlockInfo>,
     pub detailed_info: Option<DetailedPositionInfo>,

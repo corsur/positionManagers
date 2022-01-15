@@ -10,7 +10,7 @@ use terraswap::asset::{Asset, AssetInfo};
 use crate::dex_util::swap_cw20_token_for_uusd;
 use crate::state::{
     PositionInfo, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
-    TARGET_COLLATERAL_RATIO_RANGE,
+    TARGET_COLLATERAL_RATIO_RANGE, INITIAL_DEPOSIT_UUSD_AMOUNT,
 };
 use crate::util::{
     compute_terraswap_uusd_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
@@ -596,7 +596,8 @@ pub fn open_position(
     if POSITION_INFO.load(deps.storage).is_ok() {
         return Err(StdError::generic_err("position is already open"));
     }
-    if get_uusd_balance(&deps.querier, &env)? < context.min_delta_neutral_uusd_amount {
+    let uusd_balance = get_uusd_balance(&deps.querier, &env)?;
+    if uusd_balance < context.min_delta_neutral_uusd_amount {
         return Err(StdError::generic_err(
             "UST amount too small to open a delta-neutral position",
         ));
@@ -608,6 +609,7 @@ pub fn open_position(
             max: target_max_collateral_ratio,
         },
     )?;
+    INITIAL_DEPOSIT_UUSD_AMOUNT.save(deps.storage, &uusd_balance)?;
     let mirror_asset_cw20_addr = deps.api.addr_validate(&mirror_asset_cw20_addr)?;
     delta_neutral_invest(deps, env, context, &mirror_asset_cw20_addr, None)
 }

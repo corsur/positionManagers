@@ -18,7 +18,7 @@ use crate::{
     dex_util::create_terraswap_cw20_uusd_pair_asset_info,
     state::{
         POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
-        TARGET_COLLATERAL_RATIO_RANGE,
+        TARGET_COLLATERAL_RATIO_RANGE, INITIAL_DEPOSIT_UUSD_AMOUNT,
     },
 };
 
@@ -524,6 +524,7 @@ pub fn query_position_info(
     context: &Context,
 ) -> StdResult<PositionInfoResponse> {
     let mut response = PositionInfoResponse {
+        initial_deposit_uusd_amount: INITIAL_DEPOSIT_UUSD_AMOUNT.load(deps.storage)?,
         position_open_block_info: POSITION_OPEN_BLOCK_INFO.load(deps.storage)?,
         position_close_block_info: POSITION_CLOSE_BLOCK_INFO.may_load(deps.storage)?,
         detailed_info: None,

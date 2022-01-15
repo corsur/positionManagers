@@ -14,6 +14,7 @@ pub struct PositionInfo {
 
 pub const MANAGER: Item<Addr> = Item::new("manager");
 pub const POSITION_INFO: Item<PositionInfo> = Item::new("position_info");
+pub const INITIAL_DEPOSIT_UUSD_AMOUNT: Item<Uint128> = Item::new("initial_deposit_uusd_amount");
 pub const POSITION_OPEN_BLOCK_INFO: Item<BlockInfo> = Item::new("position_open_block_info");
 pub const POSITION_CLOSE_BLOCK_INFO: Item<BlockInfo> = Item::new("position_close_block_info");
 pub const TARGET_COLLATERAL_RATIO_RANGE: Item<TargetCollateralRatioRange> =
