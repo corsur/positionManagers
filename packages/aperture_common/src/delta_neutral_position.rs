@@ -53,9 +53,6 @@ pub enum ExecuteMsg {
     OpenPosition {
         params: DeltaNeutralParams,
     },
-    IncreasePosition {
-        ignore_uusd_pending_unlock: bool,
-    },
     DecreasePosition {
         proportion: Decimal,
         recipient: String,

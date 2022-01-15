@@ -65,16 +65,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             params.target_max_collateral_ratio,
             params.mirror_asset_cw20_addr,
         ),
-        ExecuteMsg::IncreasePosition {
-            ignore_uusd_pending_unlock,
-        } => rebalance_and_reinvest(deps.as_ref(), env, context, ignore_uusd_pending_unlock),
         ExecuteMsg::DecreasePosition {
             proportion,
             recipient,
         } => decrease_position(deps, env, proportion, recipient),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
             ControllerExecuteMsg::RebalanceAndReinvest {} => {
-                rebalance_and_reinvest(deps.as_ref(), env, context, false)
+                rebalance_and_reinvest(deps.as_ref(), env, context)
             }
         },
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
@@ -147,12 +144,7 @@ fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Cosmos
     })
 }
 
-pub fn get_reinvest_internal_messages(
-    deps: Deps,
-    env: &Env,
-    context: &Context,
-    ignore_uusd_pending_unlock: bool,
-) -> Vec<CosmosMsg> {
+pub fn get_reinvest_internal_messages(deps: Deps, env: &Env, context: &Context) -> Vec<CosmosMsg> {
     let mut msgs = vec![create_internal_execute_message(
         env,
         InternalExecuteMsg::PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
@@ -161,7 +153,7 @@ pub fn get_reinvest_internal_messages(
     if let Ok(lock_info_response) = get_cdp_uusd_lock_info_result(deps, context) {
         uusd_pending_unlock = lock_info_response.locked_amount > Uint128::zero();
     }
-    if ignore_uusd_pending_unlock || !uusd_pending_unlock {
+    if !uusd_pending_unlock {
         msgs.push(create_internal_execute_message(
             env,
             InternalExecuteMsg::DeltaNeutralReinvest {},
@@ -170,12 +162,7 @@ pub fn get_reinvest_internal_messages(
     msgs
 }
 
-pub fn rebalance_and_reinvest(
-    deps: Deps,
-    env: Env,
-    context: Context,
-    ignore_uusd_pending_unlock: bool,
-) -> StdResult<Response> {
+pub fn rebalance_and_reinvest(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
     Ok(Response::new()
         .add_messages(vec![
             create_internal_execute_message(
@@ -188,12 +175,7 @@ pub fn rebalance_and_reinvest(
                 InternalExecuteMsg::AchieveSafeCollateralRatio {},
             ),
         ])
-        .add_messages(get_reinvest_internal_messages(
-            deps,
-            &env,
-            &context,
-            ignore_uusd_pending_unlock,
-        )))
+        .add_messages(get_reinvest_internal_messages(deps, &env, &context)))
 }
 
 pub fn claim_and_increase_uusd_balance(
