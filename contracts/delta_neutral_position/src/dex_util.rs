@@ -69,8 +69,7 @@ pub fn swap_cw20_token_for_uusd(
                 },
             },
         )
-        .unwrap()
-        .return_amount
+        .map_or(Uint128::zero(), |response| response.return_amount)
     } else {
         Uint128::zero()
     };
@@ -91,8 +90,7 @@ pub fn swap_cw20_token_for_uusd(
                 },
             },
         )
-        .unwrap()
-        .return_amount
+        .map_or(Uint128::zero(), |response| response.return_amount)
     } else {
         Uint128::zero()
     };
