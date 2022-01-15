@@ -145,21 +145,18 @@ fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Cosmos
 }
 
 pub fn get_reinvest_internal_messages(deps: Deps, env: &Env, context: &Context) -> Vec<CosmosMsg> {
-    let mut msgs = vec![create_internal_execute_message(
-        env,
-        InternalExecuteMsg::PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
-    )];
-    let mut uusd_pending_unlock = false;
     if let Ok(lock_info_response) = get_cdp_uusd_lock_info_result(deps, context) {
-        uusd_pending_unlock = lock_info_response.locked_amount > Uint128::zero();
+        if !lock_info_response.locked_amount.is_zero() {
+            return vec![];
+        }
     }
-    if !uusd_pending_unlock {
-        msgs.push(create_internal_execute_message(
+    vec![
+        create_internal_execute_message(
             env,
-            InternalExecuteMsg::DeltaNeutralReinvest {},
-        ));
-    }
-    msgs
+            InternalExecuteMsg::PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
+        ),
+        create_internal_execute_message(env, InternalExecuteMsg::DeltaNeutralReinvest {}),
+    ]
 }
 
 pub fn rebalance_and_reinvest(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
