@@ -78,12 +78,8 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                     let params: DeltaNeutralParams = from_binary(&data.unwrap())?;
                     open_position(env, info, deps.storage, position, params, assets)
                 }
-                Action::IncreasePosition { .. } => {
-                    Err(StdError::generic_err("not supported"))
-                }
-                Action::DecreasePosition { .. } => {
-                    Err(StdError::generic_err("not supported"))
-                }
+                Action::IncreasePosition { .. } => Err(StdError::generic_err("not supported")),
+                Action::DecreasePosition { .. } => Err(StdError::generic_err("not supported")),
                 Action::ClosePosition { recipient } => close_position(deps, &position, recipient),
             }
         }

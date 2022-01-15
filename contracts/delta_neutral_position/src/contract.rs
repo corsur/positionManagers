@@ -2,15 +2,15 @@ use std::cmp::{min, Ordering};
 
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
     MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::dex_util::swap_cw20_token_for_uusd;
 use crate::state::{
-    PositionInfo, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
-    TARGET_COLLATERAL_RATIO_RANGE, INITIAL_DEPOSIT_UUSD_AMOUNT,
+    PositionInfo, INITIAL_DEPOSIT_UUSD_AMOUNT, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
+    POSITION_OPEN_BLOCK_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
     compute_terraswap_uusd_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
@@ -789,10 +789,10 @@ pub fn send_uusd_to_recipient(
     if amount.is_zero() {
         return Ok(Response::default());
     }
-    Ok(Response::new().add_message(CosmosMsg::Bank(BankMsg::Send {
-        to_address: recipient,
-        amount: vec![get_uusd_asset_from_amount(amount).deduct_tax(&deps.querier)?],
-    })))
+    Ok(Response::new().add_message(
+        get_uusd_asset_from_amount(amount)
+            .into_msg(&deps.querier, deps.api.addr_validate(&recipient)?)?,
+    ))
 }
 
 pub fn withdraw_collateral_and_redeem_for_uusd(
@@ -901,11 +901,8 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
     context: Context,
 ) -> StdResult<Response> {
     let state = get_position_state(deps, &env, &context)?;
-    let available_uusd_amount = get_uusd_asset_from_amount(state.uusd_balance)
-        .deduct_tax(&deps.querier)?
-        .amount;
     let mut response = Response::new();
-    if state.mirror_asset_balance.is_zero() || available_uusd_amount.is_zero() {
+    if state.mirror_asset_balance.is_zero() || state.uusd_balance.is_zero() {
         return Ok(response);
     }
 
@@ -916,7 +913,7 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
             &context,
             &state.mirror_asset_cw20_addr,
         )?;
-    let uusd_ratio = Decimal::from_ratio(available_uusd_amount, pool_uusd_balance);
+    let uusd_ratio = Decimal::from_ratio(state.uusd_balance, pool_uusd_balance);
     let mirror_asset_ratio =
         Decimal::from_ratio(state.mirror_asset_balance, pool_mirror_asset_balance);
     let ratio = min(uusd_ratio, mirror_asset_ratio);

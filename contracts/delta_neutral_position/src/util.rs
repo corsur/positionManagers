@@ -17,8 +17,8 @@ use terraswap::asset::{Asset, AssetInfo, PairInfo};
 use crate::{
     dex_util::create_terraswap_cw20_uusd_pair_asset_info,
     state::{
-        POSITION_CLOSE_BLOCK_INFO, POSITION_INFO, POSITION_OPEN_BLOCK_INFO,
-        TARGET_COLLATERAL_RATIO_RANGE, INITIAL_DEPOSIT_UUSD_AMOUNT,
+        INITIAL_DEPOSIT_UUSD_AMOUNT, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
+        POSITION_OPEN_BLOCK_INFO, TARGET_COLLATERAL_RATIO_RANGE,
     },
 };
 
@@ -114,7 +114,7 @@ pub fn find_collateral_uusd_amount(
     context: &Context,
     mirror_asset_cw20_addr: &Addr,
     target_collateral_ratio_range: &TargetCollateralRatioRange,
-    mut uusd_amount: Uint128,
+    uusd_amount: Uint128,
 ) -> StdResult<(Uint128, Uint128)> {
     let terraswap_pair_asset_info =
         create_terraswap_cw20_uusd_pair_asset_info(mirror_asset_cw20_addr);
@@ -135,15 +135,6 @@ pub fn find_collateral_uusd_amount(
     )?;
     let pool_uusd_balance =
         uusd_asset_info.query_pool(&deps.querier, deps.api, terraswap_pair_contract_addr)?;
-
-    // The amount of uusd set aside for tax payment.
-    let buffer_amount = (terraswap::asset::Asset {
-        amount: uusd_amount,
-        info: uusd_asset_info.clone(),
-    })
-    .compute_tax(&deps.querier)?
-    .multiply_ratio(2u128, 1u128);
-    uusd_amount = uusd_amount.checked_sub(buffer_amount)?;
 
     // Obtain aUST collateral and mAsset information.
     let aust_collateral_info_response: mirror_protocol::collateral_oracle::CollateralInfoResponse =
