@@ -13,7 +13,7 @@ use crate::state::{
     POSITION_OPEN_BLOCK_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    compute_terraswap_uusd_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
+    compute_terraswap_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
     find_collateral_uusd_amount, find_unclaimed_mir_amount, find_unclaimed_spec_amount,
     get_cdp_uusd_lock_info_result, get_position_state,
     get_terraswap_uusd_mirror_asset_pool_balance_info, get_uusd_asset_from_amount,
@@ -289,10 +289,15 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
                 )?))
             }
             Ordering::Less => {
-                let (pair_info, offer_uusd_amount) = compute_terraswap_uusd_offer_amount(
-                    deps,
-                    &context,
-                    &state.mirror_asset_cw20_addr,
+                let (pair_info, pool_mirror_asset_amount, pool_uusd_amount) =
+                    get_terraswap_uusd_mirror_asset_pool_balance_info(
+                        deps,
+                        &context.terraswap_factory_addr,
+                        &state.mirror_asset_cw20_addr,
+                    )?;
+                let offer_uusd_amount = compute_terraswap_offer_amount(
+                    pool_mirror_asset_amount,
+                    pool_uusd_amount,
                     state.mirror_asset_short_amount - state.mirror_asset_balance,
                 )?;
                 return Ok(
@@ -910,7 +915,7 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
     let (terraswap_pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
         get_terraswap_uusd_mirror_asset_pool_balance_info(
             deps,
-            &context,
+            &context.terraswap_factory_addr,
             &state.mirror_asset_cw20_addr,
         )?;
     let uusd_ratio = Decimal::from_ratio(state.uusd_balance, pool_uusd_balance);

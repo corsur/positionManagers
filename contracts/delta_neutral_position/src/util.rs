@@ -80,32 +80,31 @@ pub fn get_cdp_uusd_lock_info_result(
 
 pub fn get_terraswap_uusd_mirror_asset_pool_balance_info(
     deps: Deps,
-    context: &Context,
+    terraswap_factory_addr: &Addr,
     mirror_asset_cw20_addr: &Addr,
 ) -> StdResult<(PairInfo, Uint128, Uint128)> {
     let terraswap_pair_asset_info =
         create_terraswap_cw20_uusd_pair_asset_info(mirror_asset_cw20_addr);
     let terraswap_pair_info = terraswap::querier::query_pair_info(
         &deps.querier,
-        context.terraswap_factory_addr.clone(),
+        terraswap_factory_addr.clone(),
         &terraswap_pair_asset_info,
     )?;
-    let terraswap_pair_contract_addr =
-        deps.api.addr_validate(&terraswap_pair_info.contract_addr)?;
-    let pool_mirror_asset_balance = terraswap_pair_asset_info[0].query_pool(
+    let terraswap_pair_contract_addr = Addr::unchecked(terraswap_pair_info.contract_addr.clone());
+    let pool_mirror_asset_amount = terraswap_pair_asset_info[0].query_pool(
         &deps.querier,
         deps.api,
         terraswap_pair_contract_addr.clone(),
     )?;
-    let pool_uusd_balance = terraswap_pair_asset_info[1].query_pool(
+    let pool_uusd_amount = terraswap_pair_asset_info[1].query_pool(
         &deps.querier,
         deps.api,
         terraswap_pair_contract_addr,
     )?;
     Ok((
         terraswap_pair_info,
-        pool_mirror_asset_balance,
-        pool_uusd_balance,
+        pool_mirror_asset_amount,
+        pool_uusd_amount,
     ))
 }
 
@@ -154,9 +153,7 @@ pub fn find_collateral_uusd_amount(
 
     // Abort if mAsset is delisted.
     if mirror_asset_config_response.end_price.is_some() {
-        return Err(StdError::GenericErr {
-            msg: "mAsset is delisted".to_string(),
-        });
+        return Err(StdError::generic_err("mAsset is delisted"));
     }
 
     // Obtain mAsset oracle price.
@@ -174,9 +171,9 @@ pub fn find_collateral_uusd_amount(
     if target_collateral_ratio_range.min
         < min_collateral_ratio + context.collateral_ratio_safety_margin
     {
-        return Err(StdError::GenericErr {
-            msg: "target_min_collateral_ratio too small".to_string(),
-        });
+        return Err(StdError::generic_err(
+            "target_min_collateral_ratio too small",
+        ));
     }
 
     // Our goal is to find the maximum mAsset amount to mint such that `uusd_amount` is able to cover:
@@ -418,37 +415,36 @@ pub fn simulate_terraswap_swap(
     )
 }
 
-pub fn compute_terraswap_uusd_offer_amount(
-    deps: Deps,
-    context: &Context,
-    mirror_asset_cw20_addr: &Addr,
-    ask_mirror_asset_amount: Uint128,
-) -> StdResult<(PairInfo, Uint128)> {
-    let (terraswap_pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
-        get_terraswap_uusd_mirror_asset_pool_balance_info(deps, context, mirror_asset_cw20_addr)?;
-    let pool_mirror_asset_balance: Uint256 = pool_mirror_asset_balance.into();
-    let pool_uusd_balance: Uint256 = pool_uusd_balance.into();
-    let commission_rate = Decimal256::from_str("0.003").unwrap();
-    let cp = pool_mirror_asset_balance * pool_uusd_balance;
+pub fn compute_terraswap_offer_amount(
+    ask_pool_amount: Uint128,
+    offer_pool_amount: Uint128,
+    ask_mount: Uint128,
+) -> StdResult<Uint128> {
+    let ask_pool_amount: Uint256 = ask_pool_amount.into();
+    let offer_pool_amount: Uint256 = offer_pool_amount.into();
 
-    let mut a = 0u128;
-    let mut b = u128::MAX >> 1;
+    let commission_rate = Decimal256::from_str("0.003").unwrap();
     let one = Uint256::from(1u128);
-    while b - a > 1u128 {
-        let offer_uusd_amount = (a + b) >> 1;
-        let mut return_mirror_asset_amount =
-            (Decimal256::from_ratio(pool_mirror_asset_balance, one)
-                - Decimal256::from_ratio(cp, pool_uusd_balance + Uint256::from(offer_uusd_amount)))
-                * one;
-        return_mirror_asset_amount =
-            return_mirror_asset_amount - return_mirror_asset_amount * commission_rate;
-        if return_mirror_asset_amount <= ask_mirror_asset_amount.into() {
-            a = offer_uusd_amount;
-        } else {
-            b = offer_uusd_amount;
-        }
+    let cp = ask_pool_amount * offer_pool_amount;
+
+    let mut offer_amount: Uint256;
+    let mut ask_mirror_asset_amount_for_simulation = Uint256::from(ask_mount);
+    while {
+        offer_amount = one.multiply_ratio(
+            cp,
+            ask_pool_amount
+                - ask_mirror_asset_amount_for_simulation.multiply_ratio(1000u128, 997u128),
+        ) - offer_pool_amount;
+        let simulated_return_amount = (Decimal256::from_ratio(ask_pool_amount, one)
+            - Decimal256::from_ratio(cp, offer_pool_amount + offer_amount))
+            * one;
+        let simulated_return_amount =
+            simulated_return_amount - simulated_return_amount * commission_rate;
+        simulated_return_amount < ask_mount.into()
+    } {
+        ask_mirror_asset_amount_for_simulation += one;
     }
-    Ok((terraswap_pair_info, a.into()))
+    Ok(Uint128::try_from(offer_amount)?)
 }
 
 pub fn find_unclaimed_spec_amount(deps: Deps, env: &Env, context: &Context) -> StdResult<Uint128> {
@@ -574,15 +570,17 @@ pub fn query_position_info(
         }
         Ordering::Less => {
             let net_short_amount = state.mirror_asset_short_amount - state.mirror_asset_long_amount;
-            value = value.checked_sub(
-                compute_terraswap_uusd_offer_amount(
+            let (_, pool_mirror_asset_amount, pool_uusd_amount) =
+                get_terraswap_uusd_mirror_asset_pool_balance_info(
                     deps,
-                    context,
+                    &context.terraswap_factory_addr,
                     &state.mirror_asset_cw20_addr,
-                    net_short_amount,
-                )?
-                .1,
-            )?;
+                )?;
+            value = value.checked_sub(compute_terraswap_offer_amount(
+                pool_mirror_asset_amount,
+                pool_uusd_amount,
+                net_short_amount,
+            )?)?;
         }
         Ordering::Equal => {}
     }
