@@ -215,7 +215,8 @@ pub fn withdraw(
     if proportion.is_zero() || proportion >= Decimal::one() {
         return Err(StdError::generic_err("invalid proportion"));
     }
-    let share_amount = POSITION_TO_SHARE_AMOUNT.load(deps.storage, get_position_key(&position))?;
+    let position_key = get_position_key(position);
+    let share_amount = POSITION_TO_SHARE_AMOUNT.load(deps.storage, position_key.clone())?;
     let burn_share_amount = share_amount
         * Decimal256::from_ratio(
             Uint256::from(proportion.numerator()),
@@ -224,6 +225,7 @@ pub fn withdraw(
     if burn_share_amount.is_zero() || burn_share_amount > share_amount {
         return Err(StdError::generic_err("invalid burn_share_amount"));
     }
+    POSITION_TO_SHARE_AMOUNT.save(deps.storage, position_key, &(share_amount - burn_share_amount))?;
 
     let admin_config = ADMIN_CONFIG.load(deps.storage)?;
     let uusd_value_times_multiplier_per_share = accrue_interest(
