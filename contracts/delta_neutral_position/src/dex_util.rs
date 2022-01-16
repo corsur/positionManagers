@@ -1,9 +1,10 @@
 use std::convert::TryFrom;
 
 use cosmwasm_std::{
-    to_binary, Addr, CosmosMsg, Decimal256, QuerierWrapper, StdError, StdResult, Uint128, Uint256,
-    WasmMsg,
+    to_binary, Addr, CosmosMsg, Decimal256, Deps, QuerierWrapper, StdError, StdResult, Uint128,
+    Uint256, WasmMsg,
 };
+use terraswap::asset::PairInfo;
 
 /// Returns an array comprising two AssetInfo elements, representing a Terraswap token pair where the first token is a cw20 with contract address
 /// `cw20_token_addr` and the second token is the native "uusd" token. The returned array is useful for querying Terraswap for pair info.
@@ -172,6 +173,8 @@ fn test_swap_cw20_token_for_uusd() {
         Uint128::from(10u128),
         Uint128::from(9u128),
         cw20_token_addr.to_string(),
+        Uint128::zero(),
+        Uint128::zero(),
     );
     let querier_astroport_better_rate = crate::mock_querier::WasmMockQuerier::new(
         terraswap_factory_addr.to_string(),
@@ -181,6 +184,8 @@ fn test_swap_cw20_token_for_uusd() {
         Uint128::from(9u128),
         Uint128::from(10u128),
         cw20_token_addr.to_string(),
+        Uint128::zero(),
+        Uint128::zero(),
     );
     assert_eq!(
         swap_cw20_token_for_uusd(
@@ -362,5 +367,95 @@ fn test_compute_terraswap_offer_amount() {
             Uint128::from(101u128)
         ),
         Err(StdError::generic_err("insufficient liquidity"))
+    );
+}
+
+/// Obtains Terraswap mAsset-UST liquidity information.
+/// Returns a tuple consisting of the following components:
+/// * PairInfo for the mAsset-UST pair.
+/// * Amount of mAsset in the pool.
+/// * Amount of uusd in the pool.
+///
+/// # Arguments
+///
+/// * `deps` - reference to dependencies
+/// * `terraswap_factory_addr` - terraswap factory contract address
+/// * `mirror_asset_cw20_addr` - mAsset cw20 contract address
+pub fn get_terraswap_mirror_asset_uusd_liquidity_info(
+    deps: Deps,
+    terraswap_factory_addr: &Addr,
+    mirror_asset_cw20_addr: &Addr,
+) -> StdResult<(PairInfo, Uint128, Uint128)> {
+    let terraswap_pair_asset_info =
+        create_terraswap_cw20_uusd_pair_asset_info(mirror_asset_cw20_addr);
+    let terraswap_pair_info = terraswap::querier::query_pair_info(
+        &deps.querier,
+        terraswap_factory_addr.clone(),
+        &terraswap_pair_asset_info,
+    )?;
+    let terraswap_pair_contract_addr = Addr::unchecked(terraswap_pair_info.contract_addr.clone());
+    let pool_mirror_asset_amount = terraswap_pair_asset_info[0].query_pool(
+        &deps.querier,
+        deps.api,
+        terraswap_pair_contract_addr.clone(),
+    )?;
+    let pool_uusd_amount = terraswap_pair_asset_info[1].query_pool(
+        &deps.querier,
+        deps.api,
+        terraswap_pair_contract_addr,
+    )?;
+    Ok((
+        terraswap_pair_info,
+        pool_mirror_asset_amount,
+        pool_uusd_amount,
+    ))
+}
+
+#[test]
+fn test_get_terraswap_mirror_asset_uusd_liquidity_info() {
+    let terraswap_factory_addr = Addr::unchecked("mock_terraswap_factory");
+    let astroport_factory_addr = Addr::unchecked("mock_astroport_factory");
+    let cw20_token_addr = Addr::unchecked("mock_cw20_addr");
+    let terraswap_pair_addr = Addr::unchecked("mock_terraswap_pair");
+    let astroport_pair_addr = Addr::unchecked("mock_astroport_pair");
+    let querier = crate::mock_querier::WasmMockQuerier::new(
+        terraswap_factory_addr.to_string(),
+        astroport_factory_addr.to_string(),
+        terraswap_pair_addr.to_string(),
+        astroport_pair_addr.to_string(),
+        Uint128::from(10u128),
+        Uint128::from(9u128),
+        cw20_token_addr.to_string(),
+        Uint128::from(1000u128),
+        Uint128::from(100u128),
+    );
+    let deps = cosmwasm_std::OwnedDeps {
+        storage: cosmwasm_std::testing::MockStorage::default(),
+        api: cosmwasm_std::testing::MockApi::default(),
+        querier,
+    };
+    assert_eq!(
+        get_terraswap_mirror_asset_uusd_liquidity_info(
+            deps.as_ref(),
+            &terraswap_factory_addr,
+            &cw20_token_addr
+        )
+        .unwrap(),
+        (
+            PairInfo {
+                asset_infos: [
+                    terraswap::asset::AssetInfo::Token {
+                        contract_addr: cw20_token_addr.to_string(),
+                    },
+                    terraswap::asset::AssetInfo::NativeToken {
+                        denom: String::from("uusd"),
+                    },
+                ],
+                contract_addr: terraswap_pair_addr.to_string(),
+                liquidity_token: String::from("lp_token")
+            },
+            Uint128::from(1000u128),
+            Uint128::from(100u128)
+        )
     );
 }

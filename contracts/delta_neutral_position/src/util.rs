@@ -12,10 +12,10 @@ use cosmwasm_std::{
     WasmMsg,
 };
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
-use terraswap::asset::{Asset, AssetInfo, PairInfo};
+use terraswap::asset::{Asset, AssetInfo};
 
 use crate::{
-    dex_util::{compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info},
+    dex_util::{compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info, get_terraswap_mirror_asset_uusd_liquidity_info},
     state::{
         INITIAL_DEPOSIT_UUSD_AMOUNT, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
         POSITION_OPEN_BLOCK_INFO, TARGET_COLLATERAL_RATIO_RANGE,
@@ -78,36 +78,6 @@ pub fn get_cdp_uusd_lock_info_result(
     )
 }
 
-pub fn get_terraswap_uusd_mirror_asset_pool_balance_info(
-    deps: Deps,
-    terraswap_factory_addr: &Addr,
-    mirror_asset_cw20_addr: &Addr,
-) -> StdResult<(PairInfo, Uint128, Uint128)> {
-    let terraswap_pair_asset_info =
-        create_terraswap_cw20_uusd_pair_asset_info(mirror_asset_cw20_addr);
-    let terraswap_pair_info = terraswap::querier::query_pair_info(
-        &deps.querier,
-        terraswap_factory_addr.clone(),
-        &terraswap_pair_asset_info,
-    )?;
-    let terraswap_pair_contract_addr = Addr::unchecked(terraswap_pair_info.contract_addr.clone());
-    let pool_mirror_asset_amount = terraswap_pair_asset_info[0].query_pool(
-        &deps.querier,
-        deps.api,
-        terraswap_pair_contract_addr.clone(),
-    )?;
-    let pool_uusd_amount = terraswap_pair_asset_info[1].query_pool(
-        &deps.querier,
-        deps.api,
-        terraswap_pair_contract_addr,
-    )?;
-    Ok((
-        terraswap_pair_info,
-        pool_mirror_asset_amount,
-        pool_uusd_amount,
-    ))
-}
-
 pub fn find_collateral_uusd_amount(
     deps: Deps,
     context: &Context,
@@ -115,25 +85,12 @@ pub fn find_collateral_uusd_amount(
     target_collateral_ratio_range: &TargetCollateralRatioRange,
     uusd_amount: Uint128,
 ) -> StdResult<(Uint128, Uint128)> {
-    let terraswap_pair_asset_info =
-        create_terraswap_cw20_uusd_pair_asset_info(mirror_asset_cw20_addr);
-    let mirror_asset_info = &terraswap_pair_asset_info[0];
-    let uusd_asset_info = &terraswap_pair_asset_info[1];
-
-    let terraswap_pair_info = terraswap::querier::query_pair_info(
-        &deps.querier,
-        context.terraswap_factory_addr.clone(),
-        &terraswap_pair_asset_info,
-    )?;
-    let terraswap_pair_contract_addr =
-        deps.api.addr_validate(&terraswap_pair_info.contract_addr)?;
-    let pool_mirror_asset_balance = mirror_asset_info.query_pool(
-        &deps.querier,
-        deps.api,
-        terraswap_pair_contract_addr.clone(),
-    )?;
-    let pool_uusd_balance =
-        uusd_asset_info.query_pool(&deps.querier, deps.api, terraswap_pair_contract_addr)?;
+    let (_, pool_mirror_asset_balance, pool_uusd_balance) =
+        get_terraswap_mirror_asset_uusd_liquidity_info(
+            deps,
+            &context.terraswap_factory_addr,
+            mirror_asset_cw20_addr,
+        )?;
 
     // Obtain aUST collateral and mAsset information.
     let aust_collateral_info_response: mirror_protocol::collateral_oracle::CollateralInfoResponse =
@@ -519,7 +476,7 @@ pub fn query_position_info(
         Ordering::Less => {
             let net_short_amount = state.mirror_asset_short_amount - state.mirror_asset_long_amount;
             let (_, pool_mirror_asset_amount, pool_uusd_amount) =
-                get_terraswap_uusd_mirror_asset_pool_balance_info(
+                get_terraswap_mirror_asset_uusd_liquidity_info(
                     deps,
                     &context.terraswap_factory_addr,
                     &state.mirror_asset_cw20_addr,

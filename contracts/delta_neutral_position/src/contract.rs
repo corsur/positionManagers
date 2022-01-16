@@ -8,7 +8,7 @@ use cosmwasm_std::{
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::dex_util::{
-    compute_terraswap_offer_amount, simulate_terraswap_swap, swap_cw20_token_for_uusd,
+    compute_terraswap_offer_amount, simulate_terraswap_swap, swap_cw20_token_for_uusd, get_terraswap_mirror_asset_uusd_liquidity_info,
 };
 use crate::state::{
     PositionInfo, INITIAL_DEPOSIT_UUSD_AMOUNT, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
@@ -17,8 +17,8 @@ use crate::state::{
 use crate::util::{
     decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
     find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
-    get_position_state, get_terraswap_uusd_mirror_asset_pool_balance_info,
-    get_uusd_asset_from_amount, get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
+    get_position_state, get_uusd_asset_from_amount,
+    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
     increase_uusd_balance_from_aust_collateral, query_position_info,
     unstake_lp_and_withdraw_liquidity,
 };
@@ -270,7 +270,7 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             }
             Ordering::Less => {
                 let (pair_info, pool_mirror_asset_amount, pool_uusd_amount) =
-                    get_terraswap_uusd_mirror_asset_pool_balance_info(
+                    get_terraswap_mirror_asset_uusd_liquidity_info(
                         deps,
                         &context.terraswap_factory_addr,
                         &state.mirror_asset_cw20_addr,
@@ -893,7 +893,7 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
 
     // Find amount of uusd and mAsset to pair together and provide liquidity.
     let (terraswap_pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
-        get_terraswap_uusd_mirror_asset_pool_balance_info(
+        get_terraswap_mirror_asset_uusd_liquidity_info(
             deps,
             &context.terraswap_factory_addr,
             &state.mirror_asset_cw20_addr,

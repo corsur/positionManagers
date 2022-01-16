@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    from_slice, to_binary, Addr, ContractResult, Empty, Querier, QuerierResult, QueryRequest,
-    SystemError, SystemResult, Uint128, WasmQuery,
+    from_binary, from_slice, to_binary, Addr, BalanceResponse, BankQuery, Coin, ContractResult,
+    Empty, Querier, QuerierResult, QueryRequest, SystemError, SystemResult, Uint128, WasmQuery,
 };
 
 pub struct WasmMockQuerier {
@@ -11,6 +11,8 @@ pub struct WasmMockQuerier {
     pub terraswap_return_amount: Uint128,
     pub astroport_return_amount: Uint128,
     pub cw20_token: String,
+    pub terraswap_pool_cw20_balance: Uint128,
+    pub terraswap_pool_uusd_balance: Uint128,
 }
 
 impl Querier for WasmMockQuerier {
@@ -31,10 +33,22 @@ impl Querier for WasmMockQuerier {
 impl WasmMockQuerier {
     pub fn handle_query(&self, request: &QueryRequest<Empty>) -> QuerierResult {
         match request {
-            QueryRequest::Wasm(WasmQuery::Smart {
-                contract_addr,
-                msg: _,
-            }) => {
+            QueryRequest::Bank(BankQuery::Balance { address, denom }) => {
+                if *address == self.terraswap_pair && denom == "uusd" {
+                    SystemResult::Ok(ContractResult::Ok(
+                        to_binary(&BalanceResponse {
+                            amount: Coin {
+                                denom: String::from("uusd"),
+                                amount: self.terraswap_pool_uusd_balance,
+                            },
+                        })
+                        .unwrap(),
+                    ))
+                } else {
+                    panic!()
+                }
+            }
+            QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
                 if contract_addr == &self.terraswap_factory {
                     SystemResult::Ok(ContractResult::Ok(
                         to_binary(
@@ -48,7 +62,7 @@ impl WasmMockQuerier {
                                     },
                                 ],
                                 contract_addr: self.terraswap_pair.clone(),
-                                liquidity_token: String::from("unused"),
+                                liquidity_token: String::from("lp_token"),
                             }),
                         )
                         .unwrap(),
@@ -73,16 +87,24 @@ impl WasmMockQuerier {
                         .unwrap(),
                     ))
                 } else if contract_addr == &self.terraswap_pair {
-                    SystemResult::Ok(ContractResult::Ok(
-                        to_binary(
-                            &(terraswap::pair::SimulationResponse {
-                                return_amount: self.terraswap_return_amount,
-                                spread_amount: Uint128::zero(),
-                                commission_amount: Uint128::zero(),
-                            }),
-                        )
-                        .unwrap(),
-                    ))
+                    let msg: terraswap::pair::QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        terraswap::pair::QueryMsg::Simulation { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(terraswap::pair::SimulationResponse {
+                                        return_amount: self.terraswap_return_amount,
+                                        spread_amount: Uint128::zero(),
+                                        commission_amount: Uint128::zero(),
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
+                        _ => {
+                            panic!()
+                        }
+                    }
                 } else if contract_addr == &self.astroport_pair {
                     SystemResult::Ok(ContractResult::Ok(
                         to_binary(
@@ -94,6 +116,19 @@ impl WasmMockQuerier {
                         )
                         .unwrap(),
                     ))
+                } else if contract_addr == &self.cw20_token {
+                    let msg: cw20::Cw20QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        cw20::Cw20QueryMsg::Balance { .. } => SystemResult::Ok(ContractResult::Ok(
+                            to_binary(
+                                &(cw20::BalanceResponse {
+                                    balance: self.terraswap_pool_cw20_balance,
+                                }),
+                            )
+                            .unwrap(),
+                        )),
+                        _ => panic!(),
+                    }
                 } else {
                     panic!()
                 }
@@ -110,6 +145,8 @@ impl WasmMockQuerier {
         terraswap_return_amount: Uint128,
         astroport_return_amount: Uint128,
         cw20_token: String,
+        terraswap_pool_cw20_balance: Uint128,
+        terraswap_pool_uusd_balance: Uint128,
     ) -> Self {
         WasmMockQuerier {
             terraswap_factory,
@@ -119,6 +156,8 @@ impl WasmMockQuerier {
             terraswap_return_amount,
             astroport_return_amount,
             cw20_token,
+            terraswap_pool_cw20_balance,
+            terraswap_pool_uusd_balance,
         }
     }
 }
