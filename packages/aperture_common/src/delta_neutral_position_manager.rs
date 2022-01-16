@@ -9,8 +9,6 @@ use crate::common::{Action, Position};
 pub struct InstantiateMsg {
     pub admin_addr: String,
     pub manager_addr: String,
-    pub allow_position_increase: bool,
-    pub allow_position_decrease: bool,
     pub delta_neutral_position_code_id: u64,
     pub controller: String,
     pub anchor_ust_cw20_addr: String,

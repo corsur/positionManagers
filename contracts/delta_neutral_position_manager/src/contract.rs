@@ -93,6 +93,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             delta_neutral_position_code_id,
         } => update_admin_config(
             deps,
+            info,
             admin_addr,
             manager_addr,
             delta_neutral_position_code_id,
@@ -119,11 +120,15 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
 
 fn update_admin_config(
     deps: DepsMut,
+    info: MessageInfo,
     admin_addr: Option<String>,
     manager_addr: Option<String>,
     delta_neutral_position_code_id: Option<u64>,
 ) -> StdResult<Response> {
     let mut config = ADMIN_CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(StdError::generic_err("unauthorized"));
+    }
     if let Some(admin_addr) = admin_addr {
         config.admin = deps.api.addr_validate(&admin_addr)?;
     }

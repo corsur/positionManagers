@@ -388,13 +388,13 @@ pub fn find_unclaimed_mir_amount(deps: Deps, env: &Env, context: &Context) -> St
 
 pub fn find_cw20_token_uusd_value(
     querier: &QuerierWrapper,
-    terraswap_factory_addr: Addr,
+    terraswap_factory_addr: &Addr,
     cw20_token_addr: &Addr,
     amount: Uint128,
 ) -> StdResult<Uint128> {
     let terraswap_pair_info = terraswap::querier::query_pair_info(
         querier,
-        terraswap_factory_addr,
+        terraswap_factory_addr.clone(),
         &create_terraswap_cw20_uusd_pair_asset_info(cw20_token_addr),
     )?;
     Ok(terraswap::querier::simulate(
@@ -446,7 +446,7 @@ pub fn query_position_info(
     // Unclaimed SPEC reward.
     let spec_uusd_value = find_cw20_token_uusd_value(
         &deps.querier,
-        context.terraswap_factory_addr.clone(),
+        &context.terraswap_factory_addr,
         &context.spectrum_cw20_addr,
         find_unclaimed_spec_amount(deps, env, context)?,
     )?;
@@ -454,7 +454,7 @@ pub fn query_position_info(
     // Unclaimed MIR reward.
     let mir_uusd_value = find_cw20_token_uusd_value(
         &deps.querier,
-        context.terraswap_factory_addr.clone(),
+        &context.terraswap_factory_addr,
         &context.mirror_cw20_addr,
         find_unclaimed_mir_amount(deps, env, context)?,
     )?;
@@ -468,7 +468,7 @@ pub fn query_position_info(
             let net_long_amount = state.mirror_asset_long_amount - state.mirror_asset_short_amount;
             value = value.checked_add(find_cw20_token_uusd_value(
                 &deps.querier,
-                context.terraswap_factory_addr.clone(),
+                &context.terraswap_factory_addr,
                 &state.mirror_asset_cw20_addr,
                 net_long_amount,
             )?)?;

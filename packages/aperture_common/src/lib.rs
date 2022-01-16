@@ -5,3 +5,4 @@ pub mod bytes_util;
 pub mod common;
 pub mod delta_neutral_position;
 pub mod delta_neutral_position_manager;
+pub mod stable_yield_manager;
