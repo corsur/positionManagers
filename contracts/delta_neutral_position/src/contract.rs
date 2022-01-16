@@ -7,18 +7,19 @@ use cosmwasm_std::{
 };
 use terraswap::asset::{Asset, AssetInfo};
 
-use crate::dex_util::swap_cw20_token_for_uusd;
+use crate::dex_util::{
+    compute_terraswap_offer_amount, simulate_terraswap_swap, swap_cw20_token_for_uusd,
+};
 use crate::state::{
     PositionInfo, INITIAL_DEPOSIT_UUSD_AMOUNT, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
     POSITION_OPEN_BLOCK_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    compute_terraswap_offer_amount, decimal_division, decimal_inverse, decimal_multiplication,
-    find_collateral_uusd_amount, find_unclaimed_mir_amount, find_unclaimed_spec_amount,
-    get_cdp_uusd_lock_info_result, get_position_state,
-    get_terraswap_uusd_mirror_asset_pool_balance_info, get_uusd_asset_from_amount,
-    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
-    increase_uusd_balance_from_aust_collateral, query_position_info, simulate_terraswap_swap,
+    decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
+    find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
+    get_position_state, get_terraswap_uusd_mirror_asset_pool_balance_info,
+    get_uusd_asset_from_amount, get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
+    increase_uusd_balance_from_aust_collateral, query_position_info,
     unstake_lp_and_withdraw_liquidity,
 };
 use aperture_common::delta_neutral_position::{

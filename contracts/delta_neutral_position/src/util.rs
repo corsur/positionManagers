@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, convert::TryFrom, str::FromStr};
+use std::cmp::Ordering;
 
 use aperture_common::{
     delta_neutral_position::{
@@ -8,14 +8,14 @@ use aperture_common::{
     delta_neutral_position_manager::Context,
 };
 use cosmwasm_std::{
-    to_binary, Addr, CosmosMsg, Decimal, Decimal256, Deps, Env, QuerierWrapper, StdError,
-    StdResult, Uint128, Uint256, WasmMsg,
+    to_binary, Addr, CosmosMsg, Decimal, Deps, Env, QuerierWrapper, StdError, StdResult, Uint128,
+    WasmMsg,
 };
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo, PairInfo};
 
 use crate::{
-    dex_util::create_terraswap_cw20_uusd_pair_asset_info,
+    dex_util::{compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info},
     state::{
         INITIAL_DEPOSIT_UUSD_AMOUNT, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
         POSITION_OPEN_BLOCK_INFO, TARGET_COLLATERAL_RATIO_RANGE,
@@ -393,58 +393,6 @@ pub fn increase_uusd_balance_from_aust_collateral(
             .unwrap(),
         }),
     ]
-}
-
-pub fn simulate_terraswap_swap(
-    offer_pool_amount: Uint128,
-    ask_pool_amount: Uint128,
-    offer_amount: Uint128,
-) -> (Uint128, Uint128, Uint128) {
-    let new_offer_pool_amount = offer_pool_amount + offer_amount;
-    let cp = offer_pool_amount.full_mul(ask_pool_amount);
-    let one = Uint256::from(1u128);
-    let commission_rate = Decimal256::from_str("0.003").unwrap();
-    let return_amount = (Decimal256::from_ratio(ask_pool_amount, one)
-        - Decimal256::from_ratio(cp, new_offer_pool_amount))
-        * one;
-    let return_amount = Uint128::try_from(return_amount - return_amount * commission_rate).unwrap();
-    (
-        new_offer_pool_amount,
-        ask_pool_amount - return_amount,
-        return_amount,
-    )
-}
-
-pub fn compute_terraswap_offer_amount(
-    ask_pool_amount: Uint128,
-    offer_pool_amount: Uint128,
-    ask_mount: Uint128,
-) -> StdResult<Uint128> {
-    let ask_pool_amount: Uint256 = ask_pool_amount.into();
-    let offer_pool_amount: Uint256 = offer_pool_amount.into();
-
-    let commission_rate = Decimal256::from_str("0.003").unwrap();
-    let one = Uint256::from(1u128);
-    let cp = ask_pool_amount * offer_pool_amount;
-
-    let mut offer_amount: Uint256;
-    let mut ask_mirror_asset_amount_for_simulation = Uint256::from(ask_mount);
-    while {
-        offer_amount = one.multiply_ratio(
-            cp,
-            ask_pool_amount
-                - ask_mirror_asset_amount_for_simulation.multiply_ratio(1000u128, 997u128),
-        ) - offer_pool_amount;
-        let simulated_return_amount = (Decimal256::from_ratio(ask_pool_amount, one)
-            - Decimal256::from_ratio(cp, offer_pool_amount + offer_amount))
-            * one;
-        let simulated_return_amount =
-            simulated_return_amount - simulated_return_amount * commission_rate;
-        simulated_return_amount < ask_mount.into()
-    } {
-        ask_mirror_asset_amount_for_simulation += one;
-    }
-    Ok(Uint128::try_from(offer_amount)?)
 }
 
 pub fn find_unclaimed_spec_amount(deps: Deps, env: &Env, context: &Context) -> StdResult<Uint128> {

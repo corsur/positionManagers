@@ -1,4 +1,9 @@
-use cosmwasm_std::{to_binary, Addr, CosmosMsg, QuerierWrapper, StdResult, Uint128, WasmMsg};
+use std::convert::TryFrom;
+
+use cosmwasm_std::{
+    to_binary, Addr, CosmosMsg, Decimal256, QuerierWrapper, StdError, StdResult, Uint128, Uint256,
+    WasmMsg,
+};
 
 /// Returns an array comprising two AssetInfo elements, representing a Terraswap token pair where the first token is a cw20 with contract address
 /// `cw20_token_addr` and the second token is the native "uusd" token. The returned array is useful for querying Terraswap for pair info.
@@ -34,6 +39,33 @@ fn create_astroport_cw20_uusd_pair_asset_info(
             denom: String::from("uusd"),
         },
     ]
+}
+
+#[test]
+fn test_create_cw20_uusd_pair_asset_info() {
+    let cw20_token_addr = Addr::unchecked("mock_addr");
+    assert_eq!(
+        create_astroport_cw20_uusd_pair_asset_info(&cw20_token_addr),
+        [
+            astroport::asset::AssetInfo::Token {
+                contract_addr: cw20_token_addr.clone(),
+            },
+            astroport::asset::AssetInfo::NativeToken {
+                denom: String::from("uusd"),
+            }
+        ]
+    );
+    assert_eq!(
+        create_terraswap_cw20_uusd_pair_asset_info(&cw20_token_addr),
+        [
+            terraswap::asset::AssetInfo::Token {
+                contract_addr: cw20_token_addr.to_string(),
+            },
+            terraswap::asset::AssetInfo::NativeToken {
+                denom: String::from("uusd"),
+            }
+        ]
+    );
 }
 
 /// Returns a Wasm execute message that swaps the cw20 token at address `cw20_token_addr` in the amount of `amount` for uusd via Terraswap or Astroport,
@@ -124,33 +156,6 @@ pub fn swap_cw20_token_for_uusd(
 }
 
 #[test]
-fn test_create_cw20_uusd_pair_asset_info() {
-    let cw20_token_addr = Addr::unchecked("mock_addr");
-    assert_eq!(
-        create_astroport_cw20_uusd_pair_asset_info(&cw20_token_addr),
-        [
-            astroport::asset::AssetInfo::Token {
-                contract_addr: cw20_token_addr.clone(),
-            },
-            astroport::asset::AssetInfo::NativeToken {
-                denom: String::from("uusd"),
-            }
-        ]
-    );
-    assert_eq!(
-        create_terraswap_cw20_uusd_pair_asset_info(&cw20_token_addr),
-        [
-            terraswap::asset::AssetInfo::Token {
-                contract_addr: cw20_token_addr.to_string(),
-            },
-            terraswap::asset::AssetInfo::NativeToken {
-                denom: String::from("uusd"),
-            }
-        ]
-    );
-}
-
-#[test]
 fn test_swap_cw20_token_for_uusd() {
     let terraswap_factory_addr = Addr::unchecked("mock_terraswap_factory");
     let astroport_factory_addr = Addr::unchecked("mock_astroport_factory");
@@ -226,5 +231,136 @@ fn test_swap_cw20_token_for_uusd() {
             .unwrap(),
             funds: vec![],
         })
+    );
+}
+
+/// Simulates a Terraswap pair contract's swap operation (a constant-product AMM w/ a fixed 0.3% commission).
+/// Returns (offer_pool_amount_after_swap, ask_pool_amount_after_swap, return_amount).
+///
+/// We need to simulate swaps in hypothetical pool states, so we can't directly query Terraswap pair contract.
+/// See https://github.com/terraswap/terraswap/blob/97cefa337798bdb0cba0327dd4152607839a5c77/contracts/terraswap_pair/src/contract.rs#L540.
+///
+/// # Arguments
+///
+/// * `offer_pool_amount` - amount of "offer asset" in the pool
+/// * `ask_pool_amount` - amount of "ask asset" in the pool
+/// * `offer_amount` - amount of "offer asset" being swapped for "ask asset"
+pub fn simulate_terraswap_swap(
+    offer_pool_amount: Uint128,
+    ask_pool_amount: Uint128,
+    offer_amount: Uint128,
+) -> (Uint128, Uint128, Uint128) {
+    let offer_pool_amount_after_swap = offer_pool_amount + offer_amount;
+    let cp = offer_pool_amount.full_mul(ask_pool_amount);
+    let one = Uint256::from(1u64);
+    let commission_rate = Decimal256::from_ratio(3u64, 1000u64);
+    let return_amount = (Decimal256::from_ratio(ask_pool_amount, one)
+        - Decimal256::from_ratio(cp, offer_pool_amount_after_swap))
+        * one;
+    let return_amount = Uint128::try_from(return_amount - return_amount * commission_rate).unwrap();
+    (
+        offer_pool_amount_after_swap,
+        ask_pool_amount - return_amount,
+        return_amount,
+    )
+}
+
+#[test]
+fn test_simulate_terraswap_swap() {
+    assert_eq!(
+        simulate_terraswap_swap(
+            Uint128::from(10000u128),
+            Uint128::from(10000000u128),
+            Uint128::from(100u128)
+        ),
+        (
+            Uint128::from(10100u128),
+            Uint128::from(9901288u128),
+            Uint128::from(98712u128)
+        )
+    );
+    assert_eq!(
+        simulate_terraswap_swap(
+            Uint128::from(395451850234u128),
+            Uint128::from(317u128),
+            Uint128::from(1u128)
+        ),
+        (
+            Uint128::from(395451850235u128),
+            Uint128::from(317u128),
+            Uint128::zero()
+        )
+    );
+}
+
+/// Given a Terraswap pool state (a constant-product AMM w/ a fixed 0.3% commission), find the least amount of `offer asset` that can be swapped for at least `ask_amount` of the `ask asset`.
+/// Due to rounding, Terraswap's implementation of reverse swap simulation may return insufficient `offer_amount`, that when swapped, resulting in less than the desired `ask_amount` being returned.
+/// Here we use binary search to find the smallest possible `offer_amount` that results in a return amount >= `ask_amount`.
+///
+/// # Arguments
+///
+/// * `ask_pool_amount` - amount of "ask asset" in the pool
+/// * `offer_pool_amount` - amount of "offer asset" in the pool
+/// * `ask_amount` - amount of "ask asset" to return
+pub fn compute_terraswap_offer_amount(
+    ask_pool_amount: Uint128,
+    offer_pool_amount: Uint128,
+    ask_amount: Uint128,
+) -> StdResult<Uint128> {
+    if ask_amount >= ask_pool_amount {
+        return Err(StdError::generic_err("insufficient liquidity"));
+    }
+
+    let offer_pool_amount = Uint256::from(offer_pool_amount);
+    let ask_pool_amount = Uint256::from(ask_pool_amount);
+    let ask_amount = Uint256::from(ask_amount);
+    let cp = offer_pool_amount * ask_pool_amount;
+    let one = Uint256::from(1u64);
+    let commission_rate = Decimal256::from_ratio(3u64, 1000u64);
+
+    let mut a = Uint256::zero();
+    let mut b = Uint256::from(u128::MAX);
+    while a < b {
+        let offer_amount = (a + b) >> 1;
+        let simulated_return_amount = (Decimal256::from_ratio(ask_pool_amount, one)
+            - Decimal256::from_ratio(cp, offer_pool_amount + offer_amount))
+            * one;
+        let simulated_return_amount =
+            simulated_return_amount - simulated_return_amount * commission_rate;
+        if simulated_return_amount < ask_amount {
+            a = offer_amount + one;
+        } else {
+            b = offer_amount;
+        }
+    }
+    Ok(Uint128::try_from(a)?)
+}
+
+#[test]
+fn test_compute_terraswap_offer_amount() {
+    let ask_pool_amount = Uint128::from(135713121545u128);
+    let offer_pool_amount = Uint128::from(241215454u128);
+    let ask_amount = Uint128::from(1231231u128);
+    let offer_amount =
+        compute_terraswap_offer_amount(ask_pool_amount, offer_pool_amount, ask_amount).unwrap();
+    let (_, _, simulated_return_amount) =
+        simulate_terraswap_swap(offer_pool_amount, ask_pool_amount, offer_amount);
+    assert!(simulated_return_amount >= ask_amount);
+
+    assert_eq!(
+        compute_terraswap_offer_amount(
+            Uint128::from(100u128),
+            Uint128::from(10u128),
+            Uint128::from(100u128)
+        ),
+        Err(StdError::generic_err("insufficient liquidity"))
+    );
+    assert_eq!(
+        compute_terraswap_offer_amount(
+            Uint128::from(100u128),
+            Uint128::from(10u128),
+            Uint128::from(101u128)
+        ),
+        Err(StdError::generic_err("insufficient liquidity"))
     );
 }
