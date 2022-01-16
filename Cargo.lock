@@ -6,6 +6,7 @@ version = 3
 name = "aperture-common"
 version = "0.2.0"
 dependencies = [
+ "cosmwasm-bignumber",
  "cosmwasm-std",
  "cw-storage-plus 0.9.1",
  "schemars",
@@ -686,6 +687,7 @@ name = "stable-yield-manager"
 version = "0.1.0"
 dependencies = [
  "aperture-common",
+ "cosmwasm-bignumber",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus 0.9.1",

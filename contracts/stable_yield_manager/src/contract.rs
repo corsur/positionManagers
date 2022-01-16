@@ -2,9 +2,10 @@ use aperture_common::common::{get_position_key, Action, Position};
 use aperture_common::stable_yield_manager::{
     ExecuteMsg, InstantiateMsg, MigrateMsg, PositionInfoResponse, QueryMsg,
 };
+use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, CosmosMsg, Decimal, Decimal256, Deps, DepsMut, Env,
-    MessageInfo, Response, StdError, StdResult, Uint128, Uint256, WasmMsg,
+    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    Fraction, MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -65,9 +66,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 Action::DecreasePosition {
                     recipient,
                     proportion,
-                } => withdraw(deps, &position, proportion, recipient),
+                } => withdraw(deps, env, &position, proportion, recipient),
                 Action::ClosePosition { recipient } => {
-                    withdraw(deps, &position, Decimal::one(), recipient)
+                    withdraw(deps, env, &position, Decimal::one(), recipient)
                 }
             }
         }
@@ -152,7 +153,7 @@ fn simulate_interest_accrual(
     Ok(uusd_value_times_multiplier_per_share)
 }
 
-pub fn deposit(
+fn deposit(
     mut deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -161,7 +162,6 @@ pub fn deposit(
     assets: Vec<Asset>,
 ) -> StdResult<Response> {
     let uusd_asset = validate_assets(&info, &assets)?;
-    let uusd_coin = uusd_asset.deduct_tax(&deps.querier)?;
 
     // Calculate per-share value at the current block height.
     let uusd_value_times_multiplier_per_share = accrue_interest(
@@ -171,8 +171,10 @@ pub fn deposit(
     )?;
 
     // Calculate the amount of share to mint for the deposited uusd amount.
-    let mint_share_amount = Uint256::from(uusd_coin.amount)
-        .multiply_ratio(MULTIPLIER, uusd_value_times_multiplier_per_share);
+    let mint_share_amount = Uint256::from(uusd_asset.amount).multiply_ratio(
+        Uint256::from(MULTIPLIER),
+        uusd_value_times_multiplier_per_share,
+    );
 
     // Update total share amount.
     let total_share_amount = TOTAL_SHARE_AMOUNT.load(deps.storage)?;
@@ -195,18 +197,90 @@ pub fn deposit(
         Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: environment.anchor_market_addr.to_string(),
             msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
-            funds: vec![uusd_coin],
+            funds: vec![Coin {
+                amount: uusd_asset.amount,
+                denom: String::from("uusd"),
+            }],
         })),
     )
 }
 
 pub fn withdraw(
-    _deps: DepsMut,
-    _position: &Position,
-    _proportion: Decimal,
-    _recipient: String,
+    mut deps: DepsMut,
+    env: Env,
+    position: &Position,
+    proportion: Decimal,
+    recipient: String,
 ) -> StdResult<Response> {
-    Err(StdError::generic_err("not yet implemented"))
+    if proportion.is_zero() || proportion >= Decimal::one() {
+        return Err(StdError::generic_err("invalid proportion"));
+    }
+    let share_amount = POSITION_TO_SHARE_AMOUNT.load(deps.storage, get_position_key(&position))?;
+    let burn_share_amount = share_amount
+        * Decimal256::from_ratio(
+            Uint256::from(proportion.numerator()),
+            Uint256::from(proportion.denominator()),
+        );
+    if burn_share_amount.is_zero() || burn_share_amount > share_amount {
+        return Err(StdError::generic_err("invalid burn_share_amount"));
+    }
+
+    let admin_config = ADMIN_CONFIG.load(deps.storage)?;
+    let uusd_value_times_multiplier_per_share = accrue_interest(
+        deps.branch(),
+        admin_config.accrual_rate_per_block,
+        env.block.height,
+    )?;
+    let withdrawal_uusd_amount = burn_share_amount.multiply_ratio(
+        uusd_value_times_multiplier_per_share,
+        Uint256::from(MULTIPLIER),
+    );
+
+    // Find amount of aUST to redeem to obtain `withdrawal_uusd_amount`.
+    // See https://github.com/Anchor-Protocol/money-market-contracts/blob/c85c0b8e4f7fd192504f15d7741e19da6a850f71/contracts/market/src/deposit.rs#L141
+    // for details on how Anchor market contract calculates the exchange rate.
+    let environment = ENVIRONMENT.load(deps.storage)?;
+    let anchor_market_state: moneymarket::market::StateResponse = deps.querier.query_wasm_smart(
+        environment.anchor_market_addr.to_string(),
+        &moneymarket::market::QueryMsg::State {
+            block_height: Some(env.block.height),
+        },
+    )?;
+    let anchor_market_uusd_balance = moneymarket::querier::query_balance(
+        deps.as_ref(),
+        environment.anchor_market_addr.clone(),
+        String::from("uusd"),
+    )?;
+    let aterra_supply = moneymarket::querier::query_supply(
+        deps.as_ref(),
+        environment.anchor_ust_cw20_addr.clone(),
+    )?;
+    let aterra_exchange_rate = (Decimal256::from_uint256(anchor_market_uusd_balance)
+        + anchor_market_state.total_liabilities
+        - anchor_market_state.total_reserves)
+        / Decimal256::from_uint256(aterra_supply);
+    let mut aterra_redeem_amount = withdrawal_uusd_amount / aterra_exchange_rate;
+    while aterra_redeem_amount * aterra_exchange_rate < withdrawal_uusd_amount {
+        aterra_redeem_amount += Uint256::one();
+    }
+
+    Ok(Response::new()
+        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: environment.anchor_ust_cw20_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: environment.anchor_market_addr.to_string(),
+                amount: aterra_redeem_amount.into(),
+                msg: to_binary(&moneymarket::market::Cw20HookMsg::RedeemStable {})?,
+            })?,
+            funds: vec![],
+        }))
+        .add_message(BankMsg::Send {
+            to_address: recipient,
+            amount: vec![Coin {
+                amount: withdrawal_uusd_amount.into(),
+                denom: String::from("uusd"),
+            }],
+        }))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -223,8 +297,10 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 env.block.height,
             )?;
             to_binary(&PositionInfoResponse {
-                uusd_value: share_amount
-                    .multiply_ratio(uusd_value_times_multiplier_per_share, MULTIPLIER),
+                uusd_value: share_amount.multiply_ratio(
+                    uusd_value_times_multiplier_per_share,
+                    Uint256::from(MULTIPLIER),
+                ),
             })
         }
     }

@@ -1,5 +1,6 @@
 use aperture_common::common::PositionKey;
-use cosmwasm_std::{Addr, Uint256, Decimal256};
+use cosmwasm_bignumber::{Decimal256, Uint256};
+use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
