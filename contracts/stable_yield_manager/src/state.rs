@@ -14,7 +14,7 @@ pub struct AdminConfig {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ShareInfo {
-    pub uusd_value_times_multiplier_per_share: Uint256,
+    pub exchange_rate: Decimal256,
     pub block_height: u64
 }
 
@@ -24,7 +24,6 @@ pub struct Environment {
     pub anchor_market_addr: Addr,
 }
 
-pub const MULTIPLIER: u128 = 1_000_000_000_000_000_000u128;
 pub const ADMIN_CONFIG: Item<AdminConfig> = Item::new("admin_config");
 pub const SHARE_INFO: Item<ShareInfo> = Item::new("share_info");
 pub const TOTAL_SHARE_AMOUNT: Item<Uint256> = Item::new("total_share_amount");

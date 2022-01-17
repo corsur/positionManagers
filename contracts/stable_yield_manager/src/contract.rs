@@ -10,8 +10,8 @@ use cosmwasm_std::{
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::state::{
-    AdminConfig, Environment, ShareInfo, ADMIN_CONFIG, ENVIRONMENT, MULTIPLIER,
-    POSITION_TO_SHARE_AMOUNT, SHARE_INFO, TOTAL_SHARE_AMOUNT,
+    AdminConfig, Environment, ShareInfo, ADMIN_CONFIG, ENVIRONMENT, POSITION_TO_SHARE_AMOUNT,
+    SHARE_INFO, TOTAL_SHARE_AMOUNT,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -30,7 +30,7 @@ pub fn instantiate(
 
     let share_info = ShareInfo {
         block_height: env.block.height,
-        uusd_value_times_multiplier_per_share: Uint256::from(MULTIPLIER),
+        exchange_rate: Decimal256::one(),
     };
     SHARE_INFO.save(deps.storage, &share_info)?;
     TOTAL_SHARE_AMOUNT.save(deps.storage, &Uint256::zero())?;
@@ -66,10 +66,15 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 Action::DecreasePosition {
                     recipient,
                     proportion,
-                } => withdraw(deps, env, &position, proportion, recipient),
-                Action::ClosePosition { recipient } => {
-                    withdraw(deps, env, &position, Decimal::one(), recipient)
-                }
+                } => withdraw(deps, env, &admin_config, &position, proportion, recipient),
+                Action::ClosePosition { recipient } => withdraw(
+                    deps,
+                    env,
+                    &admin_config,
+                    &position,
+                    Decimal::one(),
+                    recipient,
+                ),
             }
         }
         ExecuteMsg::UpdateAdminConfig {
@@ -106,51 +111,11 @@ fn update_admin_config(
         config.manager = deps.api.addr_validate(&manager_addr)?;
     }
     if let Some(accrual_rate_per_block) = accrual_rate_per_block {
-        accrue_interest(deps.branch(), config.accrual_rate_per_block, block_height)?;
+        update_uusd_value_per_share(deps.branch(), &config, block_height)?;
         config.accrual_rate_per_block = accrual_rate_per_block;
     }
     ADMIN_CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
-}
-
-fn accrue_interest(
-    deps: DepsMut,
-    accrual_rate_per_block: Decimal256,
-    block_height: u64,
-) -> StdResult<Uint256> {
-    let mut share_info = SHARE_INFO.load(deps.storage)?;
-    if share_info.block_height > block_height {
-        return Err(StdError::generic_err("invalid share_info.block_height"));
-    } else if share_info.block_height < block_height {
-        let exponent = block_height - share_info.block_height;
-        for _ in 0..exponent {
-            share_info.uusd_value_times_multiplier_per_share =
-                share_info.uusd_value_times_multiplier_per_share * accrual_rate_per_block;
-        }
-        share_info.block_height = block_height;
-        SHARE_INFO.save(deps.storage, &share_info)?;
-    }
-    Ok(share_info.uusd_value_times_multiplier_per_share)
-}
-
-fn simulate_interest_accrual(
-    deps: Deps,
-    accrual_rate_per_block: Decimal256,
-    block_height: u64,
-) -> StdResult<Uint256> {
-    let share_info = SHARE_INFO.load(deps.storage)?;
-    let mut uusd_value_times_multiplier_per_share =
-        share_info.uusd_value_times_multiplier_per_share;
-    if share_info.block_height > block_height {
-        return Err(StdError::generic_err("invalid share_info.block_height"));
-    } else if share_info.block_height < block_height {
-        let exponent = block_height - share_info.block_height;
-        for _ in 0..exponent {
-            uusd_value_times_multiplier_per_share =
-                uusd_value_times_multiplier_per_share * accrual_rate_per_block;
-        }
-    }
-    Ok(uusd_value_times_multiplier_per_share)
 }
 
 fn deposit(
@@ -164,17 +129,10 @@ fn deposit(
     let uusd_asset = validate_assets(&info, &assets)?;
 
     // Calculate per-share value at the current block height.
-    let uusd_value_times_multiplier_per_share = accrue_interest(
-        deps.branch(),
-        admin_config.accrual_rate_per_block,
-        env.block.height,
-    )?;
+    let exchange_rate = update_uusd_value_per_share(deps.branch(), admin_config, env.block.height)?;
 
     // Calculate the amount of share to mint for the deposited uusd amount.
-    let mint_share_amount = Uint256::from(uusd_asset.amount).multiply_ratio(
-        Uint256::from(MULTIPLIER),
-        uusd_value_times_multiplier_per_share,
-    );
+    let mint_share_amount = Uint256::from(uusd_asset.amount) / exchange_rate;
 
     // Update total share amount.
     let total_share_amount = TOTAL_SHARE_AMOUNT.load(deps.storage)?;
@@ -208,6 +166,7 @@ fn deposit(
 pub fn withdraw(
     mut deps: DepsMut,
     env: Env,
+    admin_config: &AdminConfig,
     position: &Position,
     proportion: Decimal,
     recipient: String,
@@ -226,49 +185,26 @@ pub fn withdraw(
         return Err(StdError::generic_err("invalid burn_share_amount"));
     }
 
-
     // Update total share amount.
     let total_share_amount = TOTAL_SHARE_AMOUNT.load(deps.storage)?;
     TOTAL_SHARE_AMOUNT.save(deps.storage, &(total_share_amount - burn_share_amount))?;
 
     // Update position share amount.
-    POSITION_TO_SHARE_AMOUNT.save(deps.storage, position_key, &(share_amount - burn_share_amount))?;
+    POSITION_TO_SHARE_AMOUNT.save(
+        deps.storage,
+        position_key,
+        &(share_amount - burn_share_amount),
+    )?;
 
     // Calculate uusd amount to withdraw.
-    let admin_config = ADMIN_CONFIG.load(deps.storage)?;
-    let uusd_value_times_multiplier_per_share = accrue_interest(
-        deps.branch(),
-        admin_config.accrual_rate_per_block,
-        env.block.height,
-    )?;
-    let withdrawal_uusd_amount = burn_share_amount.multiply_ratio(
-        uusd_value_times_multiplier_per_share,
-        Uint256::from(MULTIPLIER),
-    );
+    let exchange_rate = update_uusd_value_per_share(deps.branch(), admin_config, env.block.height)?;
+    let withdrawal_uusd_amount = burn_share_amount * exchange_rate;
 
     // Find amount of aUST to redeem to obtain `withdrawal_uusd_amount`.
     // See https://github.com/Anchor-Protocol/money-market-contracts/blob/c85c0b8e4f7fd192504f15d7741e19da6a850f71/contracts/market/src/deposit.rs#L141
     // for details on how Anchor market contract calculates the exchange rate.
     let environment = ENVIRONMENT.load(deps.storage)?;
-    let anchor_market_state: moneymarket::market::StateResponse = deps.querier.query_wasm_smart(
-        environment.anchor_market_addr.to_string(),
-        &moneymarket::market::QueryMsg::State {
-            block_height: Some(env.block.height),
-        },
-    )?;
-    let anchor_market_uusd_balance = moneymarket::querier::query_balance(
-        deps.as_ref(),
-        environment.anchor_market_addr.clone(),
-        String::from("uusd"),
-    )?;
-    let aterra_supply = moneymarket::querier::query_supply(
-        deps.as_ref(),
-        environment.anchor_ust_cw20_addr.clone(),
-    )?;
-    let aterra_exchange_rate = (Decimal256::from_uint256(anchor_market_uusd_balance)
-        + anchor_market_state.total_liabilities
-        - anchor_market_state.total_reserves)
-        / Decimal256::from_uint256(aterra_supply);
+    let aterra_exchange_rate = get_aterra_exchange_rate(deps.as_ref(), &environment)?;
     let mut aterra_redeem_amount = withdrawal_uusd_amount / aterra_exchange_rate;
     while aterra_redeem_amount * aterra_exchange_rate < withdrawal_uusd_amount {
         aterra_redeem_amount += Uint256::one();
@@ -301,16 +237,10 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 .may_load(deps.storage, get_position_key(&position))?
                 .unwrap_or_else(Uint256::zero);
             let admin_config = ADMIN_CONFIG.load(deps.storage)?;
-            let uusd_value_times_multiplier_per_share = simulate_interest_accrual(
-                deps,
-                admin_config.accrual_rate_per_block,
-                env.block.height,
-            )?;
+            let share_info = SHARE_INFO.load(deps.storage)?;
             to_binary(&PositionInfoResponse {
-                uusd_value: share_amount.multiply_ratio(
-                    uusd_value_times_multiplier_per_share,
-                    Uint256::from(MULTIPLIER),
-                ),
+                uusd_value: share_amount
+                    * get_uusd_value_per_share(&admin_config, &share_info, env.block.height)?,
             })
         }
     }
@@ -337,4 +267,89 @@ fn validate_assets(info: &MessageInfo, assets: &[Asset]) -> StdResult<Asset> {
     Err(StdError::GenericErr {
         msg: "Invalid assets".to_string(),
     })
+}
+
+fn get_aterra_exchange_rate(deps: Deps, environment: &Environment) -> StdResult<Decimal256> {
+    let anchor_market_state: moneymarket::market::StateResponse = deps.querier.query_wasm_smart(
+        environment.anchor_market_addr.to_string(),
+        &moneymarket::market::QueryMsg::State { block_height: None },
+    )?;
+    let anchor_market_uusd_balance = moneymarket::querier::query_balance(
+        deps,
+        environment.anchor_market_addr.clone(),
+        String::from("uusd"),
+    )?;
+    let aterra_supply =
+        moneymarket::querier::query_supply(deps, environment.anchor_ust_cw20_addr.clone())?;
+    let aterra_exchange_rate = (Decimal256::from_uint256(anchor_market_uusd_balance)
+        + anchor_market_state.total_liabilities
+        - anchor_market_state.total_reserves)
+        / Decimal256::from_uint256(aterra_supply);
+    Ok(aterra_exchange_rate)
+}
+
+fn get_uusd_value_per_share(
+    admin_config: &AdminConfig,
+    share_info: &ShareInfo,
+    block_height: u64,
+) -> StdResult<Decimal256> {
+    if share_info.block_height > block_height {
+        return Err(StdError::generic_err("invalid share_info.block_height"));
+    }
+    Ok(share_info.exchange_rate
+        * pow(
+            admin_config.accrual_rate_per_block,
+            block_height - share_info.block_height,
+        ))
+}
+
+fn update_uusd_value_per_share(
+    deps: DepsMut,
+    admin_config: &AdminConfig,
+    block_height: u64,
+) -> StdResult<Decimal256> {
+    let mut share_info = SHARE_INFO.load(deps.storage)?;
+    share_info.exchange_rate = get_uusd_value_per_share(admin_config, &share_info, block_height)?;
+    share_info.block_height = block_height;
+    SHARE_INFO.save(deps.storage, &share_info)?;
+    Ok(share_info.exchange_rate)
+}
+
+fn pow(mut x: Decimal256, mut y: u64) -> Decimal256 {
+    let mut p = Decimal256::one();
+    while y > 0 {
+        if (y & 1) == 1 {
+            p = p * x;
+        }
+        x = x * x;
+        y >>= 1;
+    }
+    p
+}
+
+#[test]
+fn test_pow() {
+    use std::str::FromStr;
+    assert_eq!(pow(Decimal256::one(), 10247682u64), Decimal256::one());
+    assert_eq!(
+        pow(
+            Decimal256::from_ratio(Uint256::from(2u128), Uint256::one()),
+            0u64
+        ),
+        Decimal256::one()
+    );
+    assert_eq!(
+        pow(
+            Decimal256::from_ratio(Uint256::from(2u128), Uint256::one()),
+            31u64
+        ),
+        Decimal256::from_uint256(Uint256::from(2147483648u128))
+    );
+    assert_eq!(
+        pow(
+            Decimal256::from_ratio(Uint256::from(11u128), Uint256::from(10u128)),
+            2u64
+        ),
+        Decimal256::from_str("1.21").unwrap()
+    );
 }
