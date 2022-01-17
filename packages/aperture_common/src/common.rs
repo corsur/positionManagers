@@ -65,6 +65,18 @@ pub enum StrategyPositionManagerExecuteMsg {
     },
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Recipient {
+    TerraChain {
+        recipient: String,
+    },
+    ExternalChain {
+        recipient_chain: u16,
+        recipient: Binary,
+    },
+}
+
 /// Action enum that represents what users can do to each strategy.
 /// For instance, users can open a position, which is represented by the
 /// OpenPosition variant.
@@ -75,13 +87,13 @@ pub enum Action {
         data: Option<Binary>,
     },
     ClosePosition {
-        recipient: String,
+        recipient: Recipient,
     },
     IncreasePosition {
         data: Option<Binary>,
     },
     DecreasePosition {
         proportion: Decimal,
-        recipient: String,
+        recipient: Recipient,
     },
 }

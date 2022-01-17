@@ -4,7 +4,7 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, TERRA_CHAIN_ID};
 use crate::state::NEXT_STRATEGY_ID;
 
 use aperture_common::common::{
-    Action, Position, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg,
+    Action, Position, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg, Recipient,
 };
 use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
@@ -197,7 +197,9 @@ fn test_create_position() {
                 position_id: Uint128::from(0u128),
             },
             action: Action::ClosePosition {
-                recipient: MOCK_CONTRACT_ADDR.to_string(),
+                recipient: Recipient::TerraChain {
+                    recipient: MOCK_CONTRACT_ADDR.to_string(),
+                }
             },
             assets: vec![],
         },
@@ -216,7 +218,9 @@ fn test_create_position() {
                         position_id: Uint128::from(0u128)
                     },
                     action: Action::ClosePosition {
-                        recipient: MOCK_CONTRACT_ADDR.to_string()
+                        recipient: Recipient::TerraChain {
+                            recipient: MOCK_CONTRACT_ADDR.to_string(),
+                        }
                     },
                     assets: vec![],
                 })

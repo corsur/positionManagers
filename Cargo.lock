@@ -9,6 +9,7 @@ dependencies = [
  "cosmwasm-bignumber",
  "cosmwasm-std",
  "cw-storage-plus 0.9.1",
+ "cw20 0.9.1",
  "schemars",
  "serde",
  "terraswap",

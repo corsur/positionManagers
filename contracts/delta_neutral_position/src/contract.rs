@@ -1,5 +1,7 @@
 use std::cmp::{min, Ordering};
 
+use aperture_common::common::Recipient;
+use aperture_common::cross_chain_util::initiate_outgoing_token_transfers;
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{
     entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
@@ -8,7 +10,8 @@ use cosmwasm_std::{
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::dex_util::{
-    compute_terraswap_offer_amount, simulate_terraswap_swap, swap_cw20_token_for_uusd, get_terraswap_mirror_asset_uusd_liquidity_info,
+    compute_terraswap_offer_amount, get_terraswap_mirror_asset_uusd_liquidity_info,
+    simulate_terraswap_swap, swap_cw20_token_for_uusd,
 };
 use crate::state::{
     PositionInfo, INITIAL_DEPOSIT_UUSD_AMOUNT, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
@@ -17,10 +20,9 @@ use crate::state::{
 use crate::util::{
     decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
     find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
-    get_position_state, get_uusd_asset_from_amount,
-    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
-    increase_uusd_balance_from_aust_collateral, query_position_info,
-    unstake_lp_and_withdraw_liquidity,
+    get_position_state, get_uusd_asset_from_amount, get_uusd_balance,
+    increase_mirror_asset_balance_from_long_farm, increase_uusd_balance_from_aust_collateral,
+    query_position_info, unstake_lp_and_withdraw_liquidity,
 };
 use aperture_common::delta_neutral_position::{
     BlockInfo, ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
@@ -95,7 +97,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             InternalExecuteMsg::SendUusdToRecipient {
                 proportion,
                 recipient,
-            } => send_uusd_to_recipient(deps.as_ref(), env, proportion, recipient),
+            } => send_uusd_to_recipient(deps.as_ref(), env, context, proportion, recipient),
             InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
                 collateral_ratio,
                 mirror_asset_cw20_addr,
@@ -739,7 +741,7 @@ pub fn decrease_position(
     deps: DepsMut,
     env: Env,
     proportion: Decimal,
-    recipient: String,
+    recipient: Recipient,
 ) -> StdResult<Response> {
     if proportion == Decimal::one() {
         // Position is being closed; save position close block info.
@@ -767,17 +769,21 @@ pub fn decrease_position(
 pub fn send_uusd_to_recipient(
     deps: Deps,
     env: Env,
+    context: Context,
     proportion: Decimal,
-    recipient: String,
+    recipient: Recipient,
 ) -> StdResult<Response> {
     let amount = get_uusd_balance(&deps.querier, &env)? * proportion;
     if amount.is_zero() {
         return Ok(Response::default());
     }
-    Ok(Response::new().add_message(
-        get_uusd_asset_from_amount(amount)
-            .into_msg(&deps.querier, deps.api.addr_validate(&recipient)?)?,
-    ))
+    Ok(
+        Response::new().add_messages(initiate_outgoing_token_transfers(
+            &context.wormhole_token_bridge_addr,
+            vec![get_uusd_asset_from_amount(amount)],
+            recipient,
+        )?),
+    )
 }
 
 pub fn withdraw_collateral_and_redeem_for_uusd(
@@ -807,7 +813,7 @@ pub fn withdraw_funds_in_uusd(
     env: Env,
     context: Context,
     proportion: Decimal,
-    recipient: String,
+    recipient: Recipient,
 ) -> StdResult<Response> {
     let state = get_position_state(deps, &env, &context)?;
     let cdp_idx = POSITION_INFO.load(deps.storage)?.cdp_idx;

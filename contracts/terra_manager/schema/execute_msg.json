@@ -165,7 +165,7 @@
               ],
               "properties": {
                 "recipient": {
-                  "type": "string"
+                  "$ref": "#/definitions/Recipient"
                 }
               }
             }
@@ -213,7 +213,7 @@
                   "$ref": "#/definitions/Decimal"
                 },
                 "recipient": {
-                  "type": "string"
+                  "$ref": "#/definitions/Recipient"
                 }
               }
             }
@@ -307,6 +307,56 @@
           "$ref": "#/definitions/Uint128"
         }
       }
+    },
+    "Recipient": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "terra_chain"
+          ],
+          "properties": {
+            "terra_chain": {
+              "type": "object",
+              "required": [
+                "recipient"
+              ],
+              "properties": {
+                "recipient": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "external_chain"
+          ],
+          "properties": {
+            "external_chain": {
+              "type": "object",
+              "required": [
+                "recipient",
+                "recipient_chain"
+              ],
+              "properties": {
+                "recipient": {
+                  "$ref": "#/definitions/Binary"
+                },
+                "recipient_chain": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "Strategy": {
       "description": "The strategy id and chain id can uniquely identify what strategy it is and on which chain is it located.",

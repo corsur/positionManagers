@@ -22,6 +22,7 @@ pub struct ShareInfo {
 pub struct Environment {
     pub anchor_ust_cw20_addr: Addr,
     pub anchor_market_addr: Addr,
+    pub wormhole_token_bridge_addr: Addr,
 }
 
 pub const ADMIN_CONFIG: Item<AdminConfig> = Item::new("admin_config");

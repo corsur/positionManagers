@@ -26,6 +26,7 @@
       "required": [
         "anchor_market_addr",
         "anchor_ust_cw20_addr",
+        "astroport_factory_addr",
         "collateral_ratio_safety_margin",
         "controller",
         "min_delta_neutral_uusd_amount",
@@ -39,13 +40,17 @@
         "spectrum_gov_addr",
         "spectrum_mirror_farms_addr",
         "spectrum_staker_addr",
-        "terraswap_factory_addr"
+        "terraswap_factory_addr",
+        "wormhole_token_bridge_addr"
       ],
       "properties": {
         "anchor_market_addr": {
           "$ref": "#/definitions/Addr"
         },
         "anchor_ust_cw20_addr": {
+          "$ref": "#/definitions/Addr"
+        },
+        "astroport_factory_addr": {
           "$ref": "#/definitions/Addr"
         },
         "collateral_ratio_safety_margin": {
@@ -88,6 +93,9 @@
           "$ref": "#/definitions/Addr"
         },
         "terraswap_factory_addr": {
+          "$ref": "#/definitions/Addr"
+        },
+        "wormhole_token_bridge_addr": {
           "$ref": "#/definitions/Addr"
         }
       }

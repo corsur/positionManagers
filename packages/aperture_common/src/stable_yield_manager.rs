@@ -12,6 +12,7 @@ pub struct InstantiateMsg {
     pub accrual_rate_per_block: Decimal256,
     pub anchor_ust_cw20_addr: String,
     pub anchor_market_addr: String,
+    pub wormhole_token_bridge_addr: String,
 }
 
 /// List of actions available on this particular strategy. The specific enums

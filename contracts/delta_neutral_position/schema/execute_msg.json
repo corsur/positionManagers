@@ -25,26 +25,6 @@
     {
       "type": "object",
       "required": [
-        "increase_position"
-      ],
-      "properties": {
-        "increase_position": {
-          "type": "object",
-          "required": [
-            "ignore_uusd_pending_unlock"
-          ],
-          "properties": {
-            "ignore_uusd_pending_unlock": {
-              "type": "boolean"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
         "decrease_position"
       ],
       "properties": {
@@ -59,7 +39,7 @@
               "$ref": "#/definitions/Decimal"
             },
             "recipient": {
-              "type": "string"
+              "$ref": "#/definitions/Recipient"
             }
           }
         }
@@ -92,6 +72,10 @@
     }
   ],
   "definitions": {
+    "Binary": {
+      "description": "Binary is a wrapper around Vec<u8> to add base64 de/serialization with serde. It also adds some helper methods to help encode inline.\n\nThis is only needed as serde-json-{core,wasm} has a horrible encoding for Vec<u8>",
+      "type": "string"
+    },
     "ControllerExecuteMsg": {
       "oneOf": [
         {
@@ -188,7 +172,7 @@
                   "$ref": "#/definitions/Decimal"
                 },
                 "recipient": {
-                  "type": "string"
+                  "$ref": "#/definitions/Recipient"
                 }
               }
             }
@@ -232,7 +216,7 @@
                   "$ref": "#/definitions/Decimal"
                 },
                 "recipient": {
-                  "type": "string"
+                  "$ref": "#/definitions/Recipient"
                 }
               }
             }
@@ -337,6 +321,56 @@
           "properties": {
             "delta_neutral_reinvest": {
               "type": "object"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Recipient": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "terra_chain"
+          ],
+          "properties": {
+            "terra_chain": {
+              "type": "object",
+              "required": [
+                "recipient"
+              ],
+              "properties": {
+                "recipient": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "external_chain"
+          ],
+          "properties": {
+            "external_chain": {
+              "type": "object",
+              "required": [
+                "recipient",
+                "recipient_chain"
+              ],
+              "properties": {
+                "recipient": {
+                  "$ref": "#/definitions/Binary"
+                },
+                "recipient_chain": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0.0
+                }
+              }
             }
           },
           "additionalProperties": false

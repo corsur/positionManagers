@@ -1,4 +1,4 @@
-use aperture_common::common::{get_position_key, Action, Position};
+use aperture_common::common::{get_position_key, Action, Position, Recipient};
 use aperture_common::delta_neutral_position;
 use aperture_common::delta_neutral_position_manager::{
     Context, DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
@@ -51,6 +51,7 @@ pub fn instantiate(
             spectrum_staker_addr: deps.api.addr_validate(&msg.spectrum_staker_addr)?,
             terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
             astroport_factory_addr: deps.api.addr_validate(&msg.astroport_factory_addr)?,
+            wormhole_token_bridge_addr: deps.api.addr_validate(&msg.wormhole_token_bridge_addr)?,
             collateral_ratio_safety_margin: msg.collateral_ratio_safety_margin,
             min_delta_neutral_uusd_amount: msg.min_delta_neutral_uusd_amount,
         },
@@ -237,7 +238,7 @@ pub fn open_position(
 pub fn close_position(
     deps: DepsMut,
     position: &Position,
-    recipient: String,
+    recipient: Recipient,
 ) -> StdResult<Response> {
     send_execute_message_to_position_contract(
         deps.as_ref(),

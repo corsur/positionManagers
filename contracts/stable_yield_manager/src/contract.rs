@@ -1,10 +1,11 @@
-use aperture_common::common::{get_position_key, Action, Position};
+use aperture_common::common::{get_position_key, Action, Position, Recipient};
+use aperture_common::cross_chain_util::initiate_outgoing_token_transfers;
 use aperture_common::stable_yield_manager::{
     ExecuteMsg, InstantiateMsg, MigrateMsg, PositionInfoResponse, QueryMsg,
 };
 use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
-    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
     Fraction, MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use terraswap::asset::{Asset, AssetInfo};
@@ -38,6 +39,7 @@ pub fn instantiate(
     let environment = Environment {
         anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
         anchor_market_addr: deps.api.addr_validate(&msg.anchor_market_addr)?,
+        wormhole_token_bridge_addr: deps.api.addr_validate(&msg.wormhole_token_bridge_addr)?,
     };
     ENVIRONMENT.save(deps.storage, &environment)?;
 
@@ -169,7 +171,7 @@ pub fn withdraw(
     admin_config: &AdminConfig,
     position: &Position,
     proportion: Decimal,
-    recipient: String,
+    recipient: Recipient,
 ) -> StdResult<Response> {
     if proportion.is_zero() || proportion >= Decimal::one() {
         return Err(StdError::generic_err("invalid proportion"));
@@ -220,13 +222,16 @@ pub fn withdraw(
             })?,
             funds: vec![],
         }))
-        .add_message(BankMsg::Send {
-            to_address: recipient,
-            amount: vec![Coin {
+        .add_messages(initiate_outgoing_token_transfers(
+            &environment.wormhole_token_bridge_addr,
+            vec![Asset {
+                info: AssetInfo::NativeToken {
+                    denom: String::from("uusd"),
+                },
                 amount: withdrawal_uusd_amount.into(),
-                denom: String::from("uusd"),
             }],
-        }))
+            recipient,
+        )?))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

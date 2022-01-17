@@ -2,7 +2,7 @@ use cosmwasm_std::{Addr, Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::delta_neutral_position_manager::DeltaNeutralParams;
+use crate::{delta_neutral_position_manager::DeltaNeutralParams, common::Recipient};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {}
@@ -16,14 +16,14 @@ pub enum InternalExecuteMsg {
     AchieveSafeCollateralRatio {},
     WithdrawFundsInUusd {
         proportion: Decimal,
-        recipient: String,
+        recipient: Recipient,
     },
     WithdrawCollateralAndRedeemForUusd {
         proportion: Decimal,
     },
     SendUusdToRecipient {
         proportion: Decimal,
-        recipient: String,
+        recipient: Recipient,
     },
     OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
         collateral_ratio: Decimal,
@@ -55,7 +55,7 @@ pub enum ExecuteMsg {
     },
     DecreasePosition {
         proportion: Decimal,
-        recipient: String,
+        recipient: Recipient,
     },
     Controller(ControllerExecuteMsg),
     Internal(InternalExecuteMsg),

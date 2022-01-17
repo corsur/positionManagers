@@ -1,4 +1,4 @@
-use aperture_common::bytes_util::ByteUtils;
+use aperture_common::byte_util::ByteUtils;
 use aperture_common::common::{
     get_position_key, Action, Position, PositionId, Strategy, StrategyId, StrategyLocation,
     StrategyMetadata, StrategyPositionManagerExecuteMsg,

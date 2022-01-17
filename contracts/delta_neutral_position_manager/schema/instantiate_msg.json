@@ -4,10 +4,9 @@
   "type": "object",
   "required": [
     "admin_addr",
-    "allow_position_decrease",
-    "allow_position_increase",
     "anchor_market_addr",
     "anchor_ust_cw20_addr",
+    "astroport_factory_addr",
     "collateral_ratio_safety_margin",
     "controller",
     "delta_neutral_position_code_id",
@@ -24,22 +23,20 @@
     "spectrum_gov_addr",
     "spectrum_mirror_farms_addr",
     "spectrum_staker_addr",
-    "terraswap_factory_addr"
+    "terraswap_factory_addr",
+    "wormhole_token_bridge_addr"
   ],
   "properties": {
     "admin_addr": {
       "type": "string"
     },
-    "allow_position_decrease": {
-      "type": "boolean"
-    },
-    "allow_position_increase": {
-      "type": "boolean"
-    },
     "anchor_market_addr": {
       "type": "string"
     },
     "anchor_ust_cw20_addr": {
+      "type": "string"
+    },
+    "astroport_factory_addr": {
       "type": "string"
     },
     "collateral_ratio_safety_margin": {
@@ -93,6 +90,9 @@
       "type": "string"
     },
     "terraswap_factory_addr": {
+      "type": "string"
+    },
+    "wormhole_token_bridge_addr": {
       "type": "string"
     }
   },
