@@ -225,8 +225,16 @@ pub fn withdraw(
     if burn_share_amount.is_zero() || burn_share_amount > share_amount {
         return Err(StdError::generic_err("invalid burn_share_amount"));
     }
+
+
+    // Update total share amount.
+    let total_share_amount = TOTAL_SHARE_AMOUNT.load(deps.storage)?;
+    TOTAL_SHARE_AMOUNT.save(deps.storage, &(total_share_amount - burn_share_amount))?;
+
+    // Update position share amount.
     POSITION_TO_SHARE_AMOUNT.save(deps.storage, position_key, &(share_amount - burn_share_amount))?;
 
+    // Calculate uusd amount to withdraw.
     let admin_config = ADMIN_CONFIG.load(deps.storage)?;
     let uusd_value_times_multiplier_per_share = accrue_interest(
         deps.branch(),
