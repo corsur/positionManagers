@@ -200,20 +200,27 @@ pub fn withdraw(
 
     // Calculate uusd amount to withdraw.
     let exchange_rate = update_uusd_value_per_share(deps.branch(), admin_config, env.block.height)?;
-    let withdrawal_uusd_amount = burn_share_amount * exchange_rate;
+    let withdrawal_uusd_amount = Uint128::from(burn_share_amount * exchange_rate);
 
-    // Find amount of aUST to redeem to obtain `withdrawal_uusd_amount`.
-    // See https://github.com/Anchor-Protocol/money-market-contracts/blob/c85c0b8e4f7fd192504f15d7741e19da6a850f71/contracts/market/src/deposit.rs#L141
-    // for details on how Anchor market contract calculates the exchange rate.
+    // Redeem aUST for uusd if necessary.
+    let mut response = Response::new();
     let environment = ENVIRONMENT.load(deps.storage)?;
-    let aterra_exchange_rate = get_aterra_exchange_rate(deps.as_ref(), &environment)?;
-    let mut aterra_redeem_amount = withdrawal_uusd_amount / aterra_exchange_rate;
-    while aterra_redeem_amount * aterra_exchange_rate < withdrawal_uusd_amount {
-        aterra_redeem_amount += Uint256::one();
-    }
-
-    Ok(Response::new()
-        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+    let uusd_balance = terraswap::querier::query_balance(
+        &deps.querier,
+        env.contract.address,
+        String::from("uusd"),
+    )?;
+    if uusd_balance < withdrawal_uusd_amount {
+        // Find amount of aUST to redeem to obtain `withdrawal_uusd_amount`.
+        // See https://github.com/Anchor-Protocol/money-market-contracts/blob/c85c0b8e4f7fd192504f15d7741e19da6a850f71/contracts/market/src/deposit.rs#L141
+        // for details on how Anchor market contract calculates the exchange rate.
+        let aterra_exchange_rate = get_aterra_exchange_rate(deps.as_ref(), &environment)?;
+        let target_redemption_uusd_value = Uint256::from(withdrawal_uusd_amount - uusd_balance);
+        let mut aterra_redeem_amount = target_redemption_uusd_value / aterra_exchange_rate;
+        while aterra_redeem_amount * aterra_exchange_rate < target_redemption_uusd_value {
+            aterra_redeem_amount += Uint256::one();
+        }
+        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: environment.anchor_ust_cw20_addr.to_string(),
             msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
                 contract: environment.anchor_market_addr.to_string(),
@@ -221,17 +228,20 @@ pub fn withdraw(
                 msg: to_binary(&moneymarket::market::Cw20HookMsg::RedeemStable {})?,
             })?,
             funds: vec![],
-        }))
-        .add_messages(initiate_outgoing_token_transfers(
-            &environment.wormhole_token_bridge_addr,
-            vec![Asset {
-                info: AssetInfo::NativeToken {
-                    denom: String::from("uusd"),
-                },
-                amount: withdrawal_uusd_amount.into(),
-            }],
-            recipient,
-        )?))
+        }));
+    }
+
+    // Emit messages that transfer `withdrawal_uusd_amount` uusd to the recipient.
+    Ok(response.add_messages(initiate_outgoing_token_transfers(
+        &environment.wormhole_token_bridge_addr,
+        vec![Asset {
+            info: AssetInfo::NativeToken {
+                denom: String::from("uusd"),
+            },
+            amount: withdrawal_uusd_amount,
+        }],
+        recipient,
+    )?))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -361,13 +371,15 @@ fn test_pow() {
 
 #[test]
 fn test_contract() {
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{from_binary, Addr};
+    use crate::mock_querier::custom_mock_dependencies;
+    use cosmwasm_std::testing::{mock_env, mock_info};
+    use cosmwasm_std::{from_binary, Addr, BankMsg};
     use std::str::FromStr;
 
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = custom_mock_dependencies("anchor_market", "anchor_ust_cw20");
     let mut env = mock_env();
     env.block.height = 0;
+    env.contract.address = Addr::unchecked("this");
     let accrual_rate_per_block =
         Decimal256::from_ratio(Uint256::from(11u128), Uint256::from(10u128));
     let msg = InstantiateMsg {
@@ -631,5 +643,62 @@ fn test_contract() {
             // floor(182 shares * 1.642881251) = 299 uusd.
             uusd_value: Uint256::from(299u128),
         }
+    );
+
+    // Withdrawal at block height 8.
+    env.block.height = 8;
+    let withdrawal_execute_response = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("manager", &[]),
+        ExecuteMsg::PerformAction {
+            action: Action::DecreasePosition {
+                proportion: Decimal::percent(40),
+                recipient: Recipient::TerraChain {
+                    recipient: String::from("terra1recipient"),
+                },
+            },
+            position: position.clone(),
+            assets: vec![],
+        },
     )
+    .unwrap();
+    assert_eq!(
+        SHARE_INFO.load(&deps.storage).unwrap(),
+        ShareInfo {
+            exchange_rate: Decimal256::from_str("1.65931006351").unwrap(),
+            block_height: 8,
+        }
+    );
+    assert_eq!(withdrawal_execute_response.messages.len(), 2);
+    assert_eq!(
+        withdrawal_execute_response.messages[0].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("anchor_ust_cw20"),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: String::from("anchor_market"),
+                // floor(118 shares * 0.4 proportion) = 72 shares.
+                // floor(72 * 1.65931006351) = 119 uusd.
+                // Contract already has an uusd balance of 29, so target redemption uusd value is 90.
+                // aUST exchange rate = 1.1 (see mock_querier).
+                // aUST to withdraw = ceiling(90 / 1.1) = 82.
+                amount: Uint128::from(82u128),
+                msg: to_binary(&moneymarket::market::Cw20HookMsg::RedeemStable {}).unwrap(),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        withdrawal_execute_response.messages[1].msg,
+        CosmosMsg::Bank(BankMsg::Send {
+            to_address: String::from("terra1recipient"),
+            // floor(118 shares * 0.4 proportion) = 72 shares.
+            // floor(72 * 1.65931006351) = 119 uusd.
+            amount: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(119u128)
+            }]
+        })
+    );
 }
