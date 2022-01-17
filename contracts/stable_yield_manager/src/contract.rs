@@ -46,66 +46,6 @@ pub fn instantiate(
     Ok(Response::default())
 }
 
-#[test]
-fn test_initialization() {
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
-    use cosmwasm_std::Addr;
-
-    let mut deps = mock_dependencies(&[]);
-    let env = mock_env();
-    let msg = InstantiateMsg {
-        admin_addr: String::from("admin"),
-        manager_addr: String::from("manager"),
-        accrual_rate_per_block: Decimal256::from_ratio(
-            Uint256::from(11u128),
-            Uint256::from(10u128),
-        ),
-        anchor_ust_cw20_addr: String::from("anchor_ust_cw20"),
-        anchor_market_addr: String::from("anchor_market"),
-        wormhole_token_bridge_addr: String::from("wormhole_token_bridge"),
-    };
-
-    let init_response = instantiate(
-        deps.as_mut(),
-        mock_env(),
-        mock_info(MOCK_CONTRACT_ADDR, &[]),
-        msg,
-    )
-    .unwrap();
-    assert_eq!(init_response.messages, vec![]);
-
-    assert_eq!(
-        ADMIN_CONFIG.load(&deps.storage).unwrap(),
-        AdminConfig {
-            admin: Addr::unchecked("admin"),
-            manager: Addr::unchecked("manager"),
-            accrual_rate_per_block: Decimal256::from_ratio(
-                Uint256::from(11u128),
-                Uint256::from(10u128)
-            ),
-        }
-    );
-    assert_eq!(
-        SHARE_INFO.load(&deps.storage).unwrap(),
-        ShareInfo {
-            exchange_rate: Decimal256::one(),
-            block_height: env.block.height,
-        }
-    );
-    assert_eq!(
-        TOTAL_SHARE_AMOUNT.load(&deps.storage).unwrap(),
-        Uint256::zero()
-    );
-    assert_eq!(
-        ENVIRONMENT.load(&deps.storage).unwrap(),
-        Environment {
-            anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
-            anchor_market_addr: Addr::unchecked("anchor_market"),
-            wormhole_token_bridge_addr: Addr::unchecked("wormhole_token_bridge"),
-        }
-    );
-}
-
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     match msg {
@@ -330,7 +270,7 @@ fn validate_assets(info: &MessageInfo, assets: &[Asset]) -> StdResult<Asset> {
         }
     }
     Err(StdError::GenericErr {
-        msg: "Invalid assets".to_string(),
+        msg: "invalid assets".to_string(),
     })
 }
 
@@ -417,4 +357,279 @@ fn test_pow() {
         ),
         Decimal256::from_str("1.21").unwrap()
     );
+}
+
+#[test]
+fn test_contract() {
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::{from_binary, Addr};
+    use std::str::FromStr;
+
+    let mut deps = mock_dependencies(&[]);
+    let mut env = mock_env();
+    env.block.height = 0;
+    let accrual_rate_per_block =
+        Decimal256::from_ratio(Uint256::from(11u128), Uint256::from(10u128));
+    let msg = InstantiateMsg {
+        admin_addr: String::from("admin"),
+        manager_addr: String::from("manager"),
+        accrual_rate_per_block: accrual_rate_per_block.clone(),
+        anchor_ust_cw20_addr: String::from("anchor_ust_cw20"),
+        anchor_market_addr: String::from("anchor_market"),
+        wormhole_token_bridge_addr: String::from("wormhole_token_bridge"),
+    };
+
+    // Check state after instantiate().
+    assert_eq!(
+        instantiate(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("instantiate_sender", &[]),
+            msg,
+        )
+        .unwrap()
+        .messages,
+        vec![]
+    );
+    assert_eq!(
+        ADMIN_CONFIG.load(&deps.storage).unwrap(),
+        AdminConfig {
+            admin: Addr::unchecked("admin"),
+            manager: Addr::unchecked("manager"),
+            accrual_rate_per_block,
+        }
+    );
+    assert_eq!(
+        SHARE_INFO.load(&deps.storage).unwrap(),
+        ShareInfo {
+            exchange_rate: Decimal256::one(),
+            block_height: 0,
+        }
+    );
+    assert_eq!(
+        TOTAL_SHARE_AMOUNT.load(&deps.storage).unwrap(),
+        Uint256::zero()
+    );
+    assert_eq!(
+        ENVIRONMENT.load(&deps.storage).unwrap(),
+        Environment {
+            anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
+            anchor_market_addr: Addr::unchecked("anchor_market"),
+            wormhole_token_bridge_addr: Addr::unchecked("wormhole_token_bridge"),
+        }
+    );
+
+    let position = Position {
+        chain_id: 0u32,
+        position_id: Uint128::zero(),
+    };
+
+    // ACL check.
+    assert_eq!(
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("non-manager", &[]),
+            ExecuteMsg::PerformAction {
+                position: position.clone(),
+                action: Action::OpenPosition { data: None },
+                assets: vec![Asset {
+                    info: AssetInfo::NativeToken {
+                        denom: String::from("uusd")
+                    },
+                    amount: Uint128::from(100u128),
+                }]
+            },
+        ),
+        Err(StdError::generic_err("unauthorized"))
+    );
+    assert_eq!(
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("non-admin", &[]),
+            ExecuteMsg::UpdateAdminConfig {
+                admin_addr: Some(String::from("new-admin")),
+                manager_addr: None,
+                accrual_rate_per_block: None,
+            },
+        ),
+        Err(StdError::generic_err("unauthorized"))
+    );
+
+    // Validate assets.
+    assert_eq!(
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("manager", &[]),
+            ExecuteMsg::PerformAction {
+                position: position.clone(),
+                action: Action::OpenPosition { data: None },
+                assets: vec![Asset {
+                    info: AssetInfo::NativeToken {
+                        denom: String::from("uusd")
+                    },
+                    amount: Uint128::from(100u128),
+                }]
+            },
+        ),
+        Err(StdError::generic_err("invalid assets"))
+    );
+
+    // Deposit.
+    env.block.height = 0u64;
+    let deposit_execute_response = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info(
+            "manager",
+            &[Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(100u128),
+            }],
+        ),
+        ExecuteMsg::PerformAction {
+            position: position.clone(),
+            action: Action::OpenPosition { data: None },
+            assets: vec![Asset {
+                info: AssetInfo::NativeToken {
+                    denom: String::from("uusd"),
+                },
+                amount: Uint128::from(100u128),
+            }],
+        },
+    )
+    .unwrap();
+    assert_eq!(deposit_execute_response.messages.len(), 1);
+    assert_eq!(
+        deposit_execute_response.messages[0].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("anchor_market"),
+            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {}).unwrap(),
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(100u128)
+            }],
+        })
+    );
+    assert_eq!(
+        SHARE_INFO.load(&deps.storage).unwrap(),
+        ShareInfo {
+            exchange_rate: Decimal256::one(),
+            block_height: 0,
+        }
+    );
+    // Exchange rate = 1.
+    // 100 uusd / 1 = 100 shares.
+    assert_eq!(
+        TOTAL_SHARE_AMOUNT.load(&deps.storage).unwrap(),
+        Uint256::from(100u128)
+    );
+    assert_eq!(
+        POSITION_TO_SHARE_AMOUNT
+            .load(&deps.storage, get_position_key(&position))
+            .unwrap(),
+        Uint256::from(100u128)
+    );
+
+    // Deposit after 2 blocks.
+    env.block.height = 2u64;
+    let deposit_execute_response = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info(
+            "manager",
+            &[Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(100u128),
+            }],
+        ),
+        ExecuteMsg::PerformAction {
+            position: position.clone(),
+            action: Action::IncreasePosition { data: None },
+            assets: vec![Asset {
+                info: AssetInfo::NativeToken {
+                    denom: String::from("uusd"),
+                },
+                amount: Uint128::from(100u128),
+            }],
+        },
+    )
+    .unwrap();
+    assert_eq!(deposit_execute_response.messages.len(), 1);
+    assert_eq!(
+        deposit_execute_response.messages[0].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("anchor_market"),
+            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {}).unwrap(),
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(100u128)
+            }],
+        })
+    );
+    assert_eq!(
+        SHARE_INFO.load(&deps.storage).unwrap(),
+        ShareInfo {
+            exchange_rate: Decimal256::from_str("1.21").unwrap(),
+            block_height: 2,
+        }
+    );
+    // Exchange rate = 1.21
+    // floor(100 uusd / 1.21) = 82 shares.
+    assert_eq!(
+        TOTAL_SHARE_AMOUNT.load(&deps.storage).unwrap(),
+        Uint256::from(182u128)
+    );
+    assert_eq!(
+        POSITION_TO_SHARE_AMOUNT
+            .load(&deps.storage, get_position_key(&position))
+            .unwrap(),
+        Uint256::from(182u128)
+    );
+
+    // Update accrual rate at block height 5.
+    env.block.height = 5;
+    let update_admin_config_execute_response = execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info("admin", &[]),
+        ExecuteMsg::UpdateAdminConfig {
+            admin_addr: None,
+            manager_addr: None,
+            accrual_rate_per_block: Some(Decimal256::from_str("1.01").unwrap()),
+        },
+    )
+    .unwrap();
+    assert_eq!(update_admin_config_execute_response.messages, vec![]);
+    assert_eq!(
+        SHARE_INFO.load(&deps.storage).unwrap(),
+        ShareInfo {
+            exchange_rate: Decimal256::from_str("1.61051").unwrap(),
+            block_height: 5,
+        }
+    );
+
+    // Query position info at block height 7.
+    env.block.height = 7;
+    let position_info_response: PositionInfoResponse = from_binary(
+        &query(
+            deps.as_ref(),
+            env.clone(),
+            QueryMsg::GetPositionInfo {
+                position: position.clone(),
+            },
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        position_info_response,
+        PositionInfoResponse {
+            // Exchange rate = 1.61051 * 1.01 * 1.01 = 1.642881251.
+            // floor(182 shares * 1.642881251) = 299 uusd.
+            uusd_value: Uint256::from(299u128),
+        }
+    )
 }
