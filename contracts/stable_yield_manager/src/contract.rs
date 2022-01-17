@@ -5,8 +5,8 @@ use aperture_common::stable_yield_manager::{
 };
 use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
-    Fraction, MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
+    entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env, Fraction,
+    MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -44,6 +44,66 @@ pub fn instantiate(
     ENVIRONMENT.save(deps.storage, &environment)?;
 
     Ok(Response::default())
+}
+
+#[test]
+fn test_initialization() {
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
+    use cosmwasm_std::Addr;
+
+    let mut deps = mock_dependencies(&[]);
+    let env = mock_env();
+    let msg = InstantiateMsg {
+        admin_addr: String::from("admin"),
+        manager_addr: String::from("manager"),
+        accrual_rate_per_block: Decimal256::from_ratio(
+            Uint256::from(11u128),
+            Uint256::from(10u128),
+        ),
+        anchor_ust_cw20_addr: String::from("anchor_ust_cw20"),
+        anchor_market_addr: String::from("anchor_market"),
+        wormhole_token_bridge_addr: String::from("wormhole_token_bridge"),
+    };
+
+    let init_response = instantiate(
+        deps.as_mut(),
+        mock_env(),
+        mock_info(MOCK_CONTRACT_ADDR, &[]),
+        msg,
+    )
+    .unwrap();
+    assert_eq!(init_response.messages, vec![]);
+
+    assert_eq!(
+        ADMIN_CONFIG.load(&deps.storage).unwrap(),
+        AdminConfig {
+            admin: Addr::unchecked("admin"),
+            manager: Addr::unchecked("manager"),
+            accrual_rate_per_block: Decimal256::from_ratio(
+                Uint256::from(11u128),
+                Uint256::from(10u128)
+            ),
+        }
+    );
+    assert_eq!(
+        SHARE_INFO.load(&deps.storage).unwrap(),
+        ShareInfo {
+            exchange_rate: Decimal256::one(),
+            block_height: env.block.height,
+        }
+    );
+    assert_eq!(
+        TOTAL_SHARE_AMOUNT.load(&deps.storage).unwrap(),
+        Uint256::zero()
+    );
+    assert_eq!(
+        ENVIRONMENT.load(&deps.storage).unwrap(),
+        Environment {
+            anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
+            anchor_market_addr: Addr::unchecked("anchor_market"),
+            wormhole_token_bridge_addr: Addr::unchecked("wormhole_token_bridge"),
+        }
+    );
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
