@@ -134,6 +134,10 @@ async function instantiate_delta_neutral_position_manager(
           spectrum_staker_addr: "terra15nwqmmmza9y643apneg0ddwt0ekk38qdevnnjt",
           terraswap_factory_addr:
             "terra18qpjm4zkvqnpjpw0zn0tdr8gdzvt8au35v45xf",
+          astroport_factory_addr:
+            "terra1x6f9mf9p7p255y3rwrk0kfynzp0kr8m4ervxn4",
+          wormhole_token_bridge_addr:
+            "terra1pseddrv0yfsn76u4zxrjmtf45kdlmalswdv39a",
           collateral_ratio_safety_margin: "0.3",
           fee_collection_config: {
             performance_rate: "0.1",
@@ -155,6 +159,7 @@ async function instantiate_delta_neutral_position_manager(
   }
   return getContractAddress(response);
 }
+
 async function add_delta_neutral_strategy_to_terra_manager(
   terra_manager_addr,
   delta_neutral_position_manager_addr,
@@ -208,6 +213,11 @@ async function deploy() {
     "../artifacts/delta_neutral_position-aarch64.wasm"
   );
   console.log("delta_neutral_position_id: ", delta_neutral_position_id);
+
+  const stable_yield_manager_id = await store_code(
+    "../artifacts/stable_yield_manager-aarch64.wasm"
+  );
+  console.log("stable_yield_manager_id: ", stable_yield_manager_id);
   /***************************************************/
   /***** End of storing bytecode onto blockchain *****/
   /***************************************************/
@@ -283,5 +293,5 @@ async function open_delta_neutral_position(terra_manager_addr, ust_amount) {
 }
 
 const terra_manager_addr = await deploy();
-await open_delta_neutral_position(terra_manager_addr, 100000);
+await open_delta_neutral_position(terra_manager_addr, 1000);
 // await open_delta_neutral_position(terra_manager_addr, 12000000);
