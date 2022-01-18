@@ -1,4 +1,5 @@
 use cosmwasm_bignumber::{Decimal256, Uint256};
+use cosmwasm_std::Uint128;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +32,11 @@ pub enum ExecuteMsg {
         admin_addr: Option<String>,
         manager_addr: Option<String>,
         accrual_rate_per_block: Option<Decimal256>,
+    },
+    // Can only be called by admin.
+    CollectFees {
+        uusd_amount: Uint128,
+        recipient: String,
     },
 }
 

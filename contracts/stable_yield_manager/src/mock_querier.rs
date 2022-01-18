@@ -1,6 +1,6 @@
 use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
-    from_slice,
+    from_binary, from_slice,
     testing::{MockApi, MockStorage},
     to_binary, BalanceResponse, BankQuery, Coin, ContractResult, Empty, OwnedDeps, Querier,
     QuerierResult, QueryRequest, SystemError, SystemResult, Uint128, WasmQuery,
@@ -68,10 +68,7 @@ impl WasmMockQuerier {
                     panic!()
                 }
             }
-            QueryRequest::Wasm(WasmQuery::Smart {
-                contract_addr,
-                msg: _,
-            }) => {
+            QueryRequest::Wasm(WasmQuery::Smart { contract_addr, msg }) => {
                 if contract_addr == &self.anchor_market_addr {
                     SystemResult::Ok(ContractResult::Ok(
                         to_binary(
@@ -96,17 +93,24 @@ impl WasmMockQuerier {
                         .unwrap(),
                     ))
                 } else if contract_addr == &self.anchor_ust_cw20_addr {
-                    SystemResult::Ok(ContractResult::Ok(
-                        to_binary(
-                            &(cw20::TokenInfoResponse {
-                                name: String::new(),
-                                symbol: String::new(),
-                                decimals: 6,
-                                total_supply: Uint128::from(1000u128),
-                            }),
-                        )
-                        .unwrap(),
-                    ))
+                    let query_msg: cw20::Cw20QueryMsg = from_binary(msg).unwrap();
+                    match query_msg {
+                        cw20::Cw20QueryMsg::Balance { address: _ } => SystemResult::Ok(
+                            ContractResult::Ok(to_binary(&Uint128::from(200u128)).unwrap()),
+                        ),
+                        cw20::Cw20QueryMsg::TokenInfo {} => SystemResult::Ok(ContractResult::Ok(
+                            to_binary(
+                                &(cw20::TokenInfoResponse {
+                                    name: String::new(),
+                                    symbol: String::new(),
+                                    decimals: 6,
+                                    total_supply: Uint128::from(1000u128),
+                                }),
+                            )
+                            .unwrap(),
+                        )),
+                        _ => panic!(),
+                    }
                 } else {
                     panic!()
                 }
