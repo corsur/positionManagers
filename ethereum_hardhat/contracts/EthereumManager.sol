@@ -9,17 +9,22 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "contracts/BytesLib.sol";
 import "contracts/Wormhole.sol";
 
+struct OwnershipInfo {
+    address ownerAddr; // The owner of the position.
+    uint16 chainId; // The chain this position belongs to.
+}
+
 struct PositionInfo {
-    uint16 chainId;
     uint128 positionId;
+    uint16 chainId;
 }
 
 contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint16 private constant TERRA_CHAIN_ID = 3;
 
+    // --- Cross-chain instruction format --- //
     // [uint128] position_id
     // [uint16] target_chain_id
     // [uint32] strategy_id
@@ -47,7 +52,9 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     mapping(bytes32 => bool) public completedTokenTransfers;
 
     // Stores wallet address to PositionInfo mapping.
-    mapping(address => PositionInfo[]) public addressToPositionInfos;
+    mapping(uint128 => OwnershipInfo) public positionToOwnership;
+    // Stores mapping from owner address to position count.
+    mapping(address => uint128) public ownershipPositionCount;
 
     // `initializer` is a modifier from OpenZeppelin to ensure contract is
     // only initialized once (thanks to Initializable).
@@ -81,20 +88,21 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         // Check that `token` is a whitelisted stablecoin token.
         require(whitelistedStableTokens[token]);
 
-        // Craft position info for bookkeeping.
+        // Craft ownership info for bookkeeping.
         uint128 positionId = nextPositionId++;
-        PositionInfo memory positionInfo;
-        positionInfo.chainId = targetChainId;
-        positionInfo.positionId = positionId;
-
-        addressToPositionInfos[msg.sender].push(positionInfo);
+        OwnershipInfo memory ownershipInfo = OwnershipInfo(
+            msg.sender,
+            targetChainId
+        );
+        positionToOwnership[positionId] = ownershipInfo;
+        ownershipPositionCount[msg.sender]++;
 
         handleExecuteStrategy(
             strategyId,
             targetChainId,
             token,
             amount,
-            positionInfo.positionId,
+            positionId,
             encodedActionLen,
             encodedAction
         );
@@ -112,20 +120,11 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         require(whitelistedStableTokens[token]);
 
         // Check that msg.sender owns this position.
-        bool isPositionOwner = false;
-        uint16 targetChainId = 0;
-        for (uint32 i = 0; i < addressToPositionInfos[msg.sender].length; i++) {
-            if (addressToPositionInfos[msg.sender][i].positionId == positionId) {
-                isPositionOwner = true;
-                targetChainId = addressToPositionInfos[msg.sender][i].chainId;
-                break;
-            }
-        }
-        require(isPositionOwner && (targetChainId != 0));
+        require(positionToOwnership[positionId].ownerAddr == msg.sender);
 
         handleExecuteStrategy(
             strategyId,
-            targetChainId,
+            positionToOwnership[positionId].chainId,
             token,
             amount,
             positionId,
@@ -181,11 +180,25 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             );
     }
 
-    function getPositions(address user) external view returns (PositionInfo[] memory){
-        uint256 length = addressToPositionInfos[user].length;
-        PositionInfo[] memory positionIdVec = new PositionInfo[](length);
-        for (uint32 i = 0; i < length; i++) {
-            positionIdVec[i] = addressToPositionInfos[user][i];
+    function getPositions(address user)
+        external
+        view
+        returns (PositionInfo[] memory)
+    {
+        uint128 positionCount = ownershipPositionCount[user];
+        uint128 userIndex = 0;
+        PositionInfo[] memory positionIdVec = new PositionInfo[](positionCount);
+        for (
+            uint32 i = 0;
+            i < nextPositionId && userIndex < positionCount;
+            i++
+        ) {
+            if (positionToOwnership[i].ownerAddr == user) {
+                positionIdVec[userIndex++] = PositionInfo(
+                    i,
+                    positionToOwnership[i].chainId
+                );
+            }
         }
         return positionIdVec;
     }
