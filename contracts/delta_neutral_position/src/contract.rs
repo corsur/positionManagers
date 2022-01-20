@@ -113,9 +113,8 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 mirror_asset_mint_amount,
             ),
             InternalExecuteMsg::RecordPositionInfo {
-                uusd_amount,
                 mirror_asset_cw20_addr,
-            } => record_position_info(deps, env, context, uusd_amount, mirror_asset_cw20_addr),
+            } => record_position_info(deps, env, context, mirror_asset_cw20_addr),
             InternalExecuteMsg::PairUusdWithMirrorAssetToProvideLiquidityAndStake {} => {
                 pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
                     deps.as_ref(),
@@ -590,6 +589,14 @@ pub fn open_position(
             "UST amount too small to open a delta-neutral position",
         ));
     }
+    POSITION_OPEN_INFO.save(
+        deps.storage,
+        &PositionActionInfo {
+            height: env.block.height,
+            time_nanoseconds: env.block.time.nanos(),
+            uusd_amount: uusd_balance,
+        },
+    )?;
     TARGET_COLLATERAL_RATIO_RANGE.save(
         deps.storage,
         &TargetCollateralRatioRange {
@@ -685,7 +692,6 @@ fn open_or_increase_cdp_with_anchor_ust_balance_as_collateral(
             .add_message(create_internal_execute_message(
                 &env,
                 InternalExecuteMsg::RecordPositionInfo {
-                    uusd_amount: anchor_ust_balance,
                     mirror_asset_cw20_addr,
                 },
             ))),
@@ -723,7 +729,6 @@ fn record_position_info(
     deps: DepsMut,
     env: Env,
     context: Context,
-    uusd_amount: Uint128,
     mirror_asset_cw20_addr: String,
 ) -> StdResult<Response> {
     let position_info = PositionInfo {
@@ -731,12 +736,6 @@ fn record_position_info(
         mirror_asset_cw20_addr: deps.api.addr_validate(&mirror_asset_cw20_addr)?,
     };
     POSITION_INFO.save(deps.storage, &position_info)?;
-    let position_open_block_info = PositionActionInfo {
-        height: env.block.height,
-        time_nanoseconds: env.block.time.nanos(),
-        uusd_amount,
-    };
-    POSITION_OPEN_INFO.save(deps.storage, &position_open_block_info)?;
     Ok(Response::default())
 }
 

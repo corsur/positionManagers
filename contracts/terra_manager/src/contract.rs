@@ -339,6 +339,7 @@ pub fn initiate_outgoing_token_transfer(
                 }
             }
 
+            // Send fee assets to fee collector.
             let (fee_funds, fee_cw20_transfer_messages) = forward_assets_direct(
                 &fee_collection_assets,
                 &cross_chain_outgoing_fee_config.fee_collector_addr,

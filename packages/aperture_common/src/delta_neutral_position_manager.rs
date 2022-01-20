@@ -25,7 +25,6 @@ pub struct InstantiateMsg {
     pub spectrum_staker_addr: String,
     pub terraswap_factory_addr: String,
     pub astroport_factory_addr: String,
-    pub wormhole_token_bridge_addr: String,
     pub collateral_ratio_safety_margin: Decimal,
     pub min_delta_neutral_uusd_amount: Uint128,
     pub fee_collection_config: FeeCollectionConfig,
@@ -111,7 +110,6 @@ pub struct Context {
     pub spectrum_staker_addr: Addr,
     pub terraswap_factory_addr: Addr,
     pub astroport_factory_addr: Addr,
-    pub wormhole_token_bridge_addr: Addr,
     pub collateral_ratio_safety_margin: Decimal,
     pub min_delta_neutral_uusd_amount: Uint128,
 }

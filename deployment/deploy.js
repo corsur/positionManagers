@@ -82,7 +82,11 @@ async function instantiate_terra_manager(terra_manager_id) {
         /*sender=*/ test_wallet.key.accAddress,
         /*admin=*/ test_wallet.key.accAddress,
         terra_manager_id,
-        {},
+        {
+          wormhole_token_bridge_addr: "terra1pseddrv0yfsn76u4zxrjmtf45kdlmalswdv39a",
+          cross_chain_outgoing_fee_rate: "0.001",
+          cross_chain_outgoing_fee_collector_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g",
+        },
         /*init_coins=*/ {}
       ),
     ],
@@ -112,7 +116,7 @@ async function instantiate_delta_neutral_position_manager(
         manager_code_id,
         {
           admin_addr: test_wallet.key.accAddress,
-          manager_addr: terra_manager_addr,
+          terra_manager_addr: terra_manager_addr,
           delta_neutral_position_code_id: position_code_id,
           allow_position_increase: false,
           allow_position_decrease: false,
@@ -136,8 +140,6 @@ async function instantiate_delta_neutral_position_manager(
             "terra18qpjm4zkvqnpjpw0zn0tdr8gdzvt8au35v45xf",
           astroport_factory_addr:
             "terra1x6f9mf9p7p255y3rwrk0kfynzp0kr8m4ervxn4",
-          wormhole_token_bridge_addr:
-            "terra1pseddrv0yfsn76u4zxrjmtf45kdlmalswdv39a",
           collateral_ratio_safety_margin: "0.3",
           fee_collection_config: {
             performance_rate: "0.1",
@@ -293,5 +295,5 @@ async function open_delta_neutral_position(terra_manager_addr, ust_amount) {
 }
 
 const terra_manager_addr = await deploy();
-await open_delta_neutral_position(terra_manager_addr, 1000);
+await open_delta_neutral_position(terra_manager_addr, 2000);
 // await open_delta_neutral_position(terra_manager_addr, 12000000);

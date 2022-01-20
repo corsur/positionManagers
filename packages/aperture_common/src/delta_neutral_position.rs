@@ -32,7 +32,6 @@ pub enum InternalExecuteMsg {
         mirror_asset_mint_amount: Uint128,
     },
     RecordPositionInfo {
-        uusd_amount: Uint128,
         mirror_asset_cw20_addr: String,
     },
     PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
