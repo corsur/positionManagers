@@ -8,7 +8,7 @@ use crate::common::{Action, Position};
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
     pub admin_addr: String,
-    pub manager_addr: String,
+    pub terra_manager_addr: String,
     pub delta_neutral_position_code_id: u64,
     pub controller: String,
     pub anchor_ust_cw20_addr: String,
@@ -80,6 +80,14 @@ pub struct MigrateMsg {}
 pub enum QueryMsg {
     GetPositionContractAddr { position: Position },
     GetContext {},
+    GetAdminConfig {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct AdminConfig {
+    pub admin: Addr,
+    pub terra_manager: Addr,
+    pub delta_neutral_position_code_id: u64,
 }
 
 /// Contextual information for delta neutral position manager. It contains

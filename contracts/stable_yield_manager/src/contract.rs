@@ -1,8 +1,8 @@
 use aperture_common::common::{get_position_key, Action, Position, Recipient};
-use aperture_common::cross_chain_util::initiate_outgoing_token_transfers;
 use aperture_common::stable_yield_manager::{
     ExecuteMsg, InstantiateMsg, MigrateMsg, PositionInfoResponse, QueryMsg,
 };
+use aperture_common::terra_manager;
 use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
     entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
@@ -24,7 +24,7 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     let admin_config = AdminConfig {
         admin: deps.api.addr_validate(&msg.admin_addr)?,
-        manager: deps.api.addr_validate(&msg.manager_addr)?,
+        terra_manager: deps.api.addr_validate(&msg.terra_manager_addr)?,
         accrual_rate_per_block: msg.accrual_rate_per_block,
     };
     ADMIN_CONFIG.save(deps.storage, &admin_config)?;
@@ -39,7 +39,6 @@ pub fn instantiate(
     let environment = Environment {
         anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
         anchor_market_addr: deps.api.addr_validate(&msg.anchor_market_addr)?,
-        wormhole_token_bridge_addr: deps.api.addr_validate(&msg.wormhole_token_bridge_addr)?,
     };
     ENVIRONMENT.save(deps.storage, &environment)?;
 
@@ -55,7 +54,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             assets,
         } => {
             let admin_config = ADMIN_CONFIG.load(deps.storage)?;
-            if info.sender != admin_config.manager {
+            if info.sender != admin_config.terra_manager {
                 return Err(StdError::generic_err("unauthorized"));
             }
             match action {
@@ -81,14 +80,14 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         }
         ExecuteMsg::UpdateAdminConfig {
             admin_addr,
-            manager_addr,
+            terra_manager_addr,
             accrual_rate_per_block,
         } => update_admin_config(
             deps,
             info,
             env.block.height,
             admin_addr,
-            manager_addr,
+            terra_manager_addr,
             accrual_rate_per_block,
         ),
         ExecuteMsg::CollectFees {
@@ -103,7 +102,7 @@ fn update_admin_config(
     info: MessageInfo,
     block_height: u64,
     admin_addr: Option<String>,
-    manager_addr: Option<String>,
+    terra_manager_addr: Option<String>,
     accrual_rate_per_block: Option<Decimal256>,
 ) -> StdResult<Response> {
     let mut config = ADMIN_CONFIG.load(deps.storage)?;
@@ -113,8 +112,8 @@ fn update_admin_config(
     if let Some(admin_addr) = admin_addr {
         config.admin = deps.api.addr_validate(&admin_addr)?;
     }
-    if let Some(manager_addr) = manager_addr {
-        config.manager = deps.api.addr_validate(&manager_addr)?;
+    if let Some(terra_manager_addr) = terra_manager_addr {
+        config.terra_manager = deps.api.addr_validate(&terra_manager_addr)?;
     }
     if let Some(accrual_rate_per_block) = accrual_rate_per_block {
         update_uusd_value_per_share(deps.branch(), &config, block_height)?;
@@ -215,17 +214,23 @@ pub fn withdraw(
         withdrawal_uusd_amount,
     )?);
 
-    // Emit messages that transfer `withdrawal_uusd_amount` uusd to the recipient.
-    Ok(response.add_messages(initiate_outgoing_token_transfers(
-        &environment.wormhole_token_bridge_addr,
-        vec![Asset {
-            info: AssetInfo::NativeToken {
-                denom: String::from("uusd"),
-            },
+    // Initiate transfer of `withdrawal_uusd_amount` uusd to the recipient.
+    Ok(response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: admin_config.terra_manager.to_string(),
+        msg: to_binary(&terra_manager::ExecuteMsg::InitiateOutgoingTokenTransfer {
+            assets: vec![Asset {
+                info: AssetInfo::NativeToken {
+                    denom: String::from("uusd"),
+                },
+                amount: withdrawal_uusd_amount,
+            }],
+            recipient,
+        })?,
+        funds: vec![Coin {
+            denom: String::from("uusd"),
             amount: withdrawal_uusd_amount,
         }],
-        recipient,
-    )?))
+    })))
 }
 
 // Bring contract uusd balance to at least `target_uusd_balance` by redeeming the minimum required aUST held by this contract.
@@ -247,7 +252,7 @@ fn increase_uusd_balance_by_redeeming_aterra(
     // Find amount of aUST to redeem so uusd balance becomes at least `target_uusd_balance`.
     // See https://github.com/Anchor-Protocol/money-market-contracts/blob/c85c0b8e4f7fd192504f15d7741e19da6a850f71/contracts/market/src/deposit.rs#L141
     // for details on how Anchor market contract calculates the exchange rate.
-    let aterra_exchange_rate = get_aterra_exchange_rate(deps, &environment)?;
+    let aterra_exchange_rate = get_aterra_exchange_rate(deps, environment)?;
     let target_redemption_uusd_value = Uint256::from(target_uusd_balance - uusd_balance);
     let mut aterra_redeem_amount = target_redemption_uusd_value / aterra_exchange_rate;
     while aterra_redeem_amount * aterra_exchange_rate < target_redemption_uusd_value {
@@ -457,11 +462,10 @@ fn test_contract() {
         Decimal256::from_ratio(Uint256::from(11u128), Uint256::from(10u128));
     let msg = InstantiateMsg {
         admin_addr: String::from("admin"),
-        manager_addr: String::from("manager"),
+        terra_manager_addr: String::from("manager"),
         accrual_rate_per_block: accrual_rate_per_block.clone(),
         anchor_ust_cw20_addr: String::from("anchor_ust_cw20"),
         anchor_market_addr: String::from("anchor_market"),
-        wormhole_token_bridge_addr: String::from("wormhole_token_bridge"),
     };
 
     // Check state after instantiate().
@@ -480,7 +484,7 @@ fn test_contract() {
         ADMIN_CONFIG.load(&deps.storage).unwrap(),
         AdminConfig {
             admin: Addr::unchecked("admin"),
-            manager: Addr::unchecked("manager"),
+            terra_manager: Addr::unchecked("manager"),
             accrual_rate_per_block,
         }
     );
@@ -500,7 +504,6 @@ fn test_contract() {
         Environment {
             anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
             anchor_market_addr: Addr::unchecked("anchor_market"),
-            wormhole_token_bridge_addr: Addr::unchecked("wormhole_token_bridge"),
         }
     );
 
@@ -535,7 +538,7 @@ fn test_contract() {
             mock_info("non-admin", &[]),
             ExecuteMsg::UpdateAdminConfig {
                 admin_addr: Some(String::from("new-admin")),
-                manager_addr: None,
+                terra_manager_addr: None,
                 accrual_rate_per_block: None,
             },
         ),
@@ -682,7 +685,7 @@ fn test_contract() {
         mock_info("admin", &[]),
         ExecuteMsg::UpdateAdminConfig {
             admin_addr: None,
-            manager_addr: None,
+            terra_manager_addr: None,
             accrual_rate_per_block: Some(Decimal256::from_str("1.01").unwrap()),
         },
     )
@@ -764,14 +767,26 @@ fn test_contract() {
     );
     assert_eq!(
         withdrawal_execute_response.messages[1].msg,
-        CosmosMsg::Bank(BankMsg::Send {
-            to_address: String::from("terra1recipient"),
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("manager"),
             // floor(182 shares * 0.4 proportion) = 72 shares.
             // floor(72 * 1.65931006351) = 119 uusd.
-            amount: vec![Coin {
+            funds: vec![Coin {
                 denom: String::from("uusd"),
                 amount: Uint128::from(119u128)
-            }]
+            }],
+            msg: to_binary(&terra_manager::ExecuteMsg::InitiateOutgoingTokenTransfer {
+                recipient: Recipient::TerraChain {
+                    recipient: String::from("terra1recipient"),
+                },
+                assets: vec![Asset {
+                    info: AssetInfo::NativeToken {
+                        denom: String::from("uusd"),
+                    },
+                    amount: Uint128::from(119u128)
+                }],
+            })
+            .unwrap(),
         })
     );
     // Remaining share amount: 182 - 72 = 110.

@@ -1,8 +1,8 @@
 use aperture_common::common::{get_position_key, Action, Position, Recipient};
 use aperture_common::delta_neutral_position;
 use aperture_common::delta_neutral_position_manager::{
-    Context, DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
-    QueryMsg,
+    AdminConfig, Context, DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg,
+    MigrateMsg, QueryMsg,
 };
 use cosmwasm_std::{
     entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
@@ -12,9 +12,7 @@ use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
-use crate::state::{
-    AdminConfig, Config, ADMIN_CONFIG, CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION,
-};
+use crate::state::{Config, ADMIN_CONFIG, CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION};
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
 
@@ -27,7 +25,7 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     let admin_config = AdminConfig {
         admin: deps.api.addr_validate(&msg.admin_addr)?,
-        manager: deps.api.addr_validate(&msg.manager_addr)?,
+        terra_manager: deps.api.addr_validate(&msg.terra_manager_addr)?,
         delta_neutral_position_code_id: msg.delta_neutral_position_code_id,
     };
     ADMIN_CONFIG.save(deps.storage, &admin_config)?;
@@ -71,7 +69,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             assets,
         } => {
             let admin_config = ADMIN_CONFIG.load(deps.storage)?;
-            if info.sender != admin_config.manager {
+            if info.sender != admin_config.terra_manager {
                 return Err(StdError::generic_err("unauthorized"));
             }
             match action {
@@ -123,7 +121,7 @@ fn update_admin_config(
     deps: DepsMut,
     info: MessageInfo,
     admin_addr: Option<String>,
-    manager_addr: Option<String>,
+    terra_manager_addr: Option<String>,
     delta_neutral_position_code_id: Option<u64>,
 ) -> StdResult<Response> {
     let mut config = ADMIN_CONFIG.load(deps.storage)?;
@@ -133,8 +131,8 @@ fn update_admin_config(
     if let Some(admin_addr) = admin_addr {
         config.admin = deps.api.addr_validate(&admin_addr)?;
     }
-    if let Some(manager_addr) = manager_addr {
-        config.manager = deps.api.addr_validate(&manager_addr)?;
+    if let Some(terra_manager_addr) = terra_manager_addr {
+        config.terra_manager = deps.api.addr_validate(&terra_manager_addr)?;
     }
     if let Some(delta_neutral_position_code_id) = delta_neutral_position_code_id {
         config.delta_neutral_position_code_id = delta_neutral_position_code_id;
@@ -275,6 +273,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             to_binary(&(POSITION_TO_CONTRACT_ADDR.load(deps.storage, get_position_key(&position))?))
         }
         QueryMsg::GetContext {} => to_binary(&(CONFIG.load(deps.storage)?).context),
+        QueryMsg::GetAdminConfig {} => to_binary(&(ADMIN_CONFIG.load(deps.storage)?)),
     }
 }
 

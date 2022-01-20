@@ -1,5 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "InstantiateMsg",
-  "type": "object"
+  "type": "object",
+  "required": [
+    "wormhole_token_bridge_addr"
+  ],
+  "properties": {
+    "wormhole_token_bridge_addr": {
+      "type": "string"
+    }
+  }
 }

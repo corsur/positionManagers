@@ -4,7 +4,7 @@ use std::fs::create_dir_all;
 use aperture_common::common::StrategyPositionManagerExecuteMsg;
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use terra_manager::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use aperture_common::terra_manager::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

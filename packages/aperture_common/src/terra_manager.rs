@@ -1,4 +1,4 @@
-use aperture_common::common::{Action, ChainId, Position, PositionId, Strategy, StrategyLocation};
+use crate::common::{Action, ChainId, Position, PositionId, Recipient, Strategy, StrategyLocation};
 use cosmwasm_std::{Binary, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,9 @@ pub static TERRA_CHAIN_ID: ChainId = 3;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    pub wormhole_token_bridge_addr: String,
+}
 
 /// Terra manager is the entry point for a user to initiate an investment
 /// transaction. It is responsible for locating the underlying contract strategy
@@ -41,6 +43,10 @@ pub enum ExecuteMsg {
         strategy: Strategy,
         data: Option<Binary>,
         assets: Vec<terraswap::asset::Asset>,
+    },
+    InitiateOutgoingTokenTransfer {
+        assets: Vec<terraswap::asset::Asset>,
+        recipient: Recipient,
     },
 }
 

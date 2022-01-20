@@ -2,7 +2,7 @@ use cosmwasm_std::{Addr, Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{delta_neutral_position_manager::DeltaNeutralParams, common::Recipient};
+use crate::{common::Recipient, delta_neutral_position_manager::DeltaNeutralParams};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {}
@@ -32,6 +32,7 @@ pub enum InternalExecuteMsg {
         mirror_asset_mint_amount: Uint128,
     },
     RecordPositionInfo {
+        uusd_amount: Uint128,
         mirror_asset_cw20_addr: String,
     },
     PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
@@ -134,9 +135,10 @@ impl TargetCollateralRatioRange {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct BlockInfo {
+pub struct PositionActionInfo {
     pub height: u64,
     pub time_nanoseconds: u64,
+    pub uusd_amount: Uint128,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -155,8 +157,8 @@ pub struct DetailedPositionInfo {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct PositionInfoResponse {
-    pub initial_deposit_uusd_amount: Uint128,
-    pub position_open_block_info: BlockInfo,
-    pub position_close_block_info: Option<BlockInfo>,
+    pub position_open_info: PositionActionInfo,
+    pub position_close_info: Option<PositionActionInfo>,
+    pub mirror_asset_cw20_addr: Addr,
     pub detailed_info: Option<DetailedPositionInfo>,
 }

@@ -122,6 +122,33 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "initiate_outgoing_token_transfer"
+      ],
+      "properties": {
+        "initiate_outgoing_token_transfer": {
+          "type": "object",
+          "required": [
+            "assets",
+            "recipient"
+          ],
+          "properties": {
+            "assets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Asset"
+              }
+            },
+            "recipient": {
+              "$ref": "#/definitions/Recipient"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ],
   "definitions": {

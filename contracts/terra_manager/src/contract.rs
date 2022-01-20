@@ -1,22 +1,25 @@
 use aperture_common::byte_util::ByteUtils;
 use aperture_common::common::{
-    get_position_key, Action, Position, PositionId, Strategy, StrategyId, StrategyLocation,
-    StrategyMetadata, StrategyPositionManagerExecuteMsg,
+    get_position_key, Action, Position, PositionId, Recipient, Strategy, StrategyId,
+    StrategyLocation, StrategyMetadata, StrategyPositionManagerExecuteMsg,
 };
+use aperture_common::token_util::forward_assets_direct;
+use aperture_common::wormhole::WormholeTokenBridgeExecuteMsg;
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response,
-    StdError, StdResult, Uint128, Uint64, WasmMsg,
+    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Response, StdError, StdResult, Uint128, Uint64, WasmMsg,
 };
 use cw_storage_plus::{Bound, PrimaryKey, U128Key};
 use terraswap::asset::{Asset, AssetInfo};
 
-use crate::msg::{
-    ExecuteMsg, InstantiateMsg, MigrateMsg, NextPositionIdResponse, PositionInfoResponse,
-    PositionsResponse, QueryMsg, TERRA_CHAIN_ID,
-};
 use crate::state::{
     get_strategy_id_key, ADMIN, HOLDER_POSITION_ID_PAIR_SET, NEXT_POSITION_ID, NEXT_STRATEGY_ID,
     POSITION_ID_TO_HOLDER, POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP,
+    WORMHOLE_TOKEN_BRIDGE_ADDR,
+};
+use aperture_common::terra_manager::{
+    ExecuteMsg, InstantiateMsg, MigrateMsg, NextPositionIdResponse, PositionInfoResponse,
+    PositionsResponse, QueryMsg, TERRA_CHAIN_ID,
 };
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -24,9 +27,13 @@ pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    _msg: InstantiateMsg,
+    msg: InstantiateMsg,
 ) -> StdResult<Response> {
     ADMIN.save(deps.storage, &info.sender)?;
+    WORMHOLE_TOKEN_BRIDGE_ADDR.save(
+        deps.storage,
+        &deps.api.addr_validate(&msg.wormhole_token_bridge_addr)?,
+    )?;
     NEXT_STRATEGY_ID.save(deps.storage, &Uint64::zero())?;
     NEXT_POSITION_ID.save(deps.storage, &Uint128::zero())?;
     Ok(Response::default())
@@ -51,6 +58,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             action,
             assets,
         } => execute_strategy(deps.as_ref(), env, info, position, action, assets),
+        ExecuteMsg::InitiateOutgoingTokenTransfer { assets, recipient } => {
+            initiate_outgoing_token_transfer(deps.as_ref(), env, info, assets, recipient)
+        }
     }
 }
 
@@ -245,31 +255,113 @@ fn create_execute_strategy_messages(
     let strategy_location =
         POSITION_TO_STRATEGY_LOCATION_MAP.load(deps.storage, get_position_key(&position))?;
     let strategy_id = get_terra_strategy_id(strategy_location)?;
-    let manager_addr = STRATEGY_ID_TO_METADATA_MAP
+    let strategy_manager_addr = STRATEGY_ID_TO_METADATA_MAP
         .load(deps.storage, get_strategy_id_key(strategy_id))?
         .manager_addr;
-    let mut messages: Vec<CosmosMsg> = vec![];
 
-    // Transfer assets to strategy position manager.
-    let mut funds: Vec<Coin> = vec![];
-    let mut assets_after_tax_deduction: Vec<Asset> = vec![];
-    for asset in assets.iter() {
+    // Validate & accept incoming asset transfer.
+    let mut messages: Vec<CosmosMsg> =
+        validate_and_accept_incoming_asset_transfer(env, info, &assets)?;
+
+    // Forward assets to the strategy manager.
+    let (funds, cw20_transfer_messages) =
+        forward_assets_direct(&assets, &strategy_manager_addr, false)?;
+    messages.extend(cw20_transfer_messages);
+
+    // Ask strategy manager to perform the requested action.
+    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: strategy_manager_addr.to_string(),
+        msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
+            position,
+            action,
+            assets,
+        })?,
+        funds,
+    }));
+    Ok(messages)
+}
+
+pub fn initiate_outgoing_token_transfer(
+    deps: Deps,
+    env: Env,
+    info: MessageInfo,
+    assets: Vec<Asset>,
+    recipient: Recipient,
+) -> StdResult<Response> {
+    let mut response = Response::new().add_messages(validate_and_accept_incoming_asset_transfer(
+        env, info, &assets,
+    )?);
+    match recipient {
+        Recipient::TerraChain { recipient } => {
+            let (funds, cw20_transfer_messages) =
+                forward_assets_direct(&assets, &deps.api.addr_validate(&recipient)?, false)?;
+            response = response.add_messages(cw20_transfer_messages);
+            if !funds.is_empty() {
+                response = response.add_message(CosmosMsg::Bank(BankMsg::Send {
+                    to_address: recipient,
+                    amount: funds,
+                }))
+            }
+        }
+        Recipient::ExternalChain {
+            recipient_chain,
+            recipient,
+        } => {
+            let wormhole_token_bridge_addr = WORMHOLE_TOKEN_BRIDGE_ADDR.load(deps.storage)?;
+            for asset in assets {
+                match &asset.info {
+                    AssetInfo::NativeToken { denom } => {
+                        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                            contract_addr: wormhole_token_bridge_addr.to_string(),
+                            msg: to_binary(&WormholeTokenBridgeExecuteMsg::DepositTokens {})?,
+                            funds: vec![Coin {
+                                amount: asset.amount,
+                                denom: denom.clone(),
+                            }],
+                        }));
+                    }
+                    AssetInfo::Token { contract_addr } => {
+                        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                            contract_addr: contract_addr.clone(),
+                            msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
+                                spender: wormhole_token_bridge_addr.to_string(),
+                                amount: asset.amount,
+                                expires: None,
+                            })?,
+                            funds: vec![],
+                        }));
+                    }
+                }
+                response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: wormhole_token_bridge_addr.to_string(),
+                    msg: to_binary(&WormholeTokenBridgeExecuteMsg::InitiateTransfer {
+                        asset,
+                        recipient_chain,
+                        recipient: recipient.clone(),
+                        fee: Uint128::zero(),
+                        nonce: 0u32,
+                    })?,
+                    funds: vec![],
+                }));
+            }
+        }
+    }
+    Ok(response)
+}
+
+fn validate_and_accept_incoming_asset_transfer(
+    env: Env,
+    info: MessageInfo,
+    assets: &[Asset],
+) -> StdResult<Vec<CosmosMsg>> {
+    let mut msgs = vec![];
+    for asset in assets {
         match &asset.info {
             AssetInfo::NativeToken { .. } => {
-                // Make sure that the message carries enough native tokens.
                 asset.assert_sent_native_token_balance(&info)?;
-
-                // Deduct tax.
-                let coin_after_tax_deduction = asset.deduct_tax(&deps.querier)?;
-                assets_after_tax_deduction.push(Asset {
-                    info: asset.info.clone(),
-                    amount: coin_after_tax_deduction.amount,
-                });
-                funds.push(coin_after_tax_deduction);
             }
             AssetInfo::Token { contract_addr } => {
-                // Transfer this cw20 token from message sender to this contract.
-                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                msgs.push(CosmosMsg::Wasm(WasmMsg::Execute {
                     contract_addr: contract_addr.to_string(),
                     msg: to_binary(&cw20::Cw20ExecuteMsg::TransferFrom {
                         owner: info.sender.to_string(),
@@ -278,32 +370,8 @@ fn create_execute_strategy_messages(
                     })?,
                     funds: vec![],
                 }));
-
-                // Transfer this cw20 token from this contract to strategy position manager.
-                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: contract_addr.to_string(),
-                    msg: to_binary(&cw20::Cw20ExecuteMsg::Transfer {
-                        recipient: manager_addr.to_string(),
-                        amount: asset.amount,
-                    })?,
-                    funds: vec![],
-                }));
-
-                // Push cw20 token asset to `assets_after_tax_deduction`.
-                assets_after_tax_deduction.push(asset.clone());
             }
         }
     }
-
-    // Ask strategy position manager to perform the requested action.
-    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: manager_addr.to_string(),
-        msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
-            position,
-            action,
-            assets: assets_after_tax_deduction,
-        })?,
-        funds,
-    }));
-    Ok(messages)
+    Ok(msgs)
 }

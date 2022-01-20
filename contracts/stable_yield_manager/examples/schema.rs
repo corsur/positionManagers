@@ -3,9 +3,7 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use aperture_common::stable_yield_manager::{
-    ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
-};
+use aperture_common::stable_yield_manager::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

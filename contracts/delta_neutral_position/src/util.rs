@@ -15,10 +15,12 @@ use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::{
-    dex_util::{compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info, get_terraswap_mirror_asset_uusd_liquidity_info},
+    dex_util::{
+        compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info,
+        get_terraswap_mirror_asset_uusd_liquidity_info,
+    },
     state::{
-        INITIAL_DEPOSIT_UUSD_AMOUNT, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
-        POSITION_OPEN_BLOCK_INFO, TARGET_COLLATERAL_RATIO_RANGE,
+        POSITION_CLOSE_INFO, POSITION_INFO, POSITION_OPEN_INFO, TARGET_COLLATERAL_RATIO_RANGE,
     },
 };
 
@@ -416,12 +418,12 @@ pub fn query_position_info(
     context: &Context,
 ) -> StdResult<PositionInfoResponse> {
     let mut response = PositionInfoResponse {
-        initial_deposit_uusd_amount: INITIAL_DEPOSIT_UUSD_AMOUNT.load(deps.storage)?,
-        position_open_block_info: POSITION_OPEN_BLOCK_INFO.load(deps.storage)?,
-        position_close_block_info: POSITION_CLOSE_BLOCK_INFO.may_load(deps.storage)?,
+        position_open_info: POSITION_OPEN_INFO.load(deps.storage)?,
+        position_close_info: POSITION_CLOSE_INFO.may_load(deps.storage)?,
+        mirror_asset_cw20_addr: POSITION_INFO.load(deps.storage)?.mirror_asset_cw20_addr,
         detailed_info: None,
     };
-    if response.position_close_block_info.is_some() {
+    if response.position_close_info.is_some() {
         return Ok(response);
     }
 

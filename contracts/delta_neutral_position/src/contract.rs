@@ -1,8 +1,8 @@
 use std::cmp::{min, Ordering};
 
 use aperture_common::common::Recipient;
-use aperture_common::cross_chain_util::initiate_outgoing_token_transfers;
-use aperture_common::delta_neutral_position_manager::Context;
+use aperture_common::delta_neutral_position_manager::{self, Context};
+use aperture_common::terra_manager;
 use cosmwasm_std::{
     entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
     MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
@@ -14,8 +14,8 @@ use crate::dex_util::{
     simulate_terraswap_swap, swap_cw20_token_for_uusd,
 };
 use crate::state::{
-    PositionInfo, INITIAL_DEPOSIT_UUSD_AMOUNT, MANAGER, POSITION_CLOSE_BLOCK_INFO, POSITION_INFO,
-    POSITION_OPEN_BLOCK_INFO, TARGET_COLLATERAL_RATIO_RANGE,
+    PositionInfo, MANAGER, POSITION_CLOSE_INFO, POSITION_INFO, POSITION_OPEN_INFO,
+    TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
     decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
@@ -25,8 +25,8 @@ use crate::util::{
     query_position_info, unstake_lp_and_withdraw_liquidity,
 };
 use aperture_common::delta_neutral_position::{
-    BlockInfo, ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
-    QueryMsg, TargetCollateralRatioRange,
+    ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
+    PositionActionInfo, QueryMsg, TargetCollateralRatioRange,
 };
 use aperture_common::delta_neutral_position_manager::QueryMsg as ManagerQueryMsg;
 
@@ -71,7 +71,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::DecreasePosition {
             proportion,
             recipient,
-        } => decrease_position(deps, env, proportion, recipient),
+        } => decrease_position(env, proportion, recipient),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
             ControllerExecuteMsg::RebalanceAndReinvest {} => {
                 rebalance_and_reinvest(deps.as_ref(), env, context)
@@ -97,7 +97,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             InternalExecuteMsg::SendUusdToRecipient {
                 proportion,
                 recipient,
-            } => send_uusd_to_recipient(deps.as_ref(), env, context, proportion, recipient),
+            } => send_uusd_to_recipient(deps, env, proportion, recipient),
             InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
                 collateral_ratio,
                 mirror_asset_cw20_addr,
@@ -113,8 +113,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 mirror_asset_mint_amount,
             ),
             InternalExecuteMsg::RecordPositionInfo {
+                uusd_amount,
                 mirror_asset_cw20_addr,
-            } => record_position_info(deps, env, context, mirror_asset_cw20_addr),
+            } => record_position_info(deps, env, context, uusd_amount, mirror_asset_cw20_addr),
             InternalExecuteMsg::PairUusdWithMirrorAssetToProvideLiquidityAndStake {} => {
                 pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
                     deps.as_ref(),
@@ -596,7 +597,6 @@ pub fn open_position(
             max: target_max_collateral_ratio,
         },
     )?;
-    INITIAL_DEPOSIT_UUSD_AMOUNT.save(deps.storage, &uusd_balance)?;
     let mirror_asset_cw20_addr = deps.api.addr_validate(&mirror_asset_cw20_addr)?;
     delta_neutral_invest(deps, env, context, &mirror_asset_cw20_addr, None)
 }
@@ -685,6 +685,7 @@ fn open_or_increase_cdp_with_anchor_ust_balance_as_collateral(
             .add_message(create_internal_execute_message(
                 &env,
                 InternalExecuteMsg::RecordPositionInfo {
+                    uusd_amount: anchor_ust_balance,
                     mirror_asset_cw20_addr,
                 },
             ))),
@@ -722,6 +723,7 @@ fn record_position_info(
     deps: DepsMut,
     env: Env,
     context: Context,
+    uusd_amount: Uint128,
     mirror_asset_cw20_addr: String,
 ) -> StdResult<Response> {
     let position_info = PositionInfo {
@@ -729,30 +731,20 @@ fn record_position_info(
         mirror_asset_cw20_addr: deps.api.addr_validate(&mirror_asset_cw20_addr)?,
     };
     POSITION_INFO.save(deps.storage, &position_info)?;
-    let position_open_block_info = BlockInfo {
+    let position_open_block_info = PositionActionInfo {
         height: env.block.height,
         time_nanoseconds: env.block.time.nanos(),
+        uusd_amount,
     };
-    POSITION_OPEN_BLOCK_INFO.save(deps.storage, &position_open_block_info)?;
+    POSITION_OPEN_INFO.save(deps.storage, &position_open_block_info)?;
     Ok(Response::default())
 }
 
 pub fn decrease_position(
-    deps: DepsMut,
     env: Env,
     proportion: Decimal,
     recipient: Recipient,
 ) -> StdResult<Response> {
-    if proportion == Decimal::one() {
-        // Position is being closed; save position close block info.
-        POSITION_CLOSE_BLOCK_INFO.save(
-            deps.storage,
-            &BlockInfo {
-                height: env.block.height,
-                time_nanoseconds: env.block.time.nanos(),
-            },
-        )?;
-    }
     Ok(Response::new().add_messages(vec![
         create_internal_execute_message(&env, InternalExecuteMsg::ClaimAndIncreaseUusdBalance {}),
         create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
@@ -767,22 +759,47 @@ pub fn decrease_position(
 }
 
 pub fn send_uusd_to_recipient(
-    deps: Deps,
+    deps: DepsMut,
     env: Env,
-    context: Context,
     proportion: Decimal,
     recipient: Recipient,
 ) -> StdResult<Response> {
     let amount = get_uusd_balance(&deps.querier, &env)? * proportion;
+
+    // Record POSITION_CLOSE_INFO if the position is being closed.
+    if proportion == Decimal::one() {
+        POSITION_CLOSE_INFO.save(
+            deps.storage,
+            &PositionActionInfo {
+                height: env.block.height,
+                time_nanoseconds: env.block.time.nanos(),
+                uusd_amount: amount,
+            },
+        )?;
+    }
+
     if amount.is_zero() {
         return Ok(Response::default());
     }
+
+    // Initiate transfer of `amount` uusd to the recipient.
+    let position_manager_admin_config: delta_neutral_position_manager::AdminConfig =
+        deps.querier.query_wasm_smart(
+            MANAGER.load(deps.storage)?,
+            &delta_neutral_position_manager::QueryMsg::GetAdminConfig {},
+        )?;
     Ok(
-        Response::new().add_messages(initiate_outgoing_token_transfers(
-            &context.wormhole_token_bridge_addr,
-            vec![get_uusd_asset_from_amount(amount)],
-            recipient,
-        )?),
+        Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: position_manager_admin_config.terra_manager.to_string(),
+            msg: to_binary(&terra_manager::ExecuteMsg::InitiateOutgoingTokenTransfer {
+                assets: vec![get_uusd_asset_from_amount(amount)],
+                recipient,
+            })?,
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount,
+            }],
+        })),
     )
 }
 

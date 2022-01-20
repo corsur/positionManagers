@@ -1,6 +1,6 @@
 use aperture_common::{
     common::{Position, PositionKey},
-    delta_neutral_position_manager::{Context, FeeCollectionConfig},
+    delta_neutral_position_manager::{AdminConfig, Context, FeeCollectionConfig},
 };
 use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
@@ -13,13 +13,6 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub context: Context,
     pub fee_collection: FeeCollectionConfig,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct AdminConfig {
-    pub admin: Addr,
-    pub manager: Addr,
-    pub delta_neutral_position_code_id: u64,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");

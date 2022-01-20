@@ -5,6 +5,7 @@ use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map, U128Key, U64Key};
 
 pub const ADMIN: Item<Addr> = Item::new("admin");
+pub const WORMHOLE_TOKEN_BRIDGE_ADDR: Item<Addr> = Item::new("wormhole_token_bridge_addr");
 
 pub type StrategyIdKey = U64Key;
 pub const NEXT_STRATEGY_ID: Item<StrategyId> = Item::new("next_strategy_id");

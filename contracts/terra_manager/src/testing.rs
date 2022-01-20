@@ -1,10 +1,10 @@
 use crate::contract::{execute, instantiate, query};
 use crate::mock_querier::custom_mock_dependencies;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, TERRA_CHAIN_ID};
 use crate::state::NEXT_STRATEGY_ID;
+use aperture_common::terra_manager::{ExecuteMsg, InstantiateMsg, QueryMsg, TERRA_CHAIN_ID};
 
 use aperture_common::common::{
-    Action, Position, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg, Recipient,
+    Action, Position, Recipient, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg,
 };
 use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
@@ -18,7 +18,9 @@ fn test_initialization() {
     let mut env = mock_env();
     // Explicit set env's contract address.
     env.contract.address = Addr::unchecked(MOCK_CONTRACT_ADDR);
-    let msg = InstantiateMsg {};
+    let msg = InstantiateMsg {
+        wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
+    };
     let init_response = instantiate(
         deps.as_mut(),
         mock_env(),
@@ -36,7 +38,9 @@ fn test_manipuate_strategy() {
         deps.as_mut(),
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
-        InstantiateMsg {},
+        InstantiateMsg {
+            wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
+        },
     )
     .unwrap();
 
@@ -123,7 +127,9 @@ fn test_create_position() {
         deps.as_mut(),
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
-        InstantiateMsg {},
+        InstantiateMsg {
+            wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
+        },
     )
     .unwrap();
 
@@ -151,7 +157,7 @@ fn test_create_position() {
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         ExecuteMsg::CreatePosition {
             strategy: Strategy {
-                chain_id: crate::msg::TERRA_CHAIN_ID,
+                chain_id: TERRA_CHAIN_ID,
                 strategy_id: Uint64::from(0u64),
             },
             data: Some(delta_neutral_params_binary.clone()),
@@ -199,7 +205,7 @@ fn test_create_position() {
             action: Action::ClosePosition {
                 recipient: Recipient::TerraChain {
                     recipient: MOCK_CONTRACT_ADDR.to_string(),
-                }
+                },
             },
             assets: vec![],
         },
