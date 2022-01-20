@@ -1,8 +1,10 @@
 use aperture_common::common::{
     PositionId, PositionKey, StrategyId, StrategyLocation, StrategyMetadata,
 };
-use cosmwasm_std::Addr;
+use cosmwasm_std::{Addr, Decimal};
 use cw_storage_plus::{Item, Map, U128Key, U64Key};
+use schemars::JsonSchema;
+use serde::{Serialize, Deserialize};
 
 pub const ADMIN: Item<Addr> = Item::new("admin");
 pub const WORMHOLE_TOKEN_BRIDGE_ADDR: Item<Addr> = Item::new("wormhole_token_bridge_addr");
@@ -22,3 +24,11 @@ pub const HOLDER_POSITION_ID_PAIR_SET: Map<(Addr, U128Key), ()> =
 pub fn get_strategy_id_key(strategy_id: StrategyId) -> StrategyIdKey {
     StrategyIdKey::from(strategy_id.u64())
 }
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct CrossChainOutgoingFeeConfig {
+    pub rate: Decimal,
+    pub fee_collector_addr: Addr,
+}
+pub const CROSS_CHAIN_OUTGOING_FEE_CONFIG: Item<CrossChainOutgoingFeeConfig> = Item::new("cross_chain_outgoing_fee_config");

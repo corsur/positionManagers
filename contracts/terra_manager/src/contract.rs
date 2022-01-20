@@ -13,9 +13,9 @@ use cw_storage_plus::{Bound, PrimaryKey, U128Key};
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::state::{
-    get_strategy_id_key, ADMIN, HOLDER_POSITION_ID_PAIR_SET, NEXT_POSITION_ID, NEXT_STRATEGY_ID,
-    POSITION_ID_TO_HOLDER, POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP,
-    WORMHOLE_TOKEN_BRIDGE_ADDR,
+    get_strategy_id_key, CrossChainOutgoingFeeConfig, ADMIN, CROSS_CHAIN_OUTGOING_FEE_CONFIG,
+    HOLDER_POSITION_ID_PAIR_SET, NEXT_POSITION_ID, NEXT_STRATEGY_ID, POSITION_ID_TO_HOLDER,
+    POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP, WORMHOLE_TOKEN_BRIDGE_ADDR,
 };
 use aperture_common::terra_manager::{
     ExecuteMsg, InstantiateMsg, MigrateMsg, NextPositionIdResponse, PositionInfoResponse,
@@ -33,6 +33,15 @@ pub fn instantiate(
     WORMHOLE_TOKEN_BRIDGE_ADDR.save(
         deps.storage,
         &deps.api.addr_validate(&msg.wormhole_token_bridge_addr)?,
+    )?;
+    CROSS_CHAIN_OUTGOING_FEE_CONFIG.save(
+        deps.storage,
+        &CrossChainOutgoingFeeConfig {
+            rate: msg.cross_chain_outgoing_fee_rate,
+            fee_collector_addr: deps
+                .api
+                .addr_validate(&msg.cross_chain_outgoing_fee_collector_addr)?,
+        },
     )?;
     NEXT_STRATEGY_ID.save(deps.storage, &Uint64::zero())?;
     NEXT_POSITION_ID.save(deps.storage, &Uint128::zero())?;
@@ -264,8 +273,7 @@ fn create_execute_strategy_messages(
         validate_and_accept_incoming_asset_transfer(env, info, &assets)?;
 
     // Forward assets to the strategy manager.
-    let (funds, cw20_transfer_messages) =
-        forward_assets_direct(&assets, &strategy_manager_addr, false)?;
+    let (funds, cw20_transfer_messages) = forward_assets_direct(&assets, &strategy_manager_addr)?;
     messages.extend(cw20_transfer_messages);
 
     // Ask strategy manager to perform the requested action.
@@ -294,7 +302,7 @@ pub fn initiate_outgoing_token_transfer(
     match recipient {
         Recipient::TerraChain { recipient } => {
             let (funds, cw20_transfer_messages) =
-                forward_assets_direct(&assets, &deps.api.addr_validate(&recipient)?, false)?;
+                forward_assets_direct(&assets, &deps.api.addr_validate(&recipient)?)?;
             response = response.add_messages(cw20_transfer_messages);
             if !funds.is_empty() {
                 response = response.add_message(CosmosMsg::Bank(BankMsg::Send {
@@ -307,8 +315,46 @@ pub fn initiate_outgoing_token_transfer(
             recipient_chain,
             recipient,
         } => {
+            let cross_chain_outgoing_fee_config =
+                CROSS_CHAIN_OUTGOING_FEE_CONFIG.load(deps.storage)?;
             let wormhole_token_bridge_addr = WORMHOLE_TOKEN_BRIDGE_ADDR.load(deps.storage)?;
-            for asset in assets {
+
+            // Calculate asset amount to be sent to fee collector address, and amount to be transferred cross-chain to `recipient`.
+            let mut fee_collection_assets = vec![];
+            let mut cross_chain_assets = vec![];
+            for asset in assets.iter() {
+                let fee_amount = asset.amount * cross_chain_outgoing_fee_config.rate;
+                let cross_chain_amount = asset.amount - fee_amount;
+                if !fee_amount.is_zero() {
+                    fee_collection_assets.push(Asset {
+                        amount: fee_amount,
+                        info: asset.info.clone(),
+                    });
+                }
+                if !cross_chain_amount.is_zero() {
+                    cross_chain_assets.push(Asset {
+                        amount: cross_chain_amount,
+                        info: asset.info.clone(),
+                    })
+                }
+            }
+
+            let (fee_funds, fee_cw20_transfer_messages) = forward_assets_direct(
+                &fee_collection_assets,
+                &cross_chain_outgoing_fee_config.fee_collector_addr,
+            )?;
+            response = response.add_messages(fee_cw20_transfer_messages);
+            if !fee_funds.is_empty() {
+                response = response.add_message(CosmosMsg::Bank(BankMsg::Send {
+                    to_address: cross_chain_outgoing_fee_config
+                        .fee_collector_addr
+                        .to_string(),
+                    amount: fee_funds,
+                }))
+            }
+
+            // Initiate cross-chain transfer.
+            for asset in cross_chain_assets {
                 match &asset.info {
                     AssetInfo::NativeToken { denom } => {
                         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {

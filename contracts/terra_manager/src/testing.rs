@@ -20,6 +20,8 @@ fn test_initialization() {
     env.contract.address = Addr::unchecked(MOCK_CONTRACT_ADDR);
     let msg = InstantiateMsg {
         wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
+        cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
+        cross_chain_outgoing_fee_collector_addr: String::from("mock_fee_collector"),
     };
     let init_response = instantiate(
         deps.as_mut(),
@@ -40,6 +42,8 @@ fn test_manipuate_strategy() {
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         InstantiateMsg {
             wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
+            cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
+            cross_chain_outgoing_fee_collector_addr: String::from("mock_fee_collector"),
         },
     )
     .unwrap();
@@ -129,6 +133,8 @@ fn test_create_position() {
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         InstantiateMsg {
             wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
+            cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
+            cross_chain_outgoing_fee_collector_addr: String::from("mock_fee_collector"),
         },
     )
     .unwrap();

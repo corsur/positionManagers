@@ -1,5 +1,5 @@
 use crate::common::{Action, ChainId, Position, PositionId, Recipient, Strategy, StrategyLocation};
-use cosmwasm_std::{Binary, Uint64};
+use cosmwasm_std::{Binary, Uint64, Decimal};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +9,8 @@ pub static TERRA_CHAIN_ID: ChainId = 3;
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
     pub wormhole_token_bridge_addr: String,
+    pub cross_chain_outgoing_fee_rate: Decimal,
+    pub cross_chain_outgoing_fee_collector_addr: String,
 }
 
 /// Terra manager is the entry point for a user to initiate an investment
