@@ -1,0 +1,23 @@
+name:                           rust-coverage
+
+on:                             [push]
+jobs:
+  test:
+    name:                       coverage
+    runs-on:                    ubuntu-latest
+    container:
+      image:                    xd009642/tarpaulin:develop-nightly
+      options:                  --security-opt seccomp=unconfined
+    steps:
+      - name:                   Checkout repository
+        uses:                   actions/checkout@v2
+
+      - name:                   Generate code coverage
+        run: |
+          cargo +nightly tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml --exclude spectrum-protocol --exclude-files msg_instantiate_contract_response.rs
+
+      - name:                   Upload to codecov.io
+        uses:                   codecov/codecov-action@v2
+        with:
+          token:                a36a2b6a-95b2-4581-9222-419ee0e53fd1
+          fail_ci_if_error:     true
