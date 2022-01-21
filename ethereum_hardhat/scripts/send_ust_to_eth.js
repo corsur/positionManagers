@@ -1,9 +1,4 @@
-const {
-  MsgExecuteContract,
-  LCDClient,
-  isTxError,
-  MnemonicKey,
-} = require("@terra-money/terra.js");
+const { MsgExecuteContract } = require("@terra-money/terra.js");
 const {
   TERRA_TOKEN_BRIDGE_ADDR,
   ETH_TOKEN_BRIDGE_ADDR,
