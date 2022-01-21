@@ -255,10 +255,11 @@ async function migrate_existing_position(position_manager_contract, position_id)
 }
 
 await initializeSequence(test_wallet);
-const position_manager = "terra1xdly4y9hc9u53ra6hysz8f9rc40xdqy38xuh6s";
-// await store_new_position_code(position_manager);
+const delta_neutral_manager = "terra1ahwvk9h42j9u4rvvmswf2xqaxkkzzu2vevhpm0";
+const stable_yield_manager = "terra132509hekujnexxesyzrs3p02hqnyksxk6te95m";
+// await store_new_position_code(delta_neutral_manager);
 
-const terra_manager_addr = "terra19qedc0d5q6fd32nuwk95kgzp2ttwtmls3pf26t";
+const terra_manager_addr = "terra1uqryzpauak8tljlj9cl2gl99spgxqjvd008wvp";
 // open_delta_neutral_position(terra_manager_addr, 1000000);
 await open_delta_neutral_position(terra_manager_addr, 1500);
 // await open_delta_neutral_position(terra_manager_addr, 10000);

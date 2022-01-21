@@ -84,6 +84,7 @@ async function instantiate_terra_manager(terra_manager_id) {
         terra_manager_id,
         {
           wormhole_token_bridge_addr: "terra1pseddrv0yfsn76u4zxrjmtf45kdlmalswdv39a",
+          wormhole_core_bridge_addr: "terra1pd65m0q9tl3v8znnz5f5ltsfegyzah7g42cx5v",
           cross_chain_outgoing_fee_rate: "0.001",
           cross_chain_outgoing_fee_collector_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g",
         },
@@ -162,6 +163,39 @@ async function instantiate_delta_neutral_position_manager(
   return getContractAddress(response);
 }
 
+async function instantiate_stable_yield_manager(
+  terra_manager_addr,
+  stable_yield_manager_code_id,
+) {
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgInstantiateContract(
+        /*sender=*/ test_wallet.key.accAddress,
+        /*admin=*/ test_wallet.key.accAddress,
+        stable_yield_manager_code_id,
+        {
+          admin_addr: test_wallet.key.accAddress,
+          terra_manager_addr: terra_manager_addr,
+          accrual_rate_per_block: "1.00000002987",
+          anchor_market_addr: "terra15dwd5mj8v59wpj0wvt233mf5efdff808c5tkal",
+          anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl"
+        },
+        /*init_coins=*/ {}
+      ),
+    ],
+    memo: "Instantiate stable-yield manager",
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  if (isTxError(response)) {
+    throw new Error(
+      `Instantiate contract failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+    );
+  }
+  return getContractAddress(response);
+}
+
 async function add_delta_neutral_strategy_to_terra_manager(
   terra_manager_addr,
   delta_neutral_position_manager_addr,
@@ -188,6 +222,36 @@ async function add_delta_neutral_strategy_to_terra_manager(
   if (isTxError(response)) {
     throw new Error(
       `add_delta_neutral_strategy_to_terra_manager failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+    );
+  }
+}
+
+async function add_stable_yield_strategy_to_terra_manager(
+  terra_manager_addr,
+  stable_yield_manager_addr,
+) {
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgExecuteContract(
+        /*sender=*/ test_wallet.key.accAddress,
+        /*contract=*/ terra_manager_addr,
+        {
+          add_strategy: {
+            name: "StableYield",
+            version: "v0",
+            manager_addr: stable_yield_manager_addr
+          }
+        }
+      ),
+    ],
+    memo: "Add stable-yield strategy",
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  if (isTxError(response)) {
+    throw new Error(
+      `add_stable_yield_strategy_to_terra_manager failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
     );
   }
 }
@@ -241,6 +305,13 @@ async function deploy() {
     "delta neutral position manager address: ",
     delta_neutral_position_manager_addr
   );
+
+  const stable_yield_manager_addr =
+    await instantiate_stable_yield_manager(terra_manager_addr, stable_yield_manager_id);
+  console.log(
+    "stable yield manager address: ",
+    stable_yield_manager_addr
+  );
   /*****************************************/
   /***** End of contract instantiation *****/
   /*****************************************/
@@ -249,6 +320,10 @@ async function deploy() {
   await add_delta_neutral_strategy_to_terra_manager(terra_manager_addr, delta_neutral_position_manager_addr);
   console.log(
     "Registered delta-neutral strategy with Terra manager."
+  );
+  await add_stable_yield_strategy_to_terra_manager(terra_manager_addr, stable_yield_manager_addr);
+  console.log(
+    "Registered stable-yield strategy with Terra manager."
   );
   return terra_manager_addr;
 }
@@ -294,6 +369,46 @@ async function open_delta_neutral_position(terra_manager_addr, ust_amount) {
   console.log("Opened delta-neutral position with ust amount: ", ust_amount.toString());
 }
 
+async function open_stable_yield_position(terra_manager_addr, ust_amount) {
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgExecuteContract(
+        /*sender=*/ test_wallet.key.accAddress,
+        /*contract=*/ terra_manager_addr,
+        {
+          "create_position": {
+            "assets": [
+              {
+                "info": {
+                  "native_token": {
+                    "denom": "uusd"
+                  }
+                },
+                "amount": (ust_amount * 1e6).toString()
+              }
+            ],
+            "strategy": {
+              "chain_id": 3,
+              "strategy_id": "1"
+            }
+          }
+        },
+        [new Coin("uusd", (ust_amount * 1e6).toString())]
+      ),
+    ],
+    memo: "Open stable yield position",
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  if (isTxError(response)) {
+    throw new Error(
+      `open_stable_yield_position failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+    );
+  }
+  console.log("Opened delta-neutral position with ust amount: ", ust_amount.toString());
+}
+
 const terra_manager_addr = await deploy();
-await open_delta_neutral_position(terra_manager_addr, 2000);
-// await open_delta_neutral_position(terra_manager_addr, 12000000);
+await open_delta_neutral_position(terra_manager_addr, 500);
+await open_stable_yield_position(terra_manager_addr, 600);
