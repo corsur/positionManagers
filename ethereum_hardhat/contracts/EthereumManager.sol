@@ -53,8 +53,6 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     // Stores wallet address to PositionInfo mapping.
     mapping(uint128 => OwnershipInfo) public positionToOwnership;
-    // Stores mapping from owner address to position count.
-    mapping(address => uint128) public ownershipPositionCount;
 
     // `initializer` is a modifier from OpenZeppelin to ensure contract is
     // only initialized once (thanks to Initializable).
@@ -95,7 +93,6 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             targetChainId
         );
         positionToOwnership[positionId] = ownershipInfo;
-        ownershipPositionCount[msg.sender]++;
 
         handleExecuteStrategy(
             strategyId,
@@ -185,7 +182,13 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         view
         returns (PositionInfo[] memory)
     {
-        uint128 positionCount = ownershipPositionCount[user];
+        uint128 positionCount = 0;
+        for (uint32 i = 0; i < nextPositionId; i++) {
+            if (positionToOwnership[i].ownerAddr == user) {
+                positionCount++;
+            }
+        }
+
         uint128 userIndex = 0;
         PositionInfo[] memory positionIdVec = new PositionInfo[](positionCount);
         for (
