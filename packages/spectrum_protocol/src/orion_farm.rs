@@ -77,9 +77,7 @@ pub enum QueryMsg {
     // get all vault settings
     pools {},
     // get deposited balances
-    reward_info {
-        staker_addr: String,
-    },
+    reward_info { staker_addr: String },
     state {},
 }
 

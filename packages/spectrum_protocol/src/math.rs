@@ -1,6 +1,6 @@
-use cosmwasm_std::{Decimal, Uint128, Fraction};
-use std::ops;
+use cosmwasm_std::{Decimal, Fraction, Uint128};
 use std::fmt::{self, Write};
+use std::ops;
 use std::str::FromStr;
 
 const DECIMAL_FRACTIONAL: u128 = 1_000_000_000_000_000_000; // 1*10**18
@@ -112,16 +112,13 @@ mod tests {
     fn test_convert() {
         let dec = Decimal::permille(123456789); //123_456_789
         let udec: UDec128 = dec.into();
-        let dec2:Decimal = udec.into();
+        let dec2: Decimal = udec.into();
         assert_eq!(dec, dec2);
     }
 
     #[test]
     fn test_overflow() {
         let value: UDec128 = Decimal::percent(10000u64).into();
-        assert_eq!(
-            value.multiply_ratio(value.0, value.0),
-            value
-        );
+        assert_eq!(value.multiply_ratio(value.0, value.0), value);
     }
 }

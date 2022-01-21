@@ -55,7 +55,7 @@ pub enum ExecuteMsg {
         asset_token: String,
     },
     compound {
-        threshold_compound_gov: Uint128
+        threshold_compound_gov: Uint128,
     },
     update_bond {
         asset_token: String,
@@ -77,9 +77,7 @@ pub enum Cw20HookMsg {
 pub enum QueryMsg {
     config {},
     pools {},
-    reward_info {
-        staker_addr: String,
-    },
+    reward_info { staker_addr: String },
     state {},
 }
 
