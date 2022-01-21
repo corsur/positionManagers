@@ -27,7 +27,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // --- Cross-chain instruction format --- //
     // [uint128] position_id
     // [uint16] target_chain_id
-    // [uint32] strategy_id
+    // [uint64] strategy_id
     // [uint32] num_token_transferred
     // [var_len] num_token_transferred * sizeof(sequence_number)
     // [uint32] encoded_action_len
@@ -43,7 +43,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     bytes32 private TERRA_MANAGER_ADDRESS;
 
     // Position ids for Ethereum.
-    uint128 private nextPositionId = 0;
+    uint128 private nextPositionId;
 
     // Wormhole-wrapped Terra stablecoin tokens that are whitelisted in Terra Anchor Market. Example: UST.
     mapping(address => bool) public whitelistedStableTokens;
@@ -76,7 +76,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
     function createPosition(
-        uint32 strategyId,
+        uint64 strategyId,
         uint16 targetChainId,
         address token,
         uint256 amount,
@@ -107,7 +107,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     function executeStrategy(
         uint128 positionId,
-        uint32 strategyId,
+        uint64 strategyId,
         address token,
         uint256 amount,
         uint32 encodedActionLen,
@@ -131,7 +131,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     function handleExecuteStrategy(
-        uint32 strategyId,
+        uint64 strategyId,
         uint16 targetChainId,
         address token,
         uint256 amount,

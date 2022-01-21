@@ -3,7 +3,6 @@ require('@openzeppelin/hardhat-upgrades');
 
 const {
   ETH_PRV_KEY_1,
-  ETH_PRV_KEY_2,
   INFURA_URL_RINKERBY,
   INFURA_URL_ROPSTEN,
 } = require("./constants");
@@ -30,11 +29,11 @@ module.exports = {
     hardhat: {},
     ropsten: {
       url: INFURA_URL_ROPSTEN,
-      accounts: [ETH_PRV_KEY_1, ETH_PRV_KEY_2],
+      accounts: [ETH_PRV_KEY_1],
     },
     rinkeby: {
       url: INFURA_URL_RINKERBY,
-      accounts: [ETH_PRV_KEY_1, ETH_PRV_KEY_2],
+      accounts: [ETH_PRV_KEY_1],
     },
   },
   paths: {
