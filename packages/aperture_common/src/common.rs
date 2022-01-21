@@ -1,18 +1,18 @@
 use cosmwasm_std::{Addr, Binary, Decimal, Uint128, Uint64};
-use cw_storage_plus::{U128Key, U32Key};
+use cw_storage_plus::{U128Key, U16Key};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Structures commonly shared by Aperture contracts.
 
-pub type ChainId = u32;
+pub type ChainId = u16;
 pub type PositionId = Uint128;
 pub type StrategyId = Uint64;
-pub type PositionKey = (U32Key, U128Key);
+pub type PositionKey = (U16Key, U128Key);
 
 pub fn get_position_key(position: &Position) -> PositionKey {
     (
-        U32Key::from(position.chain_id),
+        U16Key::from(position.chain_id),
         U128Key::from(position.position_id.u128()),
     )
 }

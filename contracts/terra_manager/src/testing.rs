@@ -1,6 +1,6 @@
-use crate::contract::{execute, instantiate, query};
 use crate::mock_querier::custom_mock_dependencies;
 use crate::state::NEXT_STRATEGY_ID;
+use crate::terra_chain::{execute, instantiate, query};
 use aperture_common::terra_manager::{ExecuteMsg, InstantiateMsg, QueryMsg, TERRA_CHAIN_ID};
 
 use aperture_common::common::{
@@ -19,6 +19,7 @@ fn test_initialization() {
     // Explicit set env's contract address.
     env.contract.address = Addr::unchecked(MOCK_CONTRACT_ADDR);
     let msg = InstantiateMsg {
+        wormhole_core_bridge_addr: String::from("mock_wormhole_core_bridge"),
         wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
         cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
         cross_chain_outgoing_fee_collector_addr: String::from("mock_fee_collector"),
@@ -41,6 +42,7 @@ fn test_manipuate_strategy() {
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         InstantiateMsg {
+            wormhole_core_bridge_addr: String::from("mock_wormhole_core_bridge"),
             wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
             cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
             cross_chain_outgoing_fee_collector_addr: String::from("mock_fee_collector"),
@@ -132,6 +134,7 @@ fn test_create_position() {
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         InstantiateMsg {
+            wormhole_core_bridge_addr: String::from("mock_wormhole_core_bridge"),
             wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
             cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
             cross_chain_outgoing_fee_collector_addr: String::from("mock_fee_collector"),

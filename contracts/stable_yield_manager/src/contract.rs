@@ -508,7 +508,7 @@ fn test_contract() {
     );
 
     let position = Position {
-        chain_id: 0u32,
+        chain_id: 0u16,
         position_id: Uint128::zero(),
     };
 

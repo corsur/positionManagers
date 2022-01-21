@@ -1,5 +1,5 @@
 use crate::common::{Action, ChainId, Position, PositionId, Recipient, Strategy, StrategyLocation};
-use cosmwasm_std::{Binary, Uint64, Decimal};
+use cosmwasm_std::{Binary, Decimal, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +8,7 @@ pub static TERRA_CHAIN_ID: ChainId = 3;
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
+    pub wormhole_core_bridge_addr: String,
     pub wormhole_token_bridge_addr: String,
     pub cross_chain_outgoing_fee_rate: Decimal,
     pub cross_chain_outgoing_fee_collector_addr: String,
@@ -33,6 +34,10 @@ pub enum ExecuteMsg {
     ///
     /// Only contract owner may execute `RemoveStrategy`.
     RemoveStrategy { strategy_id: Uint64 },
+    RegisterExternalChainManager {
+        chain_id: ChainId,
+        aperture_manager_addr: Vec<u8>,
+    },
     /// Perform an action on an existing positions held by a Terra address.
     /// Only the position holder is able to call this.
     ExecuteStrategy {
@@ -45,6 +50,12 @@ pub enum ExecuteMsg {
         strategy: Strategy,
         data: Option<Binary>,
         assets: Vec<terraswap::asset::Asset>,
+    },
+    ProcessCrossChainInstruction {
+        // VAA of an Aperture instruction message published by an external-chain Aperture manager.
+        instruction_vaa: Binary,
+        // VAAs of the accompanying token transfers.
+        token_transfer_vaas: Vec<Binary>,
     },
     InitiateOutgoingTokenTransfer {
         assets: Vec<terraswap::asset::Asset>,
