@@ -23,6 +23,8 @@
     "hardhat": "^2.8.3"
   },
   "dependencies": {
+    "@terra-money/terra.js": "^2.0.14",
+    "@improbable-eng/grpc-web-node-http-transport": "^0.15.0",
     "@certusone/wormhole-sdk": "^0.1.6",
     "@openzeppelin/contracts": "^4.4.2",
     "@openzeppelin/contracts-upgradeable": "^4.4.2"
