@@ -1,0 +1,298 @@
+{
+  "manifestVersion": "3.2",
+  "proxies": [
+    {
+      "address": "0x479250E286eEC0F39e007C67491DfE15A99Ab789",
+      "txHash": "0x5c62b7ff717636e93f095b46d0c25200aaf48779a6da950e8bfde8c76fb7b404",
+      "kind": "uups"
+    }
+  ],
+  "impls": {
+    "69d7bf05c57003397ffde0730eb4e2fdf960b80fa08c4695041a3ad88c039214": {
+      "address": "0xa2e9ebDf9Bf2cF85136908303dE04F765C2F8D2A",
+      "txHash": "0xa8af255726ab32fbe4a3052811e6b7deeb7b45f5e019a8f16f7980445aceaf30",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:39"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:44"
+          },
+          {
+            "contract": "ERC1967UpgradeUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:215"
+          },
+          {
+            "contract": "UUPSUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:81"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:82"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "CONSISTENCY_LEVEL",
+            "type": "t_uint8",
+            "src": "contracts/EthereumManager.sol:41"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "WORMHOLE_TOKEN_BRIDGE",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:42"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "TERRA_MANAGER_ADDRESS",
+            "type": "t_bytes32",
+            "src": "contracts/EthereumManager.sol:43"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "nextPositionId",
+            "type": "t_uint128",
+            "src": "contracts/EthereumManager.sol:46"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "whitelistedStableTokens",
+            "type": "t_mapping(t_address,t_bool)",
+            "src": "contracts/EthereumManager.sol:49"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "completedTokenTransfers",
+            "type": "t_mapping(t_bytes32,t_bool)",
+            "src": "contracts/EthereumManager.sol:52"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "positionToOwnership",
+            "type": "t_mapping(t_uint128,t_struct(OwnershipInfo)1680_storage)",
+            "src": "contracts/EthereumManager.sol:55"
+          }
+        ],
+        "types": {
+          "t_uint8": {
+            "label": "uint8"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_bytes32": {
+            "label": "bytes32"
+          },
+          "t_uint128": {
+            "label": "uint128"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)"
+          },
+          "t_mapping(t_uint128,t_struct(OwnershipInfo)1680_storage)": {
+            "label": "mapping(uint128 => struct OwnershipInfo)"
+          },
+          "t_struct(OwnershipInfo)1680_storage": {
+            "label": "struct OwnershipInfo",
+            "members": [
+              {
+                "label": "ownerAddr",
+                "type": "t_address"
+              },
+              {
+                "label": "chainId",
+                "type": "t_uint16"
+              }
+            ]
+          },
+          "t_uint16": {
+            "label": "uint16"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          }
+        }
+      }
+    },
+    "f7ba6bf016947a1d4226854bd6a448ceee85774f1b311212be94cbc9b6a888d4": {
+      "address": "0xf0e7A577f34C550E2960D1E0FD435fed94134bca",
+      "txHash": "0x3dd68da88ac54514456b426291405e15464a277105fb70ffdcbda1aecc0ec18b",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:39"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:44"
+          },
+          {
+            "contract": "ERC1967UpgradeUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:215"
+          },
+          {
+            "contract": "UUPSUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:81"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:82"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "CONSISTENCY_LEVEL",
+            "type": "t_uint8",
+            "src": "contracts/EthereumManager.sol:41"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "WORMHOLE_TOKEN_BRIDGE",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:42"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "TERRA_MANAGER_ADDRESS",
+            "type": "t_bytes32",
+            "src": "contracts/EthereumManager.sol:43"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "nextPositionId",
+            "type": "t_uint128",
+            "src": "contracts/EthereumManager.sol:46"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "whitelistedStableTokens",
+            "type": "t_mapping(t_address,t_bool)",
+            "src": "contracts/EthereumManager.sol:49"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "completedTokenTransfers",
+            "type": "t_mapping(t_bytes32,t_bool)",
+            "src": "contracts/EthereumManager.sol:52"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "positionToOwnership",
+            "type": "t_mapping(t_uint128,t_struct(OwnershipInfo)1680_storage)",
+            "src": "contracts/EthereumManager.sol:55"
+          }
+        ],
+        "types": {
+          "t_uint8": {
+            "label": "uint8"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_bytes32": {
+            "label": "bytes32"
+          },
+          "t_uint128": {
+            "label": "uint128"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)"
+          },
+          "t_mapping(t_uint128,t_struct(OwnershipInfo)1680_storage)": {
+            "label": "mapping(uint128 => struct OwnershipInfo)"
+          },
+          "t_struct(OwnershipInfo)1680_storage": {
+            "label": "struct OwnershipInfo",
+            "members": [
+              {
+                "label": "ownerAddr",
+                "type": "t_address"
+              },
+              {
+                "label": "chainId",
+                "type": "t_uint16"
+              }
+            ]
+          },
+          "t_uint16": {
+            "label": "uint16"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          }
+        }
+      }
+    }
+  }
+}

@@ -15,11 +15,9 @@ module.exports = {
   TERRA_CROSSANCHOR_BRIDGE_ADDR: "terra19uuvgs8r46ceazpx96ntmu69t239324enfvg8y",
   ETH_CROSSANCHOR_BRIDGE_ADDR: "0x6BC753dDDa20488767ad501B06382398587df251",
   INFURA_URL_RINKERBY:
-    "https://rinkeby.infura.io/v3/b2a127790e6b494b8506a05285b8310c",
+    "https://rinkeby.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
   INFURA_URL_ROPSTEN:
-    "https://ropsten.infura.io/v3/b2a127790e6b494b8506a05285b8310c",
+    "https://ropsten.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
   ETH_PRV_KEY_1:
-    "0xcf18a1ff6613c05845daa2af158529ba7fbb9e1e5aae4514ef56a19371765ac6",
-  ETH_PRV_KEY_2:
-    "0xe3ca9eb1312b66548fad78928eb168bef213feba9706e1993dbd58e7bd271e8d",
+    "0x587444bd3758cdf2cbefc6901ae1916951f2f15cce3f47c84b6a51787e785228",
 };
