@@ -1,6 +1,8 @@
-# Aperture Finance - Terra Private Beta
+# Aperture Finance
 
-This monorepository contains the source code for the core smart contracts implementing Aperture Protocol on the [Terra](https://terra.money) blockchain.
+This monorepository contains the source code for the core smart contracts implementing Aperture Protocol, a cross-chain investment platform.
+
+[![codecov](https://codecov.io/gh/Aperture-Finance/Aperture-Contracts/branch/protocol/graph/badge.svg?token=EOJNHFN2Y1)](https://codecov.io/gh/Aperture-Finance/Aperture-Contracts)
 
 ## Development
 
@@ -21,13 +23,14 @@ rustup target add wasm32-unknown-unknown
 
 3. Make sure [Docker](https://www.docker.com/) is installed
 
-### Unit / Integration Tests
+### Test Coverage
 
-Each contract contains Rust unit and integration tests embedded within the contract source directories. You can run:
+Tests are automatically run and a coverage report is generated at each commit by GitHub Actions.
+
+To manually generate a test coverage report, on an x64 Linux machine, run the following
 
 ```sh
-cargo unit-test
-cargo integration-test
+sh run_test_coverage.sh
 ```
 
 ### Compiling
