@@ -348,16 +348,9 @@ pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
         return Err(StdError::generic_err("unexpected reply id"));
     }
 
-    // Error emitted by Wormhole token bridge contract if the token transfer has already completed.
-    #[derive(thiserror::Error, Debug)]
-    enum ContractError {
-        /// VAA was already executed
-        #[error("VaaAlreadyExecuted")]
-        VaaAlreadyExecuted,
-    }
-
     if let ContractResult::Err(err) = msg.result {
-        if ContractError::VaaAlreadyExecuted.to_string() == err {
+        if err == "Generic error: VaaAlreadyExecuted: execute wasm contract failed" {
+            // This means that this token transfer has already been successfully processed.
             Ok(Response::default())
         } else {
             Err(StdError::generic_err(err))

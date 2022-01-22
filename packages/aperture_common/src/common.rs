@@ -1,13 +1,26 @@
+/// This module defines data types commonly used in Aperture contracts.
 use cosmwasm_std::{Addr, Binary, Decimal, Uint128, Uint64};
 use cw_storage_plus::{U128Key, U16Key};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// Structures commonly shared by Aperture contracts.
-
+/// Identifier of an Aperture-supported blockchain.
+/// Since Aperture manager contracts on different chains communicate with each other via Wormhole,
+/// we use the same chain ids as Wormhole, listed at https://docs.wormholenetwork.com/wormhole/contracts.
 pub type ChainId = u16;
+
+/// Identifier of an investment position on a specific supported chain.
+/// An ordered pair (chain_id, position_id) uniquely identifies an investment position across the entire Aperture universe comprising all supported chains.
+/// This position is owned by a user on the chain identified by `chain_id`.
 pub type PositionId = Uint128;
+
+/// Identifier of an investment strategy managed by Aperture on a specific chain.
+/// An ordered pair (chain_id, strategy_id) uniquely identifies an investment strategy across the entire Aperture universe.
+/// This strategy is managed by Aperture manager contract on the chain identified by `chain_id`.
+/// For example (TERRA_CHAIN_ID, 1) represents strategy_id = 1 managed by the Aperture Terra Manager.
 pub type StrategyId = Uint64;
+
+/// Encoded cw_storage key representing an investment position (chain_id, position_id).
 pub type PositionKey = (U16Key, U128Key);
 
 pub fn get_position_key(position: &Position) -> PositionKey {

@@ -1,6 +1,6 @@
+use crate::contract::{execute, instantiate, query};
 use crate::mock_querier::custom_mock_dependencies;
 use crate::state::NEXT_STRATEGY_ID;
-use crate::terra_chain::{execute, instantiate, query};
 use aperture_common::terra_manager::{ExecuteMsg, InstantiateMsg, QueryMsg, TERRA_CHAIN_ID};
 
 use aperture_common::common::{
