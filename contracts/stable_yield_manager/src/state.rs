@@ -9,13 +9,14 @@ use serde::{Deserialize, Serialize};
 pub struct AdminConfig {
     pub admin: Addr,
     pub terra_manager: Addr,
-    pub accrual_rate_per_block: Decimal256,
+    pub accrual_rate_per_period: Decimal256,
+    pub seconds_per_period: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ShareInfo {
     pub exchange_rate: Decimal256,
-    pub block_height: u64,
+    pub last_updated_timestamp_seconds: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

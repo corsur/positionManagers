@@ -25,12 +25,13 @@ pub fn instantiate(
     let admin_config = AdminConfig {
         admin: deps.api.addr_validate(&msg.admin_addr)?,
         terra_manager: deps.api.addr_validate(&msg.terra_manager_addr)?,
-        accrual_rate_per_block: msg.accrual_rate_per_block,
+        accrual_rate_per_period: msg.accrual_rate_per_period,
+        seconds_per_period: msg.seconds_per_period,
     };
     ADMIN_CONFIG.save(deps.storage, &admin_config)?;
 
     let share_info = ShareInfo {
-        block_height: env.block.height,
+        last_updated_timestamp_seconds: env.block.time.seconds(),
         exchange_rate: Decimal256::one(),
     };
     SHARE_INFO.save(deps.storage, &share_info)?;
@@ -81,14 +82,16 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::UpdateAdminConfig {
             admin_addr,
             terra_manager_addr,
-            accrual_rate_per_block,
+            accrual_rate_per_period,
+            seconds_per_period,
         } => update_admin_config(
             deps,
             info,
-            env.block.height,
+            env.block.time.seconds(),
             admin_addr,
             terra_manager_addr,
-            accrual_rate_per_block,
+            accrual_rate_per_period,
+            seconds_per_period,
         ),
         ExecuteMsg::CollectFees {
             uusd_amount,
@@ -100,10 +103,11 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
 fn update_admin_config(
     mut deps: DepsMut,
     info: MessageInfo,
-    block_height: u64,
+    timestamp_seconds: u64,
     admin_addr: Option<String>,
     terra_manager_addr: Option<String>,
-    accrual_rate_per_block: Option<Decimal256>,
+    accrual_rate_per_period: Option<Decimal256>,
+    seconds_per_period: Option<u64>,
 ) -> StdResult<Response> {
     let mut config = ADMIN_CONFIG.load(deps.storage)?;
     if info.sender != config.admin {
@@ -115,9 +119,13 @@ fn update_admin_config(
     if let Some(terra_manager_addr) = terra_manager_addr {
         config.terra_manager = deps.api.addr_validate(&terra_manager_addr)?;
     }
-    if let Some(accrual_rate_per_block) = accrual_rate_per_block {
-        update_uusd_value_per_share(deps.branch(), &config, block_height)?;
-        config.accrual_rate_per_block = accrual_rate_per_block;
+    if let Some(accrual_rate_per_period) = accrual_rate_per_period {
+        update_uusd_value_per_share(deps.branch(), &config, timestamp_seconds)?;
+        config.accrual_rate_per_period = accrual_rate_per_period;
+    }
+    if let Some(seconds_per_period) = seconds_per_period {
+        update_uusd_value_per_share(deps.branch(), &config, timestamp_seconds)?;
+        config.seconds_per_period = seconds_per_period;
     }
     ADMIN_CONFIG.save(deps.storage, &config)?;
     Ok(Response::default())
@@ -133,8 +141,9 @@ fn deposit(
 ) -> StdResult<Response> {
     let uusd_asset = validate_assets(&info, &assets)?;
 
-    // Calculate per-share value at the current block height.
-    let exchange_rate = update_uusd_value_per_share(deps.branch(), admin_config, env.block.height)?;
+    // Calculate per-share value at the current timestamp.
+    let exchange_rate =
+        update_uusd_value_per_share(deps.branch(), admin_config, env.block.time.seconds())?;
 
     // Calculate the amount of share to mint for the deposited uusd amount.
     let mint_share_amount = Uint256::from(uusd_asset.amount) / exchange_rate;
@@ -202,7 +211,8 @@ pub fn withdraw(
     )?;
 
     // Calculate uusd amount to withdraw.
-    let exchange_rate = update_uusd_value_per_share(deps.branch(), admin_config, env.block.height)?;
+    let exchange_rate =
+        update_uusd_value_per_share(deps.branch(), admin_config, env.block.time.seconds())?;
     let withdrawal_uusd_amount = Uint128::from(burn_share_amount * exchange_rate);
 
     // Redeem aUST for uusd if necessary.
@@ -298,7 +308,7 @@ fn collect_fees(
 
     // Update share exchange rate and calculate total liability.
     let share_exchange_rate =
-        update_uusd_value_per_share(deps.branch(), &config, env.block.height)?;
+        update_uusd_value_per_share(deps.branch(), &config, env.block.time.seconds())?;
     let liability = TOTAL_SHARE_AMOUNT.load(deps.storage)? * share_exchange_rate;
 
     // Reject fee collection if this would draw down the treasury to below the total liability.
@@ -333,7 +343,11 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             let share_info = SHARE_INFO.load(deps.storage)?;
             to_binary(&PositionInfoResponse {
                 uusd_value: share_amount
-                    * get_uusd_value_per_share(&admin_config, &share_info, env.block.height)?,
+                    * get_uusd_value_per_share(
+                        &admin_config,
+                        &share_info,
+                        env.block.time.seconds(),
+                    )?,
             })
         }
     }
@@ -384,26 +398,32 @@ fn get_aterra_exchange_rate(deps: Deps, environment: &Environment) -> StdResult<
 fn get_uusd_value_per_share(
     admin_config: &AdminConfig,
     share_info: &ShareInfo,
-    block_height: u64,
+    timestamp_seconds: u64,
 ) -> StdResult<Decimal256> {
-    if share_info.block_height > block_height {
-        return Err(StdError::generic_err("invalid share_info.block_height"));
+    if share_info.last_updated_timestamp_seconds > timestamp_seconds {
+        return Err(StdError::generic_err(
+            "invalid share_info.last_updated_timestamp_seconds",
+        ));
     }
     Ok(share_info.exchange_rate
         * pow(
-            admin_config.accrual_rate_per_block,
-            block_height - share_info.block_height,
+            admin_config.accrual_rate_per_period,
+            (timestamp_seconds - share_info.last_updated_timestamp_seconds)
+                / admin_config.seconds_per_period,
         ))
 }
 
 fn update_uusd_value_per_share(
     deps: DepsMut,
     admin_config: &AdminConfig,
-    block_height: u64,
+    timestamp_seconds: u64,
 ) -> StdResult<Decimal256> {
     let mut share_info = SHARE_INFO.load(deps.storage)?;
-    share_info.exchange_rate = get_uusd_value_per_share(admin_config, &share_info, block_height)?;
-    share_info.block_height = block_height;
+    share_info.exchange_rate =
+        get_uusd_value_per_share(admin_config, &share_info, timestamp_seconds)?;
+    let num_periods = (timestamp_seconds - share_info.last_updated_timestamp_seconds)
+        / admin_config.seconds_per_period;
+    share_info.last_updated_timestamp_seconds += num_periods * admin_config.seconds_per_period;
     SHARE_INFO.save(deps.storage, &share_info)?;
     Ok(share_info.exchange_rate)
 }
@@ -451,19 +471,20 @@ fn test_pow() {
 fn test_contract() {
     use crate::mock_querier::custom_mock_dependencies;
     use cosmwasm_std::testing::{mock_env, mock_info};
-    use cosmwasm_std::{from_binary, Addr, BankMsg};
+    use cosmwasm_std::{from_binary, Addr, BankMsg, Timestamp};
     use std::str::FromStr;
 
     let mut deps = custom_mock_dependencies("anchor_market", "anchor_ust_cw20");
     let mut env = mock_env();
-    env.block.height = 0;
+    env.block.time = Timestamp::from_seconds(1000);
     env.contract.address = Addr::unchecked("this");
-    let accrual_rate_per_block =
+    let accrual_rate_per_period =
         Decimal256::from_ratio(Uint256::from(11u128), Uint256::from(10u128));
     let msg = InstantiateMsg {
         admin_addr: String::from("admin"),
         terra_manager_addr: String::from("manager"),
-        accrual_rate_per_block: accrual_rate_per_block.clone(),
+        accrual_rate_per_period: accrual_rate_per_period.clone(),
+        seconds_per_period: 10,
         anchor_ust_cw20_addr: String::from("anchor_ust_cw20"),
         anchor_market_addr: String::from("anchor_market"),
     };
@@ -485,14 +506,15 @@ fn test_contract() {
         AdminConfig {
             admin: Addr::unchecked("admin"),
             terra_manager: Addr::unchecked("manager"),
-            accrual_rate_per_block,
+            accrual_rate_per_period,
+            seconds_per_period: 10,
         }
     );
     assert_eq!(
         SHARE_INFO.load(&deps.storage).unwrap(),
         ShareInfo {
             exchange_rate: Decimal256::one(),
-            block_height: 0,
+            last_updated_timestamp_seconds: 1000,
         }
     );
     assert_eq!(
@@ -539,7 +561,8 @@ fn test_contract() {
             ExecuteMsg::UpdateAdminConfig {
                 admin_addr: Some(String::from("new-admin")),
                 terra_manager_addr: None,
-                accrual_rate_per_block: None,
+                accrual_rate_per_period: None,
+                seconds_per_period: None,
             },
         ),
         Err(StdError::generic_err("unauthorized"))
@@ -566,7 +589,6 @@ fn test_contract() {
     );
 
     // Deposit.
-    env.block.height = 0u64;
     let deposit_execute_response = execute(
         deps.as_mut(),
         env.clone(),
@@ -605,7 +627,7 @@ fn test_contract() {
         SHARE_INFO.load(&deps.storage).unwrap(),
         ShareInfo {
             exchange_rate: Decimal256::one(),
-            block_height: 0,
+            last_updated_timestamp_seconds: 1000,
         }
     );
     // Exchange rate = 1.
@@ -621,8 +643,8 @@ fn test_contract() {
         Uint256::from(100u128)
     );
 
-    // Deposit after 2 blocks.
-    env.block.height = 2u64;
+    // Deposit after 2 periods.
+    env.block.time = Timestamp::from_seconds(1027);
     let deposit_execute_response = execute(
         deps.as_mut(),
         env.clone(),
@@ -661,7 +683,7 @@ fn test_contract() {
         SHARE_INFO.load(&deps.storage).unwrap(),
         ShareInfo {
             exchange_rate: Decimal256::from_str("1.21").unwrap(),
-            block_height: 2,
+            last_updated_timestamp_seconds: 1020,
         }
     );
     // Exchange rate = 1.21
@@ -677,8 +699,8 @@ fn test_contract() {
         Uint256::from(182u128)
     );
 
-    // Update accrual rate at block height 5.
-    env.block.height = 5;
+    // Update accrual rate and period after 5 periods since inception.
+    env.block.time = Timestamp::from_seconds(1059);
     let update_admin_config_execute_response = execute(
         deps.as_mut(),
         env.clone(),
@@ -686,7 +708,8 @@ fn test_contract() {
         ExecuteMsg::UpdateAdminConfig {
             admin_addr: None,
             terra_manager_addr: None,
-            accrual_rate_per_block: Some(Decimal256::from_str("1.01").unwrap()),
+            accrual_rate_per_period: Some(Decimal256::from_str("1.01").unwrap()),
+            seconds_per_period: Some(20),
         },
     )
     .unwrap();
@@ -695,12 +718,12 @@ fn test_contract() {
         SHARE_INFO.load(&deps.storage).unwrap(),
         ShareInfo {
             exchange_rate: Decimal256::from_str("1.61051").unwrap(),
-            block_height: 5,
+            last_updated_timestamp_seconds: 1050,
         }
     );
 
-    // Query position info at block height 7.
-    env.block.height = 7;
+    // Query position info at timestamp 1090, which is 2 full periods of 20s each after timestamp 1050.
+    env.block.time = Timestamp::from_seconds(1090);
     let position_info_response: PositionInfoResponse = from_binary(
         &query(
             deps.as_ref(),
@@ -721,8 +744,8 @@ fn test_contract() {
         }
     );
 
-    // Withdrawal at block height 8.
-    env.block.height = 8;
+    // Withdrawal at timestamp 1111, which is after another period of 20s elapses since timestamp 1090.
+    env.block.time = Timestamp::from_seconds(1111);
     let withdrawal_execute_response = execute(
         deps.as_mut(),
         env.clone(),
@@ -743,7 +766,7 @@ fn test_contract() {
         SHARE_INFO.load(&deps.storage).unwrap(),
         ShareInfo {
             exchange_rate: Decimal256::from_str("1.65931006351").unwrap(),
-            block_height: 8,
+            last_updated_timestamp_seconds: 1110,
         }
     );
     assert_eq!(withdrawal_execute_response.messages.len(), 2);
@@ -801,8 +824,8 @@ fn test_contract() {
         Uint256::from(110u128)
     );
 
-    // Collect fees at block height 9.
-    env.block.height = 9;
+    // Collect fees at timestamp 1133, one period after the previous one.
+    env.block.time = Timestamp::from_seconds(1133);
     assert_eq!(
         execute(
             deps.as_mut(),
@@ -832,7 +855,7 @@ fn test_contract() {
         SHARE_INFO.load(&deps.storage).unwrap(),
         ShareInfo {
             exchange_rate: Decimal256::from_str("1.6759031641451").unwrap(),
-            block_height: 9,
+            last_updated_timestamp_seconds: 1130,
         }
     );
     assert_eq!(collect_fees_execute_response.messages.len(), 2);

@@ -10,7 +10,8 @@ use crate::common::{Action, Position};
 pub struct InstantiateMsg {
     pub admin_addr: String,
     pub terra_manager_addr: String,
-    pub accrual_rate_per_block: Decimal256,
+    pub accrual_rate_per_period: Decimal256,
+    pub seconds_per_period: u64,
     pub anchor_ust_cw20_addr: String,
     pub anchor_market_addr: String,
 }
@@ -30,7 +31,8 @@ pub enum ExecuteMsg {
     UpdateAdminConfig {
         admin_addr: Option<String>,
         terra_manager_addr: Option<String>,
-        accrual_rate_per_block: Option<Decimal256>,
+        accrual_rate_per_period: Option<Decimal256>,
+        seconds_per_period: Option<u64>,
     },
     // Can only be called by admin.
     CollectFees {
