@@ -6,7 +6,7 @@ const {
 const {
   ETH_UST_CONTRACT_ADDR,
   ETH_TOKEN_BRIDGE_ADDR,
-  TERRA_CROSSANCHOR_BRIDGE_ADDR,
+  TERRA_MANAGER_ADDR,
 } = require("../constants");
 
 async function main() {
@@ -17,21 +17,21 @@ async function main() {
   console.log(`Account Balance: ${balance}`);
 
   const consistencyLevel = 1;
-  const BridgeContract = await ethers.getContractFactory("EthereumManager");
-  const bridgeContract = await upgrades.deployProxy(
-    BridgeContract,
+  const EthereumManager = await ethers.getContractFactory("EthereumManager");
+  const ethereumManager = await upgrades.deployProxy(
+    EthereumManager,
     [
       consistencyLevel,
       ETH_UST_CONTRACT_ADDR,
       ETH_TOKEN_BRIDGE_ADDR,
       hexToUint8Array(
-        await getEmitterAddressTerra(TERRA_CROSSANCHOR_BRIDGE_ADDR)
+        await getEmitterAddressTerra(TERRA_MANAGER_ADDR)
       ),
     ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
   );
-  await bridgeContract.deployed();
-  console.log(`Contract Address: ${bridgeContract.address}`);
+  await ethereumManager.deployed();
+  console.log(`Contract Address: ${ethereumManager.address}`);
 }
 
 // We recommend this pattern to be able to use async/await everywhere

@@ -135,7 +135,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint16 targetChainId,
         address token,
         uint256 amount,
-        uint256 positionId,
+        uint128 positionId,
         uint32 encodedActionLen,
         bytes calldata encodedAction
     ) internal {
