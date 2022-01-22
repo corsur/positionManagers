@@ -259,11 +259,16 @@ fn increase_uusd_balance_by_redeeming_aterra(
         return Ok(vec![]);
     }
 
-    // Find amount of aUST to redeem so uusd balance becomes at least `target_uusd_balance`.
+    // Find aUST -> UST exchange rate.
     // See https://github.com/Anchor-Protocol/money-market-contracts/blob/c85c0b8e4f7fd192504f15d7741e19da6a850f71/contracts/market/src/deposit.rs#L141
     // for details on how Anchor market contract calculates the exchange rate.
     let aterra_exchange_rate = get_aterra_exchange_rate(deps, environment)?;
     let target_redemption_uusd_value = Uint256::from(target_uusd_balance - uusd_balance);
+
+    // Find amount of aUST to redeem so uusd balance becomes at least `target_uusd_balance`.
+    // Anchor contract calculates the equivalence of `aterra_redeem_amount * aterra_exchange_rate` for the uusd withdrawal amount.
+    // See https://github.com/Anchor-Protocol/money-market-contracts/blob/c85c0b8e4f7fd192504f15d7741e19da6a850f71/contracts/market/src/deposit.rs#L84
+    // Here we find the smallest possible `aterra_redeem_amount` such that `aterra_redeem_amount * aterra_exchange_rate >= target_redemption_uusd_value`.
     let mut aterra_redeem_amount = target_redemption_uusd_value / aterra_exchange_rate;
     while aterra_redeem_amount * aterra_exchange_rate < target_redemption_uusd_value {
         aterra_redeem_amount += Uint256::one();
@@ -279,6 +284,8 @@ fn increase_uusd_balance_by_redeeming_aterra(
     })])
 }
 
+// Administrator can call this to withdraw excess asset in the form of protocol fees.
+// This transaction will fail if the amount to withdraw (`uusd_amount`) makes the remaining treasury value fall below the total liability.
 fn collect_fees(
     mut deps: DepsMut,
     env: Env,
@@ -317,19 +324,20 @@ fn collect_fees(
     }
 
     // Redeem aUST if necessary and distribute `uusd_amount` to `recipient`.
-    let response = Response::new().add_messages(increase_uusd_balance_by_redeeming_aterra(
-        deps.as_ref(),
-        &env,
-        &environment,
-        uusd_amount,
-    )?);
-    Ok(response.add_message(CosmosMsg::Bank(BankMsg::Send {
-        to_address: recipient,
-        amount: vec![Coin {
-            denom: String::from("uusd"),
-            amount: uusd_amount,
-        }],
-    })))
+    Ok(Response::new()
+        .add_messages(increase_uusd_balance_by_redeeming_aterra(
+            deps.as_ref(),
+            &env,
+            &environment,
+            uusd_amount,
+        )?)
+        .add_message(CosmosMsg::Bank(BankMsg::Send {
+            to_address: recipient,
+            amount: vec![Coin {
+                denom: String::from("uusd"),
+                amount: uusd_amount,
+            }],
+        })))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -428,6 +436,7 @@ fn update_uusd_value_per_share(
     Ok(share_info.exchange_rate)
 }
 
+// Returns `x` raised to the power of `y`.
 fn pow(mut x: Decimal256, mut y: u64) -> Decimal256 {
     let mut p = Decimal256::one();
     while y > 0 {

@@ -8,16 +8,23 @@ use crate::common::{Action, Position};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
+    // Administrator address.
+    // Authorized to run `UpdateAdminConfig` and `CollectFees`.
     pub admin_addr: String,
+    // Address of the Aperture Terra Manager.
+    // Authorized to run `PerformAction`.
     pub terra_manager_addr: String,
+
+    // Initial interest accural settings.
     pub accrual_rate_per_period: Decimal256,
     pub seconds_per_period: u64,
+
+    // aUST cw20 address.
     pub anchor_ust_cw20_addr: String,
+    // Anchor Market contract address.
     pub anchor_market_addr: String,
 }
 
-/// List of actions available on this particular strategy. The specific enums
-/// are inherited/copied from the Aperture common package.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
@@ -48,6 +55,7 @@ pub struct MigrateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
+    // Returns `PositionInfoResponse` with the uusd value of `position` at the current block's timestamp.
     GetPositionInfo { position: Position },
 }
 
