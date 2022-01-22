@@ -1,5 +1,5 @@
 require("@nomiclabs/hardhat-waffle");
-require('@openzeppelin/hardhat-upgrades');
+require("@openzeppelin/hardhat-upgrades");
 
 const {
   ETH_PRV_KEY_1,
@@ -30,6 +30,7 @@ module.exports = {
     ropsten: {
       url: INFURA_URL_ROPSTEN,
       accounts: [ETH_PRV_KEY_1],
+      timeout: 60000,
     },
     rinkeby: {
       url: INFURA_URL_RINKERBY,
@@ -38,11 +39,11 @@ module.exports = {
   },
   paths: {
     sources: "./contracts",
-    tests: "./test/unit",
+    tests: "./test/",
     cache: "./cache",
     artifacts: "./artifacts",
   },
   mocha: {
-    timeout: 200000,
+    timeout: 10000000,
   },
 };

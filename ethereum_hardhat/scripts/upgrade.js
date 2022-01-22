@@ -7,7 +7,7 @@ async function main() {
   const balance = await deployer.getBalance();
   console.log(`Account Balance: ${balance}`);
 
-  const PROXY_ADDRESS = "0x479250E286eEC0F39e007C67491DfE15A99Ab789";
+  const PROXY_ADDRESS = "0x886054b9DBC6570504FFA74F0881e106B150fb3e";
 
   const EthManager = await ethers.getContractFactory("EthereumManager");
   const ethManager = await upgrades.upgradeProxy(

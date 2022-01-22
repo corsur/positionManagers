@@ -18,7 +18,7 @@ async function main() {
 
   const PROXY_ADDRESS = "0x479250E286eEC0F39e007C67491DfE15A99Ab789"
   const EthManager = await ethers.getContractFactory("EthereumManager");
-  const ethManager = await EthManager.attach(PROXY_ADDRESS);
+  const ethManager = EthManager.attach(PROXY_ADDRESS);
 
   console.log(`Contract Address: ${ethManager.address}`);
 

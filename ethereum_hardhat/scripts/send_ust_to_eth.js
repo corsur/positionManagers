@@ -16,14 +16,17 @@ const { getSignedVAAWithRetry } = require("../utils/wormhole.js");
 const { ethWallet } = require("../utils/eth.js");
 const { terraWallet, signAndBroadcast } = require("../utils/terra.js");
 
+const amount = 1e5 * 1e6
+
 async function main() {
   console.log("Bridging UST from Terra address: ", terraWallet.key.accAddress);
+  console.log("Ethereum wallet address: ", ethWallet.address);
   let msgs = [
     new MsgExecuteContract(
       terraWallet.key.accAddress,
       TERRA_TOKEN_BRIDGE_ADDR,
       { deposit_tokens: {} },
-      { uusd: "100000000" }
+      { uusd: amount.toString() }
     ),
     new MsgExecuteContract(
       terraWallet.key.accAddress,
@@ -32,7 +35,7 @@ async function main() {
         initiate_transfer: {
           asset: {
             info: { native_token: { denom: "uusd" } },
-            amount: "100000000",
+            amount: amount.toString(),
           },
           recipient_chain: CHAIN_ID_ETHEREUM_ROPSTEN,
           recipient: Buffer.from(
