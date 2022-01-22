@@ -229,7 +229,7 @@ pub fn process_cross_chain_instruction(
 
     let encoded_action_len_index = (num_token_transfers << 3) + 30;
     let encoded_action_len = instruction_payload_slice.get_u32(encoded_action_len_index) as usize;
-    let encoded_action_index = encoded_action_len_index + encoded_action_len;
+    let encoded_action_index = encoded_action_len_index + 4;
     let action_binary = Binary::from_base64(std::str::from_utf8(
         &instruction_payload_slice[encoded_action_index..encoded_action_index + encoded_action_len],
     )?)?;

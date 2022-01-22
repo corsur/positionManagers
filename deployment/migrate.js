@@ -260,12 +260,13 @@ const stable_yield_manager = "terra132509hekujnexxesyzrs3p02hqnyksxk6te95m";
 // await store_new_position_code(delta_neutral_manager);
 
 const terra_manager_addr = "terra1uqryzpauak8tljlj9cl2gl99spgxqjvd008wvp";
+await migrate_contract(terra_manager_addr, 36018);
 // open_delta_neutral_position(terra_manager_addr, 1000000);
-await open_delta_neutral_position(terra_manager_addr, 1500);
+// await open_delta_neutral_position(terra_manager_addr, 1500);
 // await open_delta_neutral_position(terra_manager_addr, 10000);
 // await open_delta_neutral_position(terra_manager_addr, 12000000);
 
-await close_position(terra_manager_addr, 0);
+// await close_position(terra_manager_addr, 0);
 
 // await migrate_existing_position(position_manager, 7);
 // await close_position(terra_manager_addr, 0);
