@@ -672,6 +672,119 @@ fn test_process_cross_chain_instruction_close_position() {
     );
 }
 
+#[test]
+fn test_process_cross_chain_instruction_open_position() {
+    use crate::mock_querier::custom_mock_dependencies;
+    use crate::state::{POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP};
+    use aperture_common::common::{
+        get_position_key, StrategyLocation, StrategyPositionManagerExecuteMsg,
+    };
+    use cosmwasm_std::testing::mock_env;
+    use cosmwasm_std::{Addr, Uint64};
+    use cw_storage_plus::U64Key;
+
+    let mut deps = custom_mock_dependencies("wormhole_core_bridge");
+    WORMHOLE_CORE_BRIDGE_ADDR
+        .save(
+            deps.as_mut().storage,
+            &Addr::unchecked("wormhole_core_bridge"),
+        )
+        .unwrap();
+    WORMHOLE_TOKEN_BRIDGE_ADDR
+        .save(
+            deps.as_mut().storage,
+            &Addr::unchecked("wormhole_token_bridge"),
+        )
+        .unwrap();
+    CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP
+        .save(
+            deps.as_mut().storage,
+            U16Key::from(10001),
+            &vec![
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 190, 119, 130, 59, 86, 190, 176, 84, 62,
+                154, 118, 154, 32, 103, 134, 108, 225, 13, 14,
+            ],
+        )
+        .unwrap();
+    POSITION_TO_STRATEGY_LOCATION_MAP
+        .save(
+            deps.as_mut().storage,
+            get_position_key(&Position {
+                chain_id: 10001,
+                position_id: Uint128::zero(),
+            }),
+            &StrategyLocation::TerraChain(Uint64::zero()),
+        )
+        .unwrap();
+    STRATEGY_ID_TO_METADATA_MAP
+        .save(
+            deps.as_mut().storage,
+            U64Key::from(0),
+            &aperture_common::common::StrategyMetadata {
+                name: String::from("DN"),
+                version: String::from("v0"),
+                manager_addr: Addr::unchecked("strategy_manager"),
+            },
+        )
+        .unwrap();
+
+    let token_transfer_vaa = Binary::from_base64("AQAAAAABADhqQkDb0KlwGvLA9fpBZrOKaa4ty35jXC7lG6zz9dNteb73ItRp5UMS5smzOEX4Xi6VwNhU4/dqHNQGrwW6xCMBYeyVsQDzszEnEQAAAAAAAAAAAAAAAPF0+ag3U2xEkyHfHKCTu5aUjVOGAAAAAAAAARYPAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAjw0YAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHV1c2QAAwAAAAAAAAAAAAAAAOAGQQe87Y6/y/IuPqR8pYBQYEmNAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==").unwrap();
+    let response = process_cross_chain_instruction(
+        deps.as_mut(),
+        mock_env(),
+        Binary::from_base64("AQAAAAABAOWWxynoIu8CJjRjj0bHcPFCytTQ4n9XjmciENEboHToc1vvZkvNK706tUbbGDD3cgE9+qdaiktDkhipuquaLPAAYeyVsQAUNfQnEQAAAAAAAAAAAAAAAIK+d4I7Vr6wVD6adpogZ4Zs4Q0OAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAABAAAAAAAAARYAAAFcZXdvSkltOXdaVzVmY0c5emFYUnBiMjRpT2lCN0Nna0pJbVJoZEdFaU9pQWlaWGR2WjBsRFFXZEpibEpvWTIxa2JHUkdPWFJoVnpWbVdUSTVjMkpIUmpCYVdFcG9Za1k1ZVZsWVVuQmllVWsyU1VOSmVVeHFUV2xNUVc5blNVTkJaMGx1VW1oamJXUnNaRVk1ZEZsWWFHWlpNamx6WWtkR01GcFlTbWhpUmpsNVdWaFNjR0o1U1RaSlEwbDVUR3BqYVV4QmIyZEpRMEZuU1cweGNHTnVTblpqYkRsb1l6Tk9iR1JHT1dwa2VrbDNXREpHYTFwSVNXbFBhVUZwWkVkV2VXTnRSWGhsV0Uwd1draGtNMlZ0Um14aWJYQnVUVzFrTlUxRVNuUmpNbmgwV1hwck1scHFTVEpPTTJneVkwaE9jVmxZVVROYU0yZHBRMjR3UFNJS0NYMEtmUT09").unwrap(),
+        vec![token_transfer_vaa.clone()],
+    )
+    .unwrap();
+    assert_eq!(response.messages.len(), 2);
+    assert_eq!(
+        response.messages[0].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("wormhole_token_bridge"),
+            msg: to_binary(&WormholeTokenBridgeExecuteMsg::SubmitVaa {
+                data: token_transfer_vaa,
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        response.messages[1].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("strategy_manager"),
+            msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
+                position: Position {
+                    chain_id: 10001,
+                    position_id: Uint128::zero(),
+                },
+                action: Action::OpenPosition {
+                    /*
+                    The following base64 encoding is for the following JSON object:
+                    {
+                        "target_min_collateral_ratio": "2.3",
+                        "target_max_collateral_ratio": "2.7",
+                        "mirror_asset_cw20_addr": "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"
+                    }
+                    This is the data field associated with a delta-neutral position open action.
+                     */
+                    data: Some(Binary::from_base64("ewogICAgInRhcmdldF9taW5fY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjMiLAogICAgInRhcmdldF9tYXhfY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjciLAogICAgIm1pcnJvcl9hc3NldF9jdzIwX2FkZHIiOiAidGVycmExeXM0ZHd3emFlbmpnMmd5MDJtc2xtYzk2ZjI2N3h2cHNqYXQ3Z3giCn0=").unwrap()),
+                },
+                assets: vec![Asset {
+                    info: AssetInfo::NativeToken {
+                        denom: String::from("uusd"),
+                    },
+                    amount: Uint128::from(600000000u128)
+                }],
+            })
+            .unwrap(),
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(600000000u128),
+            }],
+        })
+    );
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
     if msg.id != TOKEN_TRANSFER_SUBMIT_VAA_MSG_ID {
