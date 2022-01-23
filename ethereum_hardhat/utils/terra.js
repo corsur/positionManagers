@@ -60,10 +60,26 @@ async function processVAAs(genericMessagingVAA, tokenTransferVAA) {
   return await signAndBroadcast([msg]);
 }
 
+async function processVAA(genericMessagingVAA) {
+  const vaas = {
+    process_cross_chain_instruction: {
+      instruction_vaa: genericMessagingVAA,
+      token_transfer_vaas: [],
+    },
+  };
+  let msg = new MsgExecuteContract(
+    terraWallet.key.accAddress,
+    TERRA_MANAGER_ADDR,
+    vaas
+  );
+  return await signAndBroadcast([msg]);
+}
+
 module.exports = {
   terra: terra,
   terraWallet: terraWallet,
   signAndBroadcast: signAndBroadcast,
   processVAAs: processVAAs,
   registerWithTerraManager: registerWithTerraManager,
+  processVAA: processVAA,
 };

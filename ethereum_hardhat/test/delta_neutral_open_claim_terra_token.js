@@ -23,7 +23,7 @@ const {
   signAndBroadcast,
 } = require("../utils/terra.js");
 
-describe("EthereumManager integration test", function () {
+describe("EthereumManager integration test claim on Terra", function () {
   it("Should in addition, claim token on Terra side", async function () {
     console.log("Using eth wallet address", ethWallet.address);
 

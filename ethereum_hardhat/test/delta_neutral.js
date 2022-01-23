@@ -4,17 +4,25 @@ const {
   ETH_TOKEN_BRIDGE_ADDR,
   TERRA_MANAGER_ADDR,
   ETH_WORMHOLE_ADDR,
+  TERRA_TOKEN_BRIDGE_ADDR,
 } = require("../constants");
 const { getSignedVAAWithRetry } = require("../utils/wormhole.js");
 const {
+  CHAIN_ID_TERRA,
   CHAIN_ID_ETHEREUM_ROPSTEN,
   getEmitterAddressEth,
   getEmitterAddressTerra,
   hexToUint8Array,
   parseSequencesFromLogEth,
+  parseSequenceFromLogTerra,
+  redeemOnEth,
 } = require("@certusone/wormhole-sdk");
 const { ethWallet } = require("../utils/eth.js");
-const { processVAAs, registerWithTerraManager } = require("../utils/terra.js");
+const {
+  processVAAs,
+  processVAA,
+  registerWithTerraManager,
+} = require("../utils/terra.js");
 
 describe("EthereumManager integration test", function () {
   it("Should initiate Ethereum cross-chain tx and trigger Terra tx", async function () {
@@ -71,7 +79,7 @@ describe("EthereumManager integration test", function () {
       amount,
       encodedActionData.length,
       encodedActionData,
-      {gasLimit: 600000}
+      { gasLimit: 600000 }
     );
 
     let receipt = await createPositionTX.wait();
@@ -91,7 +99,9 @@ describe("EthereumManager integration test", function () {
 
     console.log("chain id: ", CHAIN_ID_ETHEREUM_ROPSTEN);
     console.log("ethTokenBridgeEmitterAddress: ", ethTokenBridgeEmitterAddress);
-    let ethManagerEmitterAddress = getEmitterAddressEth(ethereumManager.address);
+    let ethManagerEmitterAddress = getEmitterAddressEth(
+      ethereumManager.address
+    );
     console.log("ethManagerEmitterAddress: ", ethManagerEmitterAddress);
 
     console.log("getting signed VAA for token transfer");
@@ -120,6 +130,73 @@ describe("EthereumManager integration test", function () {
     await processVAAs(
       Buffer.from(genericMessagingVAA).toString("base64"),
       Buffer.from(tokenTransferVAA).toString("base64")
+    );
+
+    console.log("Successfully opened position.");
+
+    // Close position.
+    const positionId = 0;
+    const closeActionData = {
+      close_position: {
+        recipient: {
+          external_chain: {
+            recipient_chain: CHAIN_ID_ETHEREUM_ROPSTEN,
+            recipient: Buffer.from(
+              getEmitterAddressEth(ethWallet.address),
+              "hex"
+            ).toString("base64"),
+          },
+        },
+      },
+    };
+
+    console.log("close action data: ", closeActionData);
+
+    const encodedCloseActionData = utf8Encode.encode(
+      Buffer.from(JSON.stringify(closeActionData)).toString("base64")
+    );
+    console.log("encoded close action data: ", encodedCloseActionData);
+    let closePositionTX = await ethereumManager.executeStrategy(
+      positionId,
+      0,
+      ETH_UST_CONTRACT_ADDR,
+      0,
+      encodedCloseActionData.length,
+      encodedCloseActionData
+    );
+    let closeTXreceipt = await closePositionTX.wait();
+    console.log("close position tx receipt: ", closeTXreceipt);
+
+    let [genericMessagingCloseSeq] = parseSequencesFromLogEth(
+      closeTXreceipt,
+      ETH_WORMHOLE_ADDR
+    );
+    console.log("generic seq: ", genericMessagingCloseSeq);
+
+    console.log("getting signed VAA for generic messages.");
+    let genericMessagingCloseVAA = await getSignedVAAWithRetry(
+      CHAIN_ID_ETHEREUM_ROPSTEN,
+      ethManagerEmitterAddress,
+      genericMessagingCloseSeq
+    );
+
+    const terraRes = await processVAA(
+      Buffer.from(genericMessagingCloseVAA).toString("base64")
+    );
+    let terraWithdrawSeq = parseSequenceFromLogTerra(terraRes);
+    const terraTokenTransferVAABytes = await getSignedVAAWithRetry(
+      CHAIN_ID_TERRA,
+      await getEmitterAddressTerra(TERRA_TOKEN_BRIDGE_ADDR),
+      terraWithdrawSeq
+    );
+    console.log("Redeeming on ETH");
+
+    console.log(
+      await redeemOnEth(
+        ETH_TOKEN_BRIDGE_ADDR,
+        ethWallet,
+        terraTokenTransferVAABytes
+      )
     );
   });
 });

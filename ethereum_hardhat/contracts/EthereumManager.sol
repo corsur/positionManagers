@@ -139,42 +139,50 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint32 encodedActionLen,
         bytes calldata encodedAction
     ) internal {
-        // Transfer ERC-20 token from message sender to this contract.
-        SafeERC20.safeTransferFrom(
-            IERC20(token),
-            msg.sender,
-            address(this),
-            amount
-        );
-        // Allow wormhole to spend USTw from this contract.
-        SafeERC20.safeApprove(IERC20(token), WORMHOLE_TOKEN_BRIDGE, amount);
-        // Initiate token transfer.
-        uint64 tokenTransferSequence = WormholeTokenBridge(
-            WORMHOLE_TOKEN_BRIDGE
-        ).transferTokens(
-                token,
-                amount,
-                targetChainId,
-                TERRA_MANAGER_ADDRESS,
-                0,
-                TOKEN_TRANSFER_NONCE
+        uint64 tokenTransferSequence = 0;
+        if (amount != 0) {
+            // Transfer ERC-20 token from message sender to this contract.
+            SafeERC20.safeTransferFrom(
+                IERC20(token),
+                msg.sender,
+                address(this),
+                amount
             );
+            // Allow wormhole to spend USTw from this contract.
+            SafeERC20.safeApprove(IERC20(token), WORMHOLE_TOKEN_BRIDGE, amount);
+            // Initiate token transfer.
+            tokenTransferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
+                .transferTokens(
+                    token,
+                    amount,
+                    targetChainId,
+                    TERRA_MANAGER_ADDRESS,
+                    0,
+                    TOKEN_TRANSFER_NONCE
+                );
+        }
         // Send instruction message to Terra manager.
+        bytes memory payload = amount != 0
+            ? abi.encodePacked(
+                positionId,
+                targetChainId,
+                strategyId,
+                uint32(1),
+                tokenTransferSequence,
+                encodedActionLen,
+                encodedAction
+            )
+            : abi.encodePacked(
+                positionId,
+                targetChainId,
+                strategyId,
+                uint32(0),
+                encodedActionLen,
+                encodedAction
+            );
         WormholeCoreBridge(
             WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE).wormhole()
-        ).publishMessage(
-                INSTRUCTION_NONCE,
-                abi.encodePacked(
-                    positionId,
-                    targetChainId,
-                    strategyId,
-                    uint32(1),
-                    tokenTransferSequence,
-                    encodedActionLen,
-                    encodedAction
-                ),
-                CONSISTENCY_LEVEL
-            );
+        ).publishMessage(INSTRUCTION_NONCE, payload, CONSISTENCY_LEVEL);
     }
 
     function getPositions(address user)
