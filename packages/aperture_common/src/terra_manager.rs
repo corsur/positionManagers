@@ -1,4 +1,4 @@
-use crate::common::{Action, ChainId, Position, PositionId, Recipient, Strategy, StrategyLocation};
+use crate::common::{Action, ChainId, PositionId, Recipient, Strategy, StrategyLocation};
 use cosmwasm_std::{Binary, Decimal, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -8,55 +8,64 @@ pub static TERRA_CHAIN_ID: ChainId = 3;
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
+    pub admin_addr: String,
     pub wormhole_core_bridge_addr: String,
     pub wormhole_token_bridge_addr: String,
     pub cross_chain_outgoing_fee_rate: Decimal,
     pub cross_chain_outgoing_fee_collector_addr: String,
 }
 
-/// Terra manager is the entry point for a user to initiate an investment
-/// transaction. It is responsible for locating the underlying contract strategy
-/// manager address by utilizing Aperture registry, and delegate specific
-/// business logic to the strategy manager.
+/// Responsibilities of Aperture Terra manager:
+/// (1) Manage information about positions opened (and owned) by Terra addresses.
+/// (2) Manage information about positions that execute a Terra-chain strategy. Each position owner may be a Terra address or an external chain address.
+/// (3) Provide endpoints for cross-chain communication / token transfers via Wormhole.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    /// Add strategy with the specified manager address and metadata.
-    /// A new, unique identifier is assigned to this new strategy.
-    ///
-    /// Only contract owner may execute `AddStrategy`.
+    /// Add strategy with the specified strategy manager address and metadata.
+    /// A new, unique strategy_id is assigned to this strategy.
+    /// Can only be called by the administrator.
     AddStrategy {
         name: String,
         version: String,
         manager_addr: String,
     },
     /// Remove the strategy associated with the specified identifier.
-    ///
-    /// Only contract owner may execute `RemoveStrategy`.
+    /// Can only be called by the administrator.
     RemoveStrategy { strategy_id: Uint64 },
-    RegisterExternalChainManager {
-        chain_id: ChainId,
-        aperture_manager_addr: Vec<u8>,
-    },
     /// Perform an action on an existing positions held by a Terra address.
-    /// Only the position holder is able to call this.
+    /// Can only be called by the position holder.
     ExecuteStrategy {
-        position: Position,
+        position_id: PositionId,
         action: Action,
         assets: Vec<terraswap::asset::Asset>,
     },
     /// Create a new position with the specified strategy.
+    /// Can be called by any Terra address.
     CreatePosition {
         strategy: Strategy,
         data: Option<Binary>,
         assets: Vec<terraswap::asset::Asset>,
     },
+    /// Registers the address of Aperture manager contract on an external chain.
+    /// Can only be called by the administrator.
+    RegisterExternalChainManager {
+        chain_id: ChainId,
+        // Wormhole encoded address of the Aperture manager contract (length of 32).
+        aperture_manager_addr: Vec<u8>,
+    },
+    /// Processes a position action request instructed by an Aperture manager contract on an external chain.
+    /// This handles actions on Terra strategy positions held by external chain addresses.
+    /// Can be called by any Terra address.
     ProcessCrossChainInstruction {
         // VAA of an Aperture instruction message published by an external-chain Aperture manager.
         instruction_vaa: Binary,
-        // VAAs of the accompanying token transfers.
+        // VAAs of the accompanying token transfers, if any.
         token_transfer_vaas: Vec<Binary>,
     },
+    /// Initiates cross-chain transfer via Wormhole token bridge to an external chain, after deduction of fees (e.g. 0.1% of the transfer amount).
+    /// Although this can be called by any Terra address, this is only intended to be called by Aperture strategy contracts on Terra when outgoing cross-chain transfer is needed.
+    /// Other callers will want to directly use Worhole token bridge to initiate the transfer without Aperture fees.
     InitiateOutgoingTokenTransfer {
         assets: Vec<terraswap::asset::Asset>,
         recipient: Recipient,

@@ -26,10 +26,10 @@ use aperture_common::terra_manager::{
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    info: MessageInfo,
+    _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    ADMIN.save(deps.storage, &info.sender)?;
+    ADMIN.save(deps.storage, &deps.api.addr_validate(&msg.admin_addr)?)?;
     WORMHOLE_TOKEN_BRIDGE_ADDR.save(
         deps.storage,
         &deps.api.addr_validate(&msg.wormhole_token_bridge_addr)?,
@@ -71,10 +71,10 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             assets,
         } => create_position(deps, env, info, strategy, data, assets),
         ExecuteMsg::ExecuteStrategy {
-            position,
+            position_id,
             action,
             assets,
-        } => execute_strategy(deps.as_ref(), env, info, position, action, assets),
+        } => execute_strategy(deps.as_ref(), env, info, position_id, action, assets),
         ExecuteMsg::ProcessCrossChainInstruction {
             instruction_vaa,
             token_transfer_vaas,

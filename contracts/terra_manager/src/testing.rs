@@ -19,6 +19,7 @@ fn test_initialization() {
     // Explicit set env's contract address.
     env.contract.address = Addr::unchecked(MOCK_CONTRACT_ADDR);
     let msg = InstantiateMsg {
+        admin_addr: String::from("admin"),
         wormhole_core_bridge_addr: String::from("mock_wormhole_core_bridge"),
         wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
         cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
@@ -42,6 +43,7 @@ fn test_manipuate_strategy() {
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         InstantiateMsg {
+            admin_addr: MOCK_CONTRACT_ADDR.to_string(),
             wormhole_core_bridge_addr: String::from("mock_wormhole_core_bridge"),
             wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
             cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
@@ -134,6 +136,7 @@ fn test_create_position() {
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         InstantiateMsg {
+            admin_addr: MOCK_CONTRACT_ADDR.to_string(),
             wormhole_core_bridge_addr: String::from("mock_wormhole_core_bridge"),
             wormhole_token_bridge_addr: String::from("mock_wormhole_token_bridge"),
             cross_chain_outgoing_fee_rate: Decimal::from_ratio(1u128, 1000u128),
@@ -207,10 +210,7 @@ fn test_create_position() {
         mock_env(),
         mock_info(MOCK_CONTRACT_ADDR, &[]),
         ExecuteMsg::ExecuteStrategy {
-            position: Position {
-                chain_id: TERRA_CHAIN_ID,
-                position_id: Uint128::from(0u128),
-            },
+            position_id: Uint128::zero(),
             action: Action::ClosePosition {
                 recipient: Recipient::TerraChain {
                     recipient: MOCK_CONTRACT_ADDR.to_string(),

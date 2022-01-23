@@ -1,6 +1,6 @@
 use aperture_common::common::{
-    get_position_key, Action, Position, Strategy, StrategyId, StrategyLocation, StrategyMetadata,
-    StrategyPositionManagerExecuteMsg,
+    get_position_key, Action, Position, PositionId, Strategy, StrategyId, StrategyLocation,
+    StrategyMetadata, StrategyPositionManagerExecuteMsg,
 };
 use aperture_common::token_util::{
     forward_assets_direct, validate_and_accept_incoming_asset_transfer,
@@ -127,11 +127,11 @@ pub fn execute_strategy(
     deps: Deps,
     env: Env,
     info: MessageInfo,
-    position: Position,
+    position_id: PositionId,
     action: Action,
     assets: Vec<Asset>,
 ) -> StdResult<Response> {
-    let holder = POSITION_ID_TO_HOLDER.load(deps.storage, position.position_id.u128().into())?;
+    let holder = POSITION_ID_TO_HOLDER.load(deps.storage, U128Key::from(position_id.u128()))?;
     if holder != info.sender {
         return Err(StdError::generic_err("unauthorized"));
     }
@@ -140,7 +140,10 @@ pub fn execute_strategy(
             deps,
             env,
             Some(info),
-            position,
+            Position {
+                chain_id: TERRA_CHAIN_ID,
+                position_id,
+            },
             action,
             assets,
         )?),
