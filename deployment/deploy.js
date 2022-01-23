@@ -103,6 +103,7 @@ async function instantiate_terra_manager(terra_manager_id) {
         /*admin=*/ test_wallet.key.accAddress,
         terra_manager_id,
         {
+          admin_addr: test_wallet.key.accAddress,
           wormhole_token_bridge_addr: "terra1pseddrv0yfsn76u4zxrjmtf45kdlmalswdv39a",
           wormhole_core_bridge_addr: "terra1pd65m0q9tl3v8znnz5f5ltsfegyzah7g42cx5v",
           cross_chain_outgoing_fee_rate: "0.001",
@@ -196,7 +197,8 @@ async function instantiate_stable_yield_manager(
         {
           admin_addr: test_wallet.key.accAddress,
           terra_manager_addr: terra_manager_addr,
-          accrual_rate_per_block: "1.00000002987",
+          accrual_rate_per_period: "1.00000002987",
+          seconds_per_period: 6,
           anchor_market_addr: "terra15dwd5mj8v59wpj0wvt233mf5efdff808c5tkal",
           anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl"
         },
@@ -429,22 +431,18 @@ async function open_stable_yield_position(terra_manager_addr, ust_amount) {
   console.log("Opened delta-neutral position with ust amount: ", ust_amount.toString());
 }
 
-async function upload_and_migrate_terra_manager(terra_manager_addr) {
-  // Initialize sequence number.
+async function upload_and_migrate_contract(contract_addr) {
   await initializeSequence(test_wallet);
   console.log("Deploying using address: ", test_wallet.key.accAddress);
 
-  /******************************************/
-  /***** Store bytecode onto blockchain *****/
-  /******************************************/
-  const terra_manager_id = await store_code("../artifacts/terra_manager-aarch64.wasm");
-  console.log("terra_manager_id: ", terra_manager_id);
+  const new_code_id = await store_code("../artifacts/terra_manager-aarch64.wasm");
+  console.log("new code id: ", new_code_id);
 
-  await migrate_contract(terra_manager_addr, terra_manager_id);
-  console.log("terra_manager contract migrated.");
+  await migrate_contract(contract_addr, new_code_id);
+  console.log("contract migrated.");
 }
 
-// const terra_manager_addr = await deploy();
-// await open_delta_neutral_position(terra_manager_addr, 500);
-// await open_stable_yield_position(terra_manager_addr, 600);
-await upload_and_migrate_terra_manager('terra1uqryzpauak8tljlj9cl2gl99spgxqjvd008wvp');
+const terra_manager_addr = await deploy();
+await open_delta_neutral_position(terra_manager_addr, 500);
+await open_stable_yield_position(terra_manager_addr, 600);
+// await upload_and_migrate_contract('terra1uqryzpauak8tljlj9cl2gl99spgxqjvd008wvp');

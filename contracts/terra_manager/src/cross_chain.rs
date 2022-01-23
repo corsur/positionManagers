@@ -241,21 +241,17 @@ fn test_initiate_outgoing_token_transfer() {
         })
     );
 
-    // External chain recipient, but with a small transfer amount that results in zero fees.
-    let uusd_coin = Coin {
-        denom: String::from("uusd"),
-        amount: Uint128::from(999u128),
-    };
+    // External chain recipient, cw20 transfer, and with a small transfer amount that results in zero fees.
     let assets = vec![Asset {
         amount: Uint128::from(999u128),
-        info: AssetInfo::NativeToken {
-            denom: String::from("uusd"),
+        info: AssetInfo::Token {
+            contract_addr: String::from("terra1cw20"),
         },
     }];
     let response = initiate_outgoing_token_transfer(
         deps.as_ref(),
         mock_env(),
-        mock_info("sender", &[uusd_coin.clone()]),
+        mock_info("sender", &[]),
         assets.clone(),
         Recipient::ExternalChain {
             recipient_chain: 5,
@@ -263,29 +259,39 @@ fn test_initiate_outgoing_token_transfer() {
         },
     )
     .unwrap();
-    assert_eq!(response.messages.len(), 2);
+    assert_eq!(response.messages.len(), 3);
     assert_eq!(
         response.messages[0].msg,
         CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: String::from("wormhole_token_bridge"),
-            msg: to_binary(&WormholeTokenBridgeExecuteMsg::DepositTokens {}).unwrap(),
-            funds: vec![Coin {
-                denom: String::from("uusd"),
+            contract_addr: String::from("terra1cw20"),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::TransferFrom {
+                owner: String::from("sender"),
+                recipient: mock_env().contract.address.to_string(),
                 amount: Uint128::from(999u128)
-            }],
+            })
+            .unwrap(),
+            funds: vec![],
         })
     );
     assert_eq!(
         response.messages[1].msg,
         CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("terra1cw20"),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
+                spender: String::from("wormhole_token_bridge"),
+                amount: Uint128::from(999u128),
+                expires: None,
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        response.messages[2].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: String::from("wormhole_token_bridge"),
             msg: to_binary(&WormholeTokenBridgeExecuteMsg::InitiateTransfer {
-                asset: Asset {
-                    amount: Uint128::from(999u128),
-                    info: AssetInfo::NativeToken {
-                        denom: String::from("uusd")
-                    }
-                },
+                asset: assets[0].clone(),
                 recipient_chain: 5,
                 recipient: Binary::default(),
                 fee: Uint128::zero(),
@@ -574,6 +580,11 @@ fn get_parsed_vaa(deps: Deps, env: &Env, vaa: &Binary) -> StdResult<ParsedVAA> {
             block_time: env.block.time.seconds(),
         },
     )
+}
+
+#[test]
+fn test_process_cross_chain_instruction() {
+    
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

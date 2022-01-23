@@ -185,7 +185,7 @@ pub fn withdraw(
     proportion: Decimal,
     recipient: Recipient,
 ) -> StdResult<Response> {
-    if proportion.is_zero() || proportion >= Decimal::one() {
+    if proportion.is_zero() || proportion > Decimal::one() {
         return Err(StdError::generic_err("invalid proportion"));
     }
     let position_key = get_position_key(position);

@@ -130,7 +130,7 @@ fn test_manipuate_strategy() {
 fn test_create_position() {
     // Use customized querier enable wasm query. The built-in mock querier
     // doesn't support wasm query yet.
-    let mut deps = custom_mock_dependencies();
+    let mut deps = custom_mock_dependencies("wormhole_core_bridge");
     let _res = instantiate(
         deps.as_mut(),
         mock_env(),
