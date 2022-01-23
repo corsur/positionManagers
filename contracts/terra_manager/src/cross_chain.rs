@@ -143,7 +143,6 @@ fn test_initiate_outgoing_token_transfer() {
         amount: Uint128::from(1001u128),
     };
     let mut deps = mock_dependencies(&[uusd_coin.clone()]);
-    let info = mock_info("sender", &[uusd_coin.clone()]);
     let assets = vec![Asset {
         amount: Uint128::from(1001u128),
         info: AssetInfo::NativeToken {
@@ -155,7 +154,7 @@ fn test_initiate_outgoing_token_transfer() {
     let response = initiate_outgoing_token_transfer(
         deps.as_ref(),
         mock_env(),
-        info.clone(),
+        mock_info("sender", &[uusd_coin.clone()]),
         assets.clone(),
         Recipient::TerraChain {
             recipient: String::from("terra1recipient"),
@@ -166,12 +165,13 @@ fn test_initiate_outgoing_token_transfer() {
     assert_eq!(
         response.messages[0].msg,
         CosmosMsg::Bank(BankMsg::Send {
-            amount: vec![uusd_coin],
+            amount: vec![uusd_coin.clone()],
             to_address: String::from("terra1recipient")
         })
     );
 
     // External chain recipient.
+    // With a fee rate of 0.1%, the 1001 uusd transfer results in a fee in the amount of 1 uusd; the remaining 1000 uusd transfer is initiated.
     CROSS_CHAIN_OUTGOING_FEE_CONFIG
         .save(
             deps.as_mut().storage,
@@ -190,7 +190,7 @@ fn test_initiate_outgoing_token_transfer() {
     let response = initiate_outgoing_token_transfer(
         deps.as_ref(),
         mock_env(),
-        info,
+        mock_info("sender", &[uusd_coin.clone()]),
         assets.clone(),
         Recipient::ExternalChain {
             recipient_chain: 5,
@@ -240,6 +240,61 @@ fn test_initiate_outgoing_token_transfer() {
             funds: vec![],
         })
     );
+
+    // External chain recipient, but with a small transfer amount that results in zero fees.
+    let uusd_coin = Coin {
+        denom: String::from("uusd"),
+        amount: Uint128::from(999u128),
+    };
+    let assets = vec![Asset {
+        amount: Uint128::from(999u128),
+        info: AssetInfo::NativeToken {
+            denom: String::from("uusd"),
+        },
+    }];
+    let response = initiate_outgoing_token_transfer(
+        deps.as_ref(),
+        mock_env(),
+        mock_info("sender", &[uusd_coin.clone()]),
+        assets.clone(),
+        Recipient::ExternalChain {
+            recipient_chain: 5,
+            recipient: Binary::default(),
+        },
+    )
+    .unwrap();
+    assert_eq!(response.messages.len(), 2);
+    assert_eq!(
+        response.messages[0].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("wormhole_token_bridge"),
+            msg: to_binary(&WormholeTokenBridgeExecuteMsg::DepositTokens {}).unwrap(),
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(999u128)
+            }],
+        })
+    );
+    assert_eq!(
+        response.messages[1].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("wormhole_token_bridge"),
+            msg: to_binary(&WormholeTokenBridgeExecuteMsg::InitiateTransfer {
+                asset: Asset {
+                    amount: Uint128::from(999u128),
+                    info: AssetInfo::NativeToken {
+                        denom: String::from("uusd")
+                    }
+                },
+                recipient_chain: 5,
+                recipient: Binary::default(),
+                fee: Uint128::zero(),
+                nonce: 0,
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
 }
 
 pub fn register_external_chain_manager(
@@ -257,6 +312,37 @@ pub fn register_external_chain_manager(
         &aperture_manager_addr,
     )?;
     Ok(Response::default())
+}
+
+#[test]
+fn test_register_external_chain_manager() {
+    use cosmwasm_std::testing::{mock_dependencies, mock_info};
+    use cosmwasm_std::Addr;
+
+    let mut deps = mock_dependencies(&[]);
+    ADMIN
+        .save(deps.as_mut().storage, &Addr::unchecked("admin"))
+        .unwrap();
+
+    // Unauthorized call.
+    assert_eq!(
+        register_external_chain_manager(deps.as_mut(), mock_info("sender", &[]), 1, vec![3, 2, 1])
+            .unwrap_err(),
+        StdError::generic_err("unauthorized")
+    );
+
+    // Authorized call.
+    assert_eq!(
+        register_external_chain_manager(deps.as_mut(), mock_info("admin", &[]), 1, vec![3, 2, 1])
+            .unwrap(),
+        Response::default()
+    );
+    assert_eq!(
+        CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP
+            .load(deps.as_ref().storage, U16Key::from(1))
+            .unwrap(),
+        vec![3, 2, 1]
+    );
 }
 
 /// Processes an instruction published by Aperture manager on another chain.
