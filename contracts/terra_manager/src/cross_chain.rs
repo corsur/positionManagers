@@ -132,6 +132,116 @@ pub fn initiate_outgoing_token_transfer(
     Ok(response)
 }
 
+#[test]
+fn test_initiate_outgoing_token_transfer() {
+    use crate::state::CrossChainOutgoingFeeConfig;
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::{Addr, BankMsg, Decimal};
+
+    let uusd_coin = Coin {
+        denom: String::from("uusd"),
+        amount: Uint128::from(1001u128),
+    };
+    let mut deps = mock_dependencies(&[uusd_coin.clone()]);
+    let info = mock_info("sender", &[uusd_coin.clone()]);
+    let assets = vec![Asset {
+        amount: Uint128::from(1001u128),
+        info: AssetInfo::NativeToken {
+            denom: String::from("uusd"),
+        },
+    }];
+
+    // Terra chain recipient.
+    let response = initiate_outgoing_token_transfer(
+        deps.as_ref(),
+        mock_env(),
+        info.clone(),
+        assets.clone(),
+        Recipient::TerraChain {
+            recipient: String::from("terra1recipient"),
+        },
+    )
+    .unwrap();
+    assert_eq!(response.messages.len(), 1);
+    assert_eq!(
+        response.messages[0].msg,
+        CosmosMsg::Bank(BankMsg::Send {
+            amount: vec![uusd_coin],
+            to_address: String::from("terra1recipient")
+        })
+    );
+
+    // External chain recipient.
+    CROSS_CHAIN_OUTGOING_FEE_CONFIG
+        .save(
+            deps.as_mut().storage,
+            &CrossChainOutgoingFeeConfig {
+                rate: Decimal::from_ratio(1u128, 1000u128),
+                fee_collector_addr: Addr::unchecked("terra1collector"),
+            },
+        )
+        .unwrap();
+    WORMHOLE_TOKEN_BRIDGE_ADDR
+        .save(
+            deps.as_mut().storage,
+            &Addr::unchecked("wormhole_token_bridge"),
+        )
+        .unwrap();
+    let response = initiate_outgoing_token_transfer(
+        deps.as_ref(),
+        mock_env(),
+        info,
+        assets.clone(),
+        Recipient::ExternalChain {
+            recipient_chain: 5,
+            recipient: Binary::default(),
+        },
+    )
+    .unwrap();
+    assert_eq!(response.messages.len(), 3);
+    assert_eq!(
+        response.messages[0].msg,
+        CosmosMsg::Bank(BankMsg::Send {
+            amount: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(1u128)
+            }],
+            to_address: String::from("terra1collector")
+        })
+    );
+    assert_eq!(
+        response.messages[1].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("wormhole_token_bridge"),
+            msg: to_binary(&WormholeTokenBridgeExecuteMsg::DepositTokens {}).unwrap(),
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(1000u128)
+            }],
+        })
+    );
+    assert_eq!(
+        response.messages[2].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("wormhole_token_bridge"),
+            msg: to_binary(&WormholeTokenBridgeExecuteMsg::InitiateTransfer {
+                asset: Asset {
+                    amount: Uint128::from(1000u128),
+                    info: AssetInfo::NativeToken {
+                        denom: String::from("uusd")
+                    }
+                },
+                recipient_chain: 5,
+                recipient: Binary::default(),
+                fee: Uint128::zero(),
+                nonce: 0,
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+}
+
 pub fn register_external_chain_manager(
     deps: DepsMut,
     info: MessageInfo,
@@ -149,6 +259,30 @@ pub fn register_external_chain_manager(
     Ok(Response::default())
 }
 
+/// Processes an instruction published by Aperture manager on another chain.
+///
+/// The instruction is a generic message published by the external-chain Aperture manager via Wormhole.
+/// If the instruction carries a position action that requires token transfers, e.g. position open or increase,
+/// the associated token transfers, via Wormhole token bridge, are provided by `token_transfer_vaas`.
+/// The instruction message payload encodes sufficient information for us to verify that these token transfers
+/// are intended to be consumed to fulfill this particular instruction.
+///
+/// Format of the instruction message payload:
+/// starting byte index | # of bytes | parsed field type | field name          | comment
+///          0          |     16     |       u128        | position_id         |
+///         16          |      2     |        u16        | strategy_chain      |
+///         18          |      8     |        u64        | strategy_id         | Only used for open_position action
+///         26          |      4     |        u32        | num_token_transfers | Name this NTT for short
+///         30          |    8 * NTT |     u64 * NTT     | token_transfer_seq  | Sequence numbers of these NTT transfers
+///     30 + 8 * NTT    |      4     |        u32        | encoded_action_len  | Length of encoded action string. Name this EAL for short.
+///     34 + 8 * NTT    |    1 * EAL |      u8 * EAL     | encoded_action      | Action enum's JSON-encoded string in base 64.
+///
+/// Validation criteria for the instruction message:
+/// (1) Emitter address is the registered Aperture manager address for the emitter chain.
+///     Registration is performed by the administrator via register_external_chain_manager().
+/// (2) This particular instruction has not been successfully processed before. This prevents replay of the same instruction multiple times.
+/// (3) The `strategy_chain` field is populated with TERRA_CHAIN_ID, showing that this instruction is intended for the Terra Aperture manager.
+/// (4) Attached token transfer sequence numbers match the token transfer VAAs, in the same order.
 pub fn process_cross_chain_instruction(
     deps: DepsMut,
     env: Env,
@@ -212,7 +346,11 @@ pub fn process_cross_chain_instruction(
             token_transfer_vaa,
         )?);
 
-        // Attempt to complete the transfer; no-op if this transfer has already been completed.
+        // Attempt to complete the transfer; no-op if this transfer has already been completed successfully.
+        // If someone has already independently submitted this token transfer's VAA and completed this transfer,
+        // then the token amount has already been added to this contract's balance, so we should treat this situation
+        // as a success in reply() and proceed to fulfilling the instruction.
+        // We should revert this transaction when WormholeTokenBridgeExecuteMsg::SubmitVaa returns any other error.
         response = response.add_submessage(SubMsg {
             id: TOKEN_TRANSFER_SUBMIT_VAA_MSG_ID,
             msg: CosmosMsg::Wasm(WasmMsg::Execute {
@@ -258,6 +396,13 @@ pub fn process_cross_chain_instruction(
     }
 }
 
+/// Validation criteria for a token transfer message:
+/// (1) Emitter address is the registered Wormhole token bridge address on the emitter chain.
+///     This validation is performed by Wormhole token bridge Terra contract when completing the transfer, so there is no need for us to validate this again.
+/// (2) Emitter chain is the same as the emitter chain of the instruction.
+/// (3) The sequence number of this token transfer VAA matches what's encoded in the instruction.
+/// (4) The recipient address is that of Aperture Terra manager (this contract).
+/// (5) The transfered token is a Terra token.
 fn process_token_transfer_message(
     deps: Deps,
     env: &Env,
@@ -271,9 +416,6 @@ fn process_token_transfer_message(
             "unexpected token transfer emitter chain",
         ));
     }
-
-    // NOTE: no need to validate the emitter address; this is automatically done
-    // when trying to complete the transfer
     if expected_sequence != parsed_token_transfer_vaa.sequence {
         return Err(StdError::generic_err("unexpected token transfer sequence"));
     }
@@ -303,9 +445,13 @@ fn parse_token_transfer_asset(deps: Deps, transfer_info: TransferInfo) -> StdRes
     let (_, fee) = transfer_info.fee;
     amount = amount.checked_sub(fee).unwrap();
 
+    // See https://github.com/certusone/wormhole/blob/c2a879ec7cbafffe9e2d4c037a78123f7d0f7df2/terra/contracts/token-bridge/src/contract.rs#L632
+    // for information on how Wormhole token bridge encodes Terra native and cw20 tokens.
     static WORMHOLE_TERRA_NATIVE_TOKEN_INDICATOR: u8 = 1;
     let asset =
         if transfer_info.token_address.as_slice()[0] == WORMHOLE_TERRA_NATIVE_TOKEN_INDICATOR {
+            // See https://github.com/certusone/wormhole/blob/c2a879ec7cbafffe9e2d4c037a78123f7d0f7df2/terra/contracts/token-bridge/src/contract.rs#L810
+            // for information on how Wormhole token bridge decodes a Terra native token's denomination.
             let mut token_address = transfer_info.token_address;
             let token_address = token_address.as_mut_slice();
             token_address[0] = 0;
@@ -318,6 +464,8 @@ fn parse_token_transfer_asset(deps: Deps, transfer_info: TransferInfo) -> StdRes
                 amount: Uint128::from(amount),
             }
         } else {
+            // See https://github.com/certusone/wormhole/blob/c2a879ec7cbafffe9e2d4c037a78123f7d0f7df2/terra/contracts/token-bridge/src/contract.rs#L724
+            // for information on how Wormhole token bridge decodes a Terra cw20 token address.
             Asset {
                 info: AssetInfo::Token {
                     contract_addr: deps
@@ -356,6 +504,7 @@ pub fn reply(_deps: DepsMut, _env: Env, msg: Reply) -> StdResult<Response> {
             Err(StdError::generic_err(err))
         }
     } else {
+        // Since we chose to only reply on error, this should never happen.
         Err(StdError::generic_err("unexpected success reply msg"))
     }
 }
