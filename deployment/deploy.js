@@ -198,7 +198,7 @@ async function instantiate_stable_yield_manager(
           admin_addr: test_wallet.key.accAddress,
           terra_manager_addr: terra_manager_addr,
           accrual_rate_per_period: "1.00000002987",
-          seconds_per_period: 6,
+          seconds_per_period: 30,
           anchor_market_addr: "terra15dwd5mj8v59wpj0wvt233mf5efdff808c5tkal",
           anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl"
         },

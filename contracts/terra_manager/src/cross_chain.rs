@@ -583,8 +583,93 @@ fn get_parsed_vaa(deps: Deps, env: &Env, vaa: &Binary) -> StdResult<ParsedVAA> {
 }
 
 #[test]
-fn test_process_cross_chain_instruction() {
-    
+fn test_process_cross_chain_instruction_close_position() {
+    use crate::mock_querier::custom_mock_dependencies;
+    use crate::state::{POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP};
+    use aperture_common::common::{
+        get_position_key, StrategyLocation, StrategyPositionManagerExecuteMsg,
+    };
+    use cosmwasm_std::testing::mock_env;
+    use cosmwasm_std::{Addr, Uint64};
+    use cw_storage_plus::U64Key;
+
+    let mut deps = custom_mock_dependencies("wormhole_core_bridge");
+    WORMHOLE_CORE_BRIDGE_ADDR
+        .save(
+            deps.as_mut().storage,
+            &Addr::unchecked("wormhole_core_bridge"),
+        )
+        .unwrap();
+    WORMHOLE_TOKEN_BRIDGE_ADDR
+        .save(
+            deps.as_mut().storage,
+            &Addr::unchecked("wormhole_token_bridge"),
+        )
+        .unwrap();
+    CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP
+        .save(
+            deps.as_mut().storage,
+            U16Key::from(10001),
+            &vec![
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 106, 233, 112, 219, 235, 53, 127, 85, 58, 144,
+                106, 20, 222, 5, 18, 37, 187, 26, 238, 73,
+            ],
+        )
+        .unwrap();
+    POSITION_TO_STRATEGY_LOCATION_MAP
+        .save(
+            deps.as_mut().storage,
+            get_position_key(&Position {
+                chain_id: 10001,
+                position_id: Uint128::zero(),
+            }),
+            &StrategyLocation::TerraChain(Uint64::zero()),
+        )
+        .unwrap();
+    STRATEGY_ID_TO_METADATA_MAP
+        .save(
+            deps.as_mut().storage,
+            U64Key::from(0),
+            &aperture_common::common::StrategyMetadata {
+                name: String::from("DN"),
+                version: String::from("v0"),
+                manager_addr: Addr::unchecked("strategy_manager"),
+            },
+        )
+        .unwrap();
+
+    let response = process_cross_chain_instruction(
+        deps.as_mut(),
+        mock_env(),
+        Binary::from_base64("AQAAAAABAFLbAJeL535FIPx9E5lq8H6aNUubBKJr2zRm0QlOmx4hT3fwD0mYf5IUTnjtw4oV+/1iIgkUahYzyYULRbV60KUAYeysZwAUNfQnEQAAAAAAAAAAAAAAAGrpcNvrNX9VOpBqFN4FEiW7Gu5JAAAAAAAAAAEBAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAuGV5SmpiRzl6WlY5d2IzTnBkR2x2YmlJNmV5SnlaV05wY0dsbGJuUWlPbnNpWlhoMFpYSnVZV3hmWTJoaGFXNGlPbnNpY21WamFYQnBaVzUwWDJOb1lXbHVJam94TURBd01Td2ljbVZqYVhCcFpXNTBJam9pUVVGQlFVRkJRVUZCUVVGQlFVRkJRV0ZLYkdoWlNUQjBZMFZtTVZGU0syUnJRVlJWVVVWVFkzWlRZejBpZlgxOWZRPT0=").unwrap(),
+        vec![],
+    )
+    .unwrap();
+    assert_eq!(response.messages.len(), 1);
+    assert_eq!(
+        response.messages[0].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("strategy_manager"),
+            msg: to_binary(&StrategyPositionManagerExecuteMsg::PerformAction {
+                position: Position {
+                    chain_id: 10001,
+                    position_id: Uint128::zero(),
+                },
+                action: Action::ClosePosition {
+                    recipient: Recipient::ExternalChain {
+                        recipient_chain: 10001,
+                        recipient: Binary(vec![
+                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 153, 97, 96, 141, 45, 112, 71,
+                            245, 65, 31, 157, 144, 4, 212, 64, 68, 156, 189, 39
+                        ]),
+                    }
+                },
+                assets: vec![],
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

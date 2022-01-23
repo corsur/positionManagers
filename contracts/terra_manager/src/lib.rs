@@ -4,7 +4,7 @@ pub mod state;
 pub mod terra_chain;
 
 #[cfg(test)]
-mod testing;
+mod contract_test;
 
 #[cfg(test)]
 mod mock_querier;
