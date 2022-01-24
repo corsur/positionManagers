@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 use aperture_common::{
     delta_neutral_position::{
-        DetailedPositionInfo, InternalExecuteMsg, PositionInfoResponse, PositionState,
-        TargetCollateralRatioRange, TerraswapPoolInfo,
+        DetailedPositionInfo, PositionInfoResponse, PositionState, TargetCollateralRatioRange,
+        TerraswapPoolInfo,
     },
     delta_neutral_position_manager::Context,
 };
@@ -16,14 +16,14 @@ use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::{
-    contract::create_internal_execute_message,
     dex_util::{
         compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info,
         get_terraswap_mirror_asset_uusd_liquidity_info, simulate_terraswap_swap,
     },
     math::{decimal_division, reverse_decimal},
     state::{
-        POSITION_CLOSE_INFO, POSITION_INFO, POSITION_OPEN_INFO, TARGET_COLLATERAL_RATIO_RANGE,
+        CDP_IDX, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
+        TARGET_COLLATERAL_RATIO_RANGE,
     },
 };
 
@@ -60,11 +60,10 @@ pub fn get_cdp_uusd_lock_info_result(
     deps: Deps,
     context: &Context,
 ) -> StdResult<mirror_protocol::lock::PositionLockInfoResponse> {
-    let position_info = POSITION_INFO.load(deps.storage)?;
     deps.querier.query_wasm_smart(
         &context.mirror_lock_addr,
         &mirror_protocol::lock::QueryMsg::PositionLockInfo {
-            position_idx: position_info.cdp_idx,
+            position_idx: CDP_IDX.load(deps.storage)?,
         },
     )
 }
@@ -205,7 +204,6 @@ pub fn find_collateral_uusd_amount(
             }],
         }))
         .add_messages(open_or_increase_cdp(
-            env,
             context,
             collateral_ratio,
             collateral_anchor_ust_amount,
@@ -233,7 +231,6 @@ pub fn find_collateral_uusd_amount(
 }
 
 fn open_or_increase_cdp(
-    env: &Env,
     context: &Context,
     collateral_ratio: Decimal,
     collateral_anchor_ust_amount: Uint128,
@@ -242,32 +239,24 @@ fn open_or_increase_cdp(
     cdp_idx: Option<Uint128>,
 ) -> StdResult<Vec<CosmosMsg>> {
     match cdp_idx {
-        None => Ok(vec![
-            CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: context.anchor_ust_cw20_addr.to_string(),
-                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                    contract: context.mirror_mint_addr.to_string(),
-                    amount: collateral_anchor_ust_amount,
-                    msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
-                        asset_info: AssetInfo::Token {
-                            contract_addr: mirror_asset_cw20_addr.clone(),
-                        },
-                        collateral_ratio,
-                        short_params: Some(mirror_protocol::mint::ShortParams {
-                            belief_price: None,
-                            max_spread: None,
-                        }),
-                    })?,
+        None => Ok(vec![CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: context.anchor_ust_cw20_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: context.mirror_mint_addr.to_string(),
+                amount: collateral_anchor_ust_amount,
+                msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
+                    asset_info: AssetInfo::Token {
+                        contract_addr: mirror_asset_cw20_addr,
+                    },
+                    collateral_ratio,
+                    short_params: Some(mirror_protocol::mint::ShortParams {
+                        belief_price: None,
+                        max_spread: None,
+                    }),
                 })?,
-                funds: vec![],
-            }),
-            create_internal_execute_message(
-                env,
-                InternalExecuteMsg::RecordPositionInfo {
-                    mirror_asset_cw20_addr,
-                },
-            ),
-        ]),
+            })?,
+            funds: vec![],
+        })]),
         Some(position_idx) => Ok(vec![
             CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: context.anchor_ust_cw20_addr.to_string(),
@@ -300,12 +289,11 @@ fn open_or_increase_cdp(
 }
 
 pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult<PositionState> {
-    let position_info = POSITION_INFO.load(deps.storage)?;
     let position_response: mirror_protocol::mint::PositionResponse =
         deps.querier.query_wasm_smart(
             &context.mirror_mint_addr,
             &mirror_protocol::mint::QueryMsg::Position {
-                position_idx: position_info.cdp_idx,
+                position_idx: CDP_IDX.load(deps.storage)?,
             },
         )?;
     let collateral_price_response: CollateralPriceResponse = deps.querier.query_wasm_smart(
@@ -316,23 +304,23 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         },
     )?;
 
+    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
     let spectrum_info: spectrum_protocol::mirror_farm::RewardInfoResponse =
         deps.querier.query_wasm_smart(
             context.spectrum_mirror_farms_addr.to_string(),
             &spectrum_protocol::mirror_farm::QueryMsg::reward_info {
                 staker_addr: env.contract.address.to_string(),
-                asset_token: Some(position_info.mirror_asset_cw20_addr.to_string()),
+                asset_token: Some(mirror_asset_cw20_addr.to_string()),
             },
         )?;
     let mut terraswap_pool_info: Option<TerraswapPoolInfo> = None;
     let mut uusd_long_farm = Uint128::zero();
     let mut mirror_asset_long_farm = Uint128::zero();
     for info in spectrum_info.reward_infos.iter() {
-        if info.asset_token == position_info.mirror_asset_cw20_addr {
+        if info.asset_token == mirror_asset_cw20_addr {
             let lp_token_amount = info.bond_amount;
 
-            let asset_infos =
-                create_terraswap_cw20_uusd_pair_asset_info(&position_info.mirror_asset_cw20_addr);
+            let asset_infos = create_terraswap_cw20_uusd_pair_asset_info(&mirror_asset_cw20_addr);
             let terraswap_pair_info = terraswap::querier::query_pair_info(
                 &deps.querier,
                 context.terraswap_factory_addr.clone(),
@@ -368,7 +356,7 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
 
     let mirror_asset_balance = terraswap::querier::query_token_balance(
         &deps.querier,
-        position_info.mirror_asset_cw20_addr.clone(),
+        mirror_asset_cw20_addr.clone(),
         env.contract.address.clone(),
     )?;
     let state = PositionState {
@@ -384,11 +372,10 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         mirror_asset_long_amount: mirror_asset_balance.checked_add(mirror_asset_long_farm)?,
         collateral_anchor_ust_amount: position_response.collateral.amount,
         collateral_uusd_value: position_response.collateral.amount * collateral_price_response.rate,
-        mirror_asset_cw20_addr: position_info.mirror_asset_cw20_addr.clone(),
         mirror_asset_oracle_price: get_mirror_asset_oracle_uusd_price(
             &deps.querier,
             context,
-            position_info.mirror_asset_cw20_addr.as_str(),
+            mirror_asset_cw20_addr.as_str(),
         )?,
         anchor_ust_oracle_price: collateral_price_response.rate,
         terraswap_pool_info,
@@ -399,6 +386,7 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
 pub fn unstake_lp_and_withdraw_liquidity(
     state: &PositionState,
     context: &Context,
+    mirror_asset_cw20_addr: &Addr,
     withdraw_lp_token_amount: Uint128,
 ) -> Vec<CosmosMsg> {
     vec![
@@ -406,7 +394,7 @@ pub fn unstake_lp_and_withdraw_liquidity(
             contract_addr: context.spectrum_mirror_farms_addr.to_string(),
             funds: vec![],
             msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::unbond {
-                asset_token: state.mirror_asset_cw20_addr.to_string(),
+                asset_token: mirror_asset_cw20_addr.to_string(),
                 amount: withdraw_lp_token_amount,
             })
             .unwrap(),
@@ -437,6 +425,7 @@ pub fn unstake_lp_and_withdraw_liquidity(
 pub fn increase_mirror_asset_balance_from_long_farm(
     state: &PositionState,
     context: &Context,
+    mirror_asset_cw20_addr: &Addr,
     target_mirror_asset_balance: Uint128,
 ) -> Vec<CosmosMsg> {
     if target_mirror_asset_balance <= state.mirror_asset_balance {
@@ -449,7 +438,12 @@ pub fn increase_mirror_asset_balance_from_long_farm(
         .unwrap()
         .lp_token_amount
         .multiply_ratio(withdraw_mirror_asset_amount, state.mirror_asset_long_farm);
-    unstake_lp_and_withdraw_liquidity(state, context, withdraw_lp_token_amount)
+    unstake_lp_and_withdraw_liquidity(
+        state,
+        context,
+        mirror_asset_cw20_addr,
+        withdraw_lp_token_amount,
+    )
 }
 
 pub fn increase_uusd_balance_from_aust_collateral(
@@ -551,7 +545,8 @@ pub fn query_position_info(
     let mut response = PositionInfoResponse {
         position_open_info: POSITION_OPEN_INFO.load(deps.storage)?,
         position_close_info: POSITION_CLOSE_INFO.may_load(deps.storage)?,
-        mirror_asset_cw20_addr: POSITION_INFO.load(deps.storage)?.mirror_asset_cw20_addr,
+        cdp_idx: CDP_IDX.load(deps.storage)?,
+        mirror_asset_cw20_addr: MIRROR_ASSET_CW20_ADDR.load(deps.storage)?,
         detailed_info: None,
     };
     if response.position_close_info.is_some() {
@@ -602,7 +597,7 @@ pub fn query_position_info(
             value = value.checked_add(find_cw20_token_uusd_value(
                 &deps.querier,
                 &context.terraswap_factory_addr,
-                &state.mirror_asset_cw20_addr,
+                &MIRROR_ASSET_CW20_ADDR.load(deps.storage)?,
                 net_long_amount,
             )?)?;
         }
@@ -612,7 +607,7 @@ pub fn query_position_info(
                 get_terraswap_mirror_asset_uusd_liquidity_info(
                     deps,
                     &context.terraswap_factory_addr,
-                    &state.mirror_asset_cw20_addr,
+                    &MIRROR_ASSET_CW20_ADDR.load(deps.storage)?,
                 )?;
             value = value.checked_sub(compute_terraswap_offer_amount(
                 pool_mirror_asset_amount,

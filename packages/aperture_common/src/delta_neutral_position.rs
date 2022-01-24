@@ -25,9 +25,6 @@ pub enum InternalExecuteMsg {
         proportion: Decimal,
         recipient: Recipient,
     },
-    RecordPositionInfo {
-        mirror_asset_cw20_addr: String,
-    },
     PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
     StakeTerraswapLpTokens {
         lp_token_cw20_addr: String,
@@ -102,8 +99,6 @@ pub struct PositionState {
     pub collateral_anchor_ust_amount: Uint128,
     // Value of aUST colleteral in uusd.
     pub collateral_uusd_value: Uint128,
-    // Address of the mAsset cw20 contract.
-    pub mirror_asset_cw20_addr: Addr,
     // Oracle price of the mAsset.
     pub mirror_asset_oracle_price: Decimal,
     // Oracle price of aUST.
@@ -152,6 +147,7 @@ pub struct DetailedPositionInfo {
 pub struct PositionInfoResponse {
     pub position_open_info: PositionActionInfo,
     pub position_close_info: Option<PositionActionInfo>,
+    pub cdp_idx: Uint128,
     pub mirror_asset_cw20_addr: Addr,
     pub detailed_info: Option<DetailedPositionInfo>,
 }
