@@ -67,6 +67,23 @@ function getStableYieldOpenRequest() {
   return encodedActionData;
 }
 
+function getDeltaNeutralOpenRequest() {
+  const deltaNeutralParams = {
+    target_min_collateral_ratio: "2.3",
+    target_max_collateral_ratio: "2.7",
+    mirror_asset_cw20_addr: "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx",
+  };
+  const actionData = {
+    open_position: {
+      data: Buffer.from(JSON.stringify(deltaNeutralParams)).toString("base64"),
+    },
+  };
+  const encodedActionData = utf8Encode.encode(
+    Buffer.from(JSON.stringify(actionData)).toString("base64")
+  );
+  return encodedActionData;
+}
+
 function getStableYieldIncreaseRequest() {
   const encodedIncreasePostionActionData = utf8Encode.encode(
     Buffer.from(
@@ -165,4 +182,5 @@ module.exports = {
   getStableYieldIncreaseRequest: getStableYieldIncreaseRequest,
   getCloseRequest: getCloseRequest,
   getVAA: getVAA,
+  getDeltaNeutralOpenRequest: getDeltaNeutralOpenRequest,
 };

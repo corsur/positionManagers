@@ -32,7 +32,7 @@ const {
   getVAA,
 } = require("../utils/helpers.js");
 
-describe.only("Stable yield integration", function () {
+describe("Stable yield integration", function () {
   it("Should initiate Ethereum cross-chain tx and trigger Terra tx", async function () {
     const ethereumManager = await deployEthereumManager();
     console.log(
