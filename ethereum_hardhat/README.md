@@ -14,13 +14,18 @@ npm install
 ```
 
 ## Deploy Prerequisite
-Deployment of `EthereumManager` needs reference to `TerraManager`'s address. This package relies on the `TERRA_MANAGER_ADDR` from `constants.js`. To use a new `TerraManager`, please update the value in `constants.js`. To deploy a new `TerraManager`, please refer to the parent directory `deployment` and follow the instructions there.
+
+Deployment of `EthereumManager` needs reference to `TerraManager`'s address. This package relies on the `TERRA_MANAGER_ADDR` from `constants.js`. To use a new `TerraManager`, please update the value in `constants.js`
+
+- To compile `TerraManager`, please follow the top level `README` instructions.
+- To deploy a new `TerraManager`, please refer to the parent directory `deployment` and follow the instructions there.
 
 ## Deploy
 
 ```shell
 npx hardhat run scripts/deploy.js --network <network_name>
 ```
+
 Where `network_name` can be any of the networks listed under `hardhat.config.js`. This will execute the script based on the specified blockchain network.
 
 ## Upgrade
@@ -34,7 +39,6 @@ npx hardhat run scripts/upgrade.js --network <network_name>
 ```shell
 npx hardhat run scripts/deploy.js --network <network_name>
 ```
-
 
 ## Testing
 
