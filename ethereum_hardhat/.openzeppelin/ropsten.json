@@ -360,6 +360,11 @@
       "address": "0xADf3c19b650AFC370E323e08204Cb79Ce74bf7d3",
       "txHash": "0x669ec0b0ec10b7245d4a3057b0193a15153665154fb0490880f2f5202acee218",
       "kind": "uups"
+    },
+    {
+      "address": "0x33f7E3B6F3DE30E642081710EA20c00f3B529240",
+      "txHash": "0x4082ca2fc9ec4bb685be9c5aa5457d4486465fbd1978ccc79d6d4c77a6405ba7",
+      "kind": "uups"
     }
   ],
   "impls": {

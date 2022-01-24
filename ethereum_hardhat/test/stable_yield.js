@@ -1,4 +1,3 @@
-const { ethers, upgrades } = require("hardhat");
 const {
   ETH_UST_CONTRACT_ADDR,
   ETH_TOKEN_BRIDGE_ADDR,
@@ -12,7 +11,6 @@ const {
   getEmitterAddressEth,
   getEmitterAddressTerra,
   hexToUint8Array,
-  parseSequencesFromLogEth,
   parseSequenceFromLogTerra,
   redeemOnEth,
 } = require("@certusone/wormhole-sdk");
