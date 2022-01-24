@@ -7,10 +7,15 @@ use crate::common::{Action, Position};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct InstantiateMsg {
+    // Administrator address.
     pub admin_addr: String,
+    // Aperture manager (Terra) address.
     pub terra_manager_addr: String,
+    // Code id for delta-neutral position contract.
     pub delta_neutral_position_code_id: u64,
+    // Controller address. Only this address is allowed to trigger rebalance & reinvest.
     pub controller: String,
+    // Below are contract addresses that a delta-neutral position contract needs to interact with.
     pub anchor_ust_cw20_addr: String,
     pub mirror_cw20_addr: String,
     pub spectrum_cw20_addr: String,
@@ -25,12 +30,15 @@ pub struct InstantiateMsg {
     pub spectrum_staker_addr: String,
     pub terraswap_factory_addr: String,
     pub astroport_factory_addr: String,
+    // Each mAsset has a minimum required collateral ratio threshold.
+    // The user-specified minimum target collateral ratio must exceed the threshold by at least `collateral_ratio_safety_margin`.
+    // See also `DeltaNeutralParams` below for more context.
     pub collateral_ratio_safety_margin: Decimal,
+    // The minimum allowed uusd amount when opening a delta-neutral position.
     pub min_delta_neutral_uusd_amount: Uint128,
     pub fee_collection_config: FeeCollectionConfig,
 }
 
-/// Internal execute messages that will only be processed if sent from the contract itself.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InternalExecuteMsg {
@@ -41,8 +49,6 @@ pub enum InternalExecuteMsg {
     },
 }
 
-/// List of actions available on this particular strategy. The specific enums
-/// are inherited/copied from the Aperture common package.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
@@ -117,15 +123,22 @@ pub struct Context {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct FeeCollectionConfig {
+    // Performance fee rate. We periodically collect fees from positions; this fee rate is applied to the net uusd value gain since the previous fee collection.
     pub performance_rate: Decimal,
-    pub treasury_addr: String,
+    // Address to which the collected fees go.
+    pub collector_addr: String,
 }
 
-/// Parameters of a delta-neutral position.
+/// Parameters of a delta-neutral position specified by the user when opening this position.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct DeltaNeutralParams {
+    // The target range of the collateral ratio.
+    // Throughout the lifetime of this position, collalteral ratio is kept within this range through rebalancing.
+    // Note that `target_min_collateral_ratio` >= mAsset_required_colleteral_ratio + `Context.collateral_ratio_safety_margin` must hold in order to open a position.
+    // This is to ensure that the user cannot specify a `target_min_collateral_ratio` too close to the liquidation threshold.
     pub target_min_collateral_ratio: Decimal,
     pub target_max_collateral_ratio: Decimal,
+    // The mAsset token used in this delta-neutral position.
     pub mirror_asset_cw20_addr: String,
 }

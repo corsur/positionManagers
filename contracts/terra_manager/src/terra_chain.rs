@@ -66,7 +66,7 @@ pub fn create_position(
 ) -> StdResult<Response> {
     if strategy.chain_id != TERRA_CHAIN_ID {
         return Err(StdError::generic_err(
-            "incorrect entrypoint for cross-chain position creation",
+            "external chain strategy not yet supported",
         ));
     }
 
