@@ -83,7 +83,8 @@ async function migrate_contract(contract_addr, new_code_id) {
         test_wallet.key.accAddress,
         contract_addr,
         new_code_id,
-        {}),
+        {}
+      ),
     ],
     sequence: getAndIncrementSequence(),
   });
@@ -104,10 +105,13 @@ async function instantiate_terra_manager(terra_manager_id) {
         terra_manager_id,
         {
           admin_addr: test_wallet.key.accAddress,
-          wormhole_token_bridge_addr: "terra1pseddrv0yfsn76u4zxrjmtf45kdlmalswdv39a",
-          wormhole_core_bridge_addr: "terra1pd65m0q9tl3v8znnz5f5ltsfegyzah7g42cx5v",
+          wormhole_token_bridge_addr:
+            "terra1pseddrv0yfsn76u4zxrjmtf45kdlmalswdv39a",
+          wormhole_core_bridge_addr:
+            "terra1pd65m0q9tl3v8znnz5f5ltsfegyzah7g42cx5v",
           cross_chain_outgoing_fee_rate: "0.001",
-          cross_chain_outgoing_fee_collector_addr: "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g",
+          cross_chain_outgoing_fee_collector_addr:
+            "terra1ads6zkvpq0dvy99hzj6dmk0peevzkxvvufd76g",
         },
         /*init_coins=*/ {}
       ),
@@ -165,8 +169,8 @@ async function instantiate_delta_neutral_position_manager(
           collateral_ratio_safety_margin: "0.3",
           fee_collection_config: {
             performance_rate: "0.1",
-            treasury_addr: test_wallet.key.accAddress
-          }
+            treasury_addr: test_wallet.key.accAddress,
+          },
         },
         /*init_coins=*/ {}
       ),
@@ -186,7 +190,7 @@ async function instantiate_delta_neutral_position_manager(
 
 async function instantiate_stable_yield_manager(
   terra_manager_addr,
-  stable_yield_manager_code_id,
+  stable_yield_manager_code_id
 ) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
@@ -200,7 +204,7 @@ async function instantiate_stable_yield_manager(
           accrual_rate_per_period: "1.00000002987",
           seconds_per_period: 30,
           anchor_market_addr: "terra15dwd5mj8v59wpj0wvt233mf5efdff808c5tkal",
-          anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl"
+          anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
         },
         /*init_coins=*/ {}
       ),
@@ -220,7 +224,7 @@ async function instantiate_stable_yield_manager(
 
 async function add_delta_neutral_strategy_to_terra_manager(
   terra_manager_addr,
-  delta_neutral_position_manager_addr,
+  delta_neutral_position_manager_addr
 ) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
@@ -231,8 +235,8 @@ async function add_delta_neutral_strategy_to_terra_manager(
           add_strategy: {
             name: "DN",
             version: "v0",
-            manager_addr: delta_neutral_position_manager_addr
-          }
+            manager_addr: delta_neutral_position_manager_addr,
+          },
         }
       ),
     ],
@@ -250,7 +254,7 @@ async function add_delta_neutral_strategy_to_terra_manager(
 
 async function add_stable_yield_strategy_to_terra_manager(
   terra_manager_addr,
-  stable_yield_manager_addr,
+  stable_yield_manager_addr
 ) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
@@ -261,8 +265,8 @@ async function add_stable_yield_strategy_to_terra_manager(
           add_strategy: {
             name: "StableYield",
             version: "v0",
-            manager_addr: stable_yield_manager_addr
-          }
+            manager_addr: stable_yield_manager_addr,
+          },
         }
       ),
     ],
@@ -286,7 +290,9 @@ async function deploy() {
   /******************************************/
   /***** Store bytecode onto blockchain *****/
   /******************************************/
-  const terra_manager_id = await store_code("../artifacts/terra_manager-aarch64.wasm");
+  const terra_manager_id = await store_code(
+    "../artifacts/terra_manager-aarch64.wasm"
+  );
   console.log("terra_manager_id: ", terra_manager_id);
 
   const delta_neutral_position_manager_id = await store_code(
@@ -328,25 +334,26 @@ async function deploy() {
     delta_neutral_position_manager_addr
   );
 
-  const stable_yield_manager_addr =
-    await instantiate_stable_yield_manager(terra_manager_addr, stable_yield_manager_id);
-  console.log(
-    "stable yield manager address: ",
-    stable_yield_manager_addr
+  const stable_yield_manager_addr = await instantiate_stable_yield_manager(
+    terra_manager_addr,
+    stable_yield_manager_id
   );
+  console.log("stable yield manager address: ", stable_yield_manager_addr);
   /*****************************************/
   /***** End of contract instantiation *****/
   /*****************************************/
 
   // Add delta-neutral strategy to Terra manager.
-  await add_delta_neutral_strategy_to_terra_manager(terra_manager_addr, delta_neutral_position_manager_addr);
-  console.log(
-    "Registered delta-neutral strategy with Terra manager."
+  await add_delta_neutral_strategy_to_terra_manager(
+    terra_manager_addr,
+    delta_neutral_position_manager_addr
   );
-  await add_stable_yield_strategy_to_terra_manager(terra_manager_addr, stable_yield_manager_addr);
-  console.log(
-    "Registered stable-yield strategy with Terra manager."
+  console.log("Registered delta-neutral strategy with Terra manager.");
+  await add_stable_yield_strategy_to_terra_manager(
+    terra_manager_addr,
+    stable_yield_manager_addr
   );
+  console.log("Registered stable-yield strategy with Terra manager.");
   return terra_manager_addr;
 }
 
@@ -357,23 +364,23 @@ async function open_delta_neutral_position(terra_manager_addr, ust_amount) {
         /*sender=*/ test_wallet.key.accAddress,
         /*contract=*/ terra_manager_addr,
         {
-          "create_position": {
-            "data": "ewogICAgInRhcmdldF9taW5fY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjMiLAogICAgInRhcmdldF9tYXhfY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjciLAogICAgIm1pcnJvcl9hc3NldF9jdzIwX2FkZHIiOiAidGVycmExeXM0ZHd3emFlbmpnMmd5MDJtc2xtYzk2ZjI2N3h2cHNqYXQ3Z3giCn0=",
-            "assets": [
+          create_position: {
+            data: "ewogICAgInRhcmdldF9taW5fY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjMiLAogICAgInRhcmdldF9tYXhfY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjciLAogICAgIm1pcnJvcl9hc3NldF9jdzIwX2FkZHIiOiAidGVycmExeXM0ZHd3emFlbmpnMmd5MDJtc2xtYzk2ZjI2N3h2cHNqYXQ3Z3giCn0=",
+            assets: [
               {
-                "info": {
-                  "native_token": {
-                    "denom": "uusd"
-                  }
+                info: {
+                  native_token: {
+                    denom: "uusd",
+                  },
                 },
-                "amount": (ust_amount * 1e6).toString()
-              }
+                amount: (ust_amount * 1e6).toString(),
+              },
             ],
-            "strategy": {
-              "chain_id": 3,
-              "strategy_id": "0"
-            }
-          }
+            strategy: {
+              chain_id: 3,
+              strategy_id: "0",
+            },
+          },
         },
         [new Coin("uusd", (ust_amount * 1e6).toString())]
       ),
@@ -388,7 +395,10 @@ async function open_delta_neutral_position(terra_manager_addr, ust_amount) {
       `open_delta_neutral_position failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
     );
   }
-  console.log("Opened delta-neutral position with ust amount: ", ust_amount.toString());
+  console.log(
+    "Opened delta-neutral position with ust amount: ",
+    ust_amount.toString()
+  );
 }
 
 async function open_stable_yield_position(terra_manager_addr, ust_amount) {
@@ -398,22 +408,22 @@ async function open_stable_yield_position(terra_manager_addr, ust_amount) {
         /*sender=*/ test_wallet.key.accAddress,
         /*contract=*/ terra_manager_addr,
         {
-          "create_position": {
-            "assets": [
+          create_position: {
+            assets: [
               {
-                "info": {
-                  "native_token": {
-                    "denom": "uusd"
-                  }
+                info: {
+                  native_token: {
+                    denom: "uusd",
+                  },
                 },
-                "amount": (ust_amount * 1e6).toString()
-              }
+                amount: (ust_amount * 1e6).toString(),
+              },
             ],
-            "strategy": {
-              "chain_id": 3,
-              "strategy_id": "1"
-            }
-          }
+            strategy: {
+              chain_id: 3,
+              strategy_id: "1",
+            },
+          },
         },
         [new Coin("uusd", (ust_amount * 1e6).toString())]
       ),
@@ -428,14 +438,19 @@ async function open_stable_yield_position(terra_manager_addr, ust_amount) {
       `open_stable_yield_position failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
     );
   }
-  console.log("Opened delta-neutral position with ust amount: ", ust_amount.toString());
+  console.log(
+    "Opened delta-neutral position with ust amount: ",
+    ust_amount.toString()
+  );
 }
 
 async function upload_and_migrate_contract(contract_addr) {
   await initializeSequence(test_wallet);
   console.log("Deploying using address: ", test_wallet.key.accAddress);
 
-  const new_code_id = await store_code("../artifacts/terra_manager-aarch64.wasm");
+  const new_code_id = await store_code(
+    "../artifacts/terra_manager-aarch64.wasm"
+  );
   console.log("new code id: ", new_code_id);
 
   await migrate_contract(contract_addr, new_code_id);
@@ -443,6 +458,9 @@ async function upload_and_migrate_contract(contract_addr) {
 }
 
 const terra_manager_addr = await deploy();
+console.log(
+  `Successfully deployed TerraManager at address: ${terra_manager_addr}`
+);
 // await open_delta_neutral_position(terra_manager_addr, 500);
 // await open_stable_yield_position(terra_manager_addr, 600);
 // await upload_and_migrate_contract('terra1uqryzpauak8tljlj9cl2gl99spgxqjvd008wvp');
