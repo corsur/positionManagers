@@ -7,18 +7,20 @@ use cosmwasm_std::{
     entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
     MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
+use cw_storage_plus::Item;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::dex_util::{
     compute_terraswap_offer_amount, get_terraswap_mirror_asset_uusd_liquidity_info,
     simulate_terraswap_swap, swap_cw20_token_for_uusd,
 };
+use crate::math::{decimal_multiplication, reverse_decimal, decimal_division};
 use crate::state::{
     PositionInfo, MANAGER, POSITION_CLOSE_INFO, POSITION_INFO, POSITION_OPEN_INFO,
     TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    decimal_division, decimal_inverse, decimal_multiplication, find_collateral_uusd_amount,
+    find_collateral_uusd_amount,
     find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
     get_position_state, get_uusd_asset_from_amount, get_uusd_balance,
     increase_mirror_asset_balance_from_long_farm, increase_uusd_balance_from_aust_collateral,
@@ -44,9 +46,13 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     let manager_addr = MANAGER.load(deps.storage)?;
-    let context: Context = deps
-        .querier
-        .query_wasm_smart(&manager_addr, &ManagerQueryMsg::GetContext {})?;
+
+    // `CONTEXT.query()` uses WasmQuery::RawQuery to load context directly from the storage of `manager_addr`.
+    // This helps save gas compared to using smart query as that involves extra JSON serialization / deserialization processes.
+    const CONTEXT: Item<Context> = Item::new("context");
+    let context = CONTEXT.query(&deps.querier, manager_addr.clone())?;
+
+    // ACL check.
     let is_authorized = match msg {
         ExecuteMsg::Controller(_) => {
             info.sender == context.controller || info.sender == env.contract.address
@@ -55,10 +61,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         _ => info.sender == manager_addr,
     };
     if !is_authorized {
-        return Err(StdError::GenericErr {
-            msg: "unauthorized".to_string(),
-        });
+        return Err(StdError::generic_err("unauthorized"));
     }
+
     match msg {
         ExecuteMsg::OpenPosition { params } => open_position(
             deps,
@@ -98,20 +103,6 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 proportion,
                 recipient,
             } => send_uusd_to_recipient(deps, env, proportion, recipient),
-            InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
-                collateral_ratio,
-                mirror_asset_cw20_addr,
-                cdp_idx,
-                mirror_asset_mint_amount,
-            } => open_or_increase_cdp_with_anchor_ust_balance_as_collateral(
-                deps.as_ref(),
-                env,
-                context,
-                collateral_ratio,
-                mirror_asset_cw20_addr,
-                cdp_idx,
-                mirror_asset_mint_amount,
-            ),
             InternalExecuteMsg::RecordPositionInfo {
                 mirror_asset_cw20_addr,
             } => record_position_info(deps, env, context, mirror_asset_cw20_addr),
@@ -139,7 +130,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
     }
 }
 
-fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> CosmosMsg {
+pub fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> CosmosMsg {
     CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: env.contract.address.to_string(),
         msg: to_binary(&ExecuteMsg::Internal(msg)).unwrap(),
@@ -513,7 +504,7 @@ pub fn achieve_safe_collateral_ratios(
     let mut response = Response::new();
     if collateral_ratio < target_collateral_ratio_range.min {
         let target_short_mirror_asset_amount = state.collateral_uusd_value
-            * decimal_inverse(decimal_multiplication(
+            * reverse_decimal(decimal_multiplication(
                 target_collateral_ratio_range.midpoint(),
                 state.mirror_asset_oracle_price,
             ));
@@ -619,110 +610,16 @@ pub fn delta_neutral_invest(
     if uusd_balance < context.min_delta_neutral_uusd_amount {
         return Ok(Response::default());
     }
-
     let target_collateral_ratio_range = TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
-    let (mirror_asset_mint_amount, collateral_uusd_amount) = find_collateral_uusd_amount(
+    find_collateral_uusd_amount(
         deps.as_ref(),
+        &env,
         &context,
         mirror_asset_cw20_addr,
         &target_collateral_ratio_range,
         uusd_balance,
-    )?;
-    Ok(Response::new()
-        .add_attributes(vec![
-            ("calc_mAsset_mint_amount", mirror_asset_mint_amount),
-            ("collateral_uusd_amount", collateral_uusd_amount),
-        ])
-        .add_messages(vec![
-            CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: context.anchor_market_addr.to_string(),
-                msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
-                funds: vec![Coin {
-                    denom: String::from("uusd"),
-                    amount: collateral_uusd_amount,
-                }],
-            }),
-            create_internal_execute_message(
-                &env,
-                InternalExecuteMsg::OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
-                    collateral_ratio: target_collateral_ratio_range.midpoint(),
-                    mirror_asset_cw20_addr: mirror_asset_cw20_addr.to_string(),
-                    cdp_idx,
-                    mirror_asset_mint_amount,
-                },
-            ),
-            create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
-        ]))
-}
-
-fn open_or_increase_cdp_with_anchor_ust_balance_as_collateral(
-    deps: Deps,
-    env: Env,
-    context: Context,
-    collateral_ratio: Decimal,
-    mirror_asset_cw20_addr: String,
-    cdp_idx: Option<Uint128>,
-    mirror_asset_mint_amount: Uint128,
-) -> StdResult<Response> {
-    let anchor_ust_balance = terraswap::querier::query_token_balance(
-        &deps.querier,
-        context.anchor_ust_cw20_addr.clone(),
-        env.contract.address.clone(),
-    )?;
-    match cdp_idx {
-        None => Ok(Response::new()
-            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: context.anchor_ust_cw20_addr.to_string(),
-                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                    contract: context.mirror_mint_addr.to_string(),
-                    amount: anchor_ust_balance,
-                    msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
-                        asset_info: AssetInfo::Token {
-                            contract_addr: mirror_asset_cw20_addr.clone(),
-                        },
-                        collateral_ratio,
-                        short_params: Some(mirror_protocol::mint::ShortParams {
-                            belief_price: None,
-                            max_spread: None,
-                        }),
-                    })?,
-                })?,
-                funds: vec![],
-            }))
-            .add_message(create_internal_execute_message(
-                &env,
-                InternalExecuteMsg::RecordPositionInfo {
-                    mirror_asset_cw20_addr,
-                },
-            ))),
-        Some(position_idx) => Ok(Response::new()
-            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: context.anchor_ust_cw20_addr.to_string(),
-                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                    contract: context.mirror_mint_addr.to_string(),
-                    amount: anchor_ust_balance,
-                    msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Deposit { position_idx })?,
-                })?,
-                funds: vec![],
-            }))
-            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: context.mirror_mint_addr.to_string(),
-                msg: to_binary(&mirror_protocol::mint::ExecuteMsg::Mint {
-                    position_idx,
-                    asset: Asset {
-                        info: AssetInfo::Token {
-                            contract_addr: mirror_asset_cw20_addr,
-                        },
-                        amount: mirror_asset_mint_amount,
-                    },
-                    short_params: Some(mirror_protocol::mint::ShortParams {
-                        belief_price: None,
-                        max_spread: None,
-                    }),
-                })?,
-                funds: vec![],
-            }))),
-    }
+        cdp_idx
+    )
 }
 
 fn record_position_info(

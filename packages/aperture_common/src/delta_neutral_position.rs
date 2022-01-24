@@ -25,12 +25,6 @@ pub enum InternalExecuteMsg {
         proportion: Decimal,
         recipient: Recipient,
     },
-    OpenOrIncreaseCdpWithAnchorUstBalanceAsCollateral {
-        collateral_ratio: Decimal,
-        mirror_asset_cw20_addr: String,
-        cdp_idx: Option<Uint128>,
-        mirror_asset_mint_amount: Uint128,
-    },
     RecordPositionInfo {
         mirror_asset_cw20_addr: String,
     },

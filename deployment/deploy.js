@@ -169,7 +169,7 @@ async function instantiate_delta_neutral_position_manager(
           collateral_ratio_safety_margin: "0.3",
           fee_collection_config: {
             performance_rate: "0.1",
-            treasury_addr: test_wallet.key.accAddress,
+            collector_addr: test_wallet.key.accAddress,
           },
         },
         /*init_coins=*/ {}
@@ -461,6 +461,6 @@ const terra_manager_addr = await deploy();
 console.log(
   `Successfully deployed TerraManager at address: ${terra_manager_addr}`
 );
-// await open_delta_neutral_position(terra_manager_addr, 500);
+// await open_delta_neutral_position(terra_manager_addr, 900000);
 // await open_stable_yield_position(terra_manager_addr, 600);
 // await upload_and_migrate_contract('terra1uqryzpauak8tljlj9cl2gl99spgxqjvd008wvp');

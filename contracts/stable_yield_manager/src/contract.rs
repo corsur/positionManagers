@@ -262,7 +262,7 @@ fn increase_uusd_balance_by_redeeming_aterra(
     // Find aUST -> UST exchange rate.
     // See https://github.com/Anchor-Protocol/money-market-contracts/blob/c85c0b8e4f7fd192504f15d7741e19da6a850f71/contracts/market/src/deposit.rs#L141
     // for details on how Anchor market contract calculates the exchange rate.
-    let aterra_exchange_rate = get_aterra_exchange_rate(deps, environment)?;
+    let aterra_exchange_rate = get_aterra_exchange_rate(deps, environment, env.block.height)?;
     let target_redemption_uusd_value = Uint256::from(target_uusd_balance - uusd_balance);
 
     // Find amount of aUST to redeem so uusd balance becomes at least `target_uusd_balance`.
@@ -300,7 +300,8 @@ fn collect_fees(
 
     // Calculate treasury value.
     let environment = ENVIRONMENT.load(deps.storage)?;
-    let aterra_exchange_rate = get_aterra_exchange_rate(deps.as_ref(), &environment)?;
+    let aterra_exchange_rate =
+        get_aterra_exchange_rate(deps.as_ref(), &environment, env.block.height)?;
     let aterra_amount = moneymarket::querier::query_token_balance(
         deps.as_ref(),
         environment.anchor_ust_cw20_addr.clone(),
@@ -384,23 +385,20 @@ fn validate_assets(info: &MessageInfo, assets: &[Asset]) -> StdResult<Asset> {
     })
 }
 
-fn get_aterra_exchange_rate(deps: Deps, environment: &Environment) -> StdResult<Decimal256> {
-    let anchor_market_state: moneymarket::market::StateResponse = deps.querier.query_wasm_smart(
-        environment.anchor_market_addr.to_string(),
-        &moneymarket::market::QueryMsg::State { block_height: None },
-    )?;
-    let anchor_market_uusd_balance = moneymarket::querier::query_balance(
-        deps,
-        environment.anchor_market_addr.clone(),
-        String::from("uusd"),
-    )?;
-    let aterra_supply =
-        moneymarket::querier::query_supply(deps, environment.anchor_ust_cw20_addr.clone())?;
-    let aterra_exchange_rate = (Decimal256::from_uint256(anchor_market_uusd_balance)
-        + anchor_market_state.total_liabilities
-        - anchor_market_state.total_reserves)
-        / Decimal256::from_uint256(aterra_supply);
-    Ok(aterra_exchange_rate)
+fn get_aterra_exchange_rate(
+    deps: Deps,
+    environment: &Environment,
+    block_height: u64,
+) -> StdResult<Decimal256> {
+    let anchor_market_epoch_state: moneymarket::market::EpochStateResponse =
+        deps.querier.query_wasm_smart(
+            environment.anchor_market_addr.to_string(),
+            &moneymarket::market::QueryMsg::EpochState {
+                block_height: Some(block_height),
+                distributed_interest: None,
+            },
+        )?;
+    Ok(anchor_market_epoch_state.exchange_rate)
 }
 
 fn get_uusd_value_per_share(

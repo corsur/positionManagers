@@ -72,22 +72,9 @@ impl WasmMockQuerier {
                 if contract_addr == &self.anchor_market_addr {
                     SystemResult::Ok(ContractResult::Ok(
                         to_binary(
-                            &(moneymarket::market::StateResponse {
-                                total_liabilities: Decimal256::from_ratio(
-                                    Uint256::from(100u128),
-                                    Uint256::one(),
-                                ),
-                                total_reserves: Decimal256::from_ratio(
-                                    Uint256::from(50u128),
-                                    Uint256::one(),
-                                ),
-                                last_interest_updated: 0u64,
-                                last_reward_updated: 0u64,
-                                global_interest_index: Decimal256::zero(),
-                                global_reward_index: Decimal256::zero(),
-                                anc_emission_rate: Decimal256::zero(),
-                                prev_aterra_supply: Uint256::zero(),
-                                prev_exchange_rate: Decimal256::zero(),
+                            &(moneymarket::market::EpochStateResponse {
+                                exchange_rate: Decimal256::from_ratio(11, 10),
+                                aterra_supply: Uint256::from(1000u128),
                             }),
                         )
                         .unwrap(),

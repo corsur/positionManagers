@@ -12,7 +12,9 @@ use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
-use crate::state::{Config, ADMIN_CONFIG, CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION};
+use crate::state::{
+    ADMIN_CONFIG, CONTEXT, FEE_COLLECTION_CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION,
+};
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
 
@@ -30,31 +32,30 @@ pub fn instantiate(
     };
     ADMIN_CONFIG.save(deps.storage, &admin_config)?;
 
-    let config = Config {
-        context: Context {
-            controller: deps.api.addr_validate(&msg.controller)?,
-            anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
-            mirror_cw20_addr: deps.api.addr_validate(&msg.mirror_cw20_addr)?,
-            spectrum_cw20_addr: deps.api.addr_validate(&msg.spectrum_cw20_addr)?,
-            anchor_market_addr: deps.api.addr_validate(&msg.anchor_market_addr)?,
-            mirror_collateral_oracle_addr: deps
-                .api
-                .addr_validate(&msg.mirror_collateral_oracle_addr)?,
-            mirror_lock_addr: deps.api.addr_validate(&msg.mirror_lock_addr)?,
-            mirror_mint_addr: deps.api.addr_validate(&msg.mirror_mint_addr)?,
-            mirror_oracle_addr: deps.api.addr_validate(&msg.mirror_oracle_addr)?,
-            mirror_staking_addr: deps.api.addr_validate(&msg.mirror_staking_addr)?,
-            spectrum_gov_addr: deps.api.addr_validate(&msg.spectrum_gov_addr)?,
-            spectrum_mirror_farms_addr: deps.api.addr_validate(&msg.spectrum_mirror_farms_addr)?,
-            spectrum_staker_addr: deps.api.addr_validate(&msg.spectrum_staker_addr)?,
-            terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
-            astroport_factory_addr: deps.api.addr_validate(&msg.astroport_factory_addr)?,
-            collateral_ratio_safety_margin: msg.collateral_ratio_safety_margin,
-            min_delta_neutral_uusd_amount: msg.min_delta_neutral_uusd_amount,
-        },
-        fee_collection: msg.fee_collection_config,
+    let context = Context {
+        controller: deps.api.addr_validate(&msg.controller)?,
+        anchor_ust_cw20_addr: deps.api.addr_validate(&msg.anchor_ust_cw20_addr)?,
+        mirror_cw20_addr: deps.api.addr_validate(&msg.mirror_cw20_addr)?,
+        spectrum_cw20_addr: deps.api.addr_validate(&msg.spectrum_cw20_addr)?,
+        anchor_market_addr: deps.api.addr_validate(&msg.anchor_market_addr)?,
+        mirror_collateral_oracle_addr: deps
+            .api
+            .addr_validate(&msg.mirror_collateral_oracle_addr)?,
+        mirror_lock_addr: deps.api.addr_validate(&msg.mirror_lock_addr)?,
+        mirror_mint_addr: deps.api.addr_validate(&msg.mirror_mint_addr)?,
+        mirror_oracle_addr: deps.api.addr_validate(&msg.mirror_oracle_addr)?,
+        mirror_staking_addr: deps.api.addr_validate(&msg.mirror_staking_addr)?,
+        spectrum_gov_addr: deps.api.addr_validate(&msg.spectrum_gov_addr)?,
+        spectrum_mirror_farms_addr: deps.api.addr_validate(&msg.spectrum_mirror_farms_addr)?,
+        spectrum_staker_addr: deps.api.addr_validate(&msg.spectrum_staker_addr)?,
+        terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
+        astroport_factory_addr: deps.api.addr_validate(&msg.astroport_factory_addr)?,
+        collateral_ratio_safety_margin: msg.collateral_ratio_safety_margin,
+        min_delta_neutral_uusd_amount: msg.min_delta_neutral_uusd_amount,
     };
-    CONFIG.save(deps.storage, &config)?;
+    CONTEXT.save(deps.storage, &context)?;
+
+    FEE_COLLECTION_CONFIG.save(deps.storage, &msg.fee_collection_config)?;
     Ok(Response::default())
 }
 
@@ -199,8 +200,8 @@ pub fn open_position(
     params: DeltaNeutralParams,
     assets: Vec<Asset>,
 ) -> StdResult<Response> {
-    let config = CONFIG.load(storage)?;
-    let uusd_amount = validate_assets(&info, &config, &assets)?;
+    let context = CONTEXT.load(storage)?;
+    let uusd_amount = validate_assets(&info, &context, &assets)?;
 
     // Instantiate a new contract for the position.
     TMP_POSITION.save(storage, &position)?;
@@ -273,7 +274,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetPositionContractAddr { position } => {
             to_binary(&(POSITION_TO_CONTRACT_ADDR.load(deps.storage, get_position_key(&position))?))
         }
-        QueryMsg::GetContext {} => to_binary(&(CONFIG.load(deps.storage)?).context),
+        QueryMsg::GetContext {} => to_binary(&CONTEXT.load(deps.storage)?),
         QueryMsg::GetAdminConfig {} => to_binary(&(ADMIN_CONFIG.load(deps.storage)?)),
     }
 }
@@ -284,12 +285,12 @@ pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Respons
 }
 
 // Check that `assets` comprise exactly one native-uusd asset of amount >= min_uusd_amount.
-fn validate_assets(info: &MessageInfo, config: &Config, assets: &[Asset]) -> StdResult<Uint128> {
+fn validate_assets(info: &MessageInfo, context: &Context, assets: &[Asset]) -> StdResult<Uint128> {
     if assets.len() == 1 {
         let asset = &assets[0];
         if let AssetInfo::NativeToken { denom } = &asset.info {
             if denom == "uusd"
-                && asset.amount >= config.context.min_delta_neutral_uusd_amount
+                && asset.amount >= context.min_delta_neutral_uusd_amount
                 && asset.assert_sent_native_token_balance(info).is_ok()
             {
                 return Ok(asset.amount);
@@ -356,31 +357,32 @@ fn test_contract() {
         }
     );
     assert_eq!(
-        CONFIG.load(&deps.storage).unwrap(),
-        Config {
-            context: Context {
-                controller: Addr::unchecked("controller"),
-                anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
-                mirror_cw20_addr: Addr::unchecked("mirror_cw20"),
-                spectrum_cw20_addr: Addr::unchecked("spectrum_cw20"),
-                anchor_market_addr: Addr::unchecked("anchor_market"),
-                mirror_collateral_oracle_addr: Addr::unchecked("mirror_collateral_oracle"),
-                mirror_lock_addr: Addr::unchecked("mirror_lock"),
-                mirror_mint_addr: Addr::unchecked("mirror_mint"),
-                mirror_oracle_addr: Addr::unchecked("mirror_oracle"),
-                mirror_staking_addr: Addr::unchecked("mirror_staking"),
-                spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
-                spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
-                spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
-                terraswap_factory_addr: Addr::unchecked("terraswap_factory"),
-                astroport_factory_addr: Addr::unchecked("astroport_factory"),
-                collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
-                min_delta_neutral_uusd_amount: Uint128::from(500u128)
-            },
-            fee_collection: FeeCollectionConfig {
-                performance_rate: Decimal::from_ratio(1u128, 10u128),
-                collector_addr: String::from("collector")
-            }
+        CONTEXT.load(&deps.storage).unwrap(),
+        Context {
+            controller: Addr::unchecked("controller"),
+            anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
+            mirror_cw20_addr: Addr::unchecked("mirror_cw20"),
+            spectrum_cw20_addr: Addr::unchecked("spectrum_cw20"),
+            anchor_market_addr: Addr::unchecked("anchor_market"),
+            mirror_collateral_oracle_addr: Addr::unchecked("mirror_collateral_oracle"),
+            mirror_lock_addr: Addr::unchecked("mirror_lock"),
+            mirror_mint_addr: Addr::unchecked("mirror_mint"),
+            mirror_oracle_addr: Addr::unchecked("mirror_oracle"),
+            mirror_staking_addr: Addr::unchecked("mirror_staking"),
+            spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
+            spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
+            spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
+            terraswap_factory_addr: Addr::unchecked("terraswap_factory"),
+            astroport_factory_addr: Addr::unchecked("astroport_factory"),
+            collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
+            min_delta_neutral_uusd_amount: Uint128::from(500u128)
+        }
+    );
+    assert_eq!(
+        FEE_COLLECTION_CONFIG.load(&deps.storage).unwrap(),
+        FeeCollectionConfig {
+            performance_rate: Decimal::from_ratio(1u128, 10u128),
+            collector_addr: String::from("collector")
         }
     );
 

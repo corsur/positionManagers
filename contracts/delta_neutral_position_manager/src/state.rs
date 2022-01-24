@@ -4,18 +4,9 @@ use aperture_common::{
 };
 use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
-/// Basic config to be stored in storage.
-/// * `owner`: the owner of this contract.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Config {
-    pub context: Context,
-    pub fee_collection: FeeCollectionConfig,
-}
-
-pub const CONFIG: Item<Config> = Item::new("config");
+pub const CONTEXT: Item<Context> = Item::new("context");
+pub const FEE_COLLECTION_CONFIG: Item<FeeCollectionConfig> = Item::new("fee_collection_config");
 pub const ADMIN_CONFIG: Item<AdminConfig> = Item::new("admin_config");
 pub const TMP_POSITION: Item<Position> = Item::new("tmp_position");
 pub const POSITION_TO_CONTRACT_ADDR: Map<PositionKey, Addr> = Map::new("position_to_contract_addr");

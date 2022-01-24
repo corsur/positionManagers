@@ -281,6 +281,7 @@ version = "0.9.1"
 dependencies = [
  "aperture-common",
  "astroport",
+ "cosmwasm-bignumber",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus 0.9.1",
