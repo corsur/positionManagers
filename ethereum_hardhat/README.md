@@ -15,10 +15,12 @@ npm install
 
 ## Deploy Prerequisite
 
-Deployment of `EthereumManager` needs reference to `TerraManager`'s address. This package relies on the `TERRA_MANAGER_ADDR` from `constants.js`. To use a new `TerraManager`, please update the value in `constants.js`
+1. Ensure the Ethereum wallet has enough balance for Wormhole wrapped UST. The default ETH wallet already has plenty of UST. In case running out of UST, you can run the script `scripts/send_ust_to_eth.js`, which transfers UST from `TERRA_WALLET_MNEMONIC` to `ETH_PRV_KEY_1` (refer to `constants.js` for actual wallet address used.)
 
-- To compile `TerraManager`, please follow the top level `README` instructions.
-- To deploy a new `TerraManager`, please refer to the parent directory `deployment` and follow the instructions there.
+2. Deployment of `EthereumManager` needs reference to `TerraManager`'s address. This package relies on the `TERRA_MANAGER_ADDR` from `constants.js`. To use a new `TerraManager`, please update the value in `constants.js`
+
+   - To compile `TerraManager`, please follow the top level `README` instructions.
+   - To deploy a new `TerraManager`, please refer to the parent directory `deployment` and follow the instructions there.
 
 ## Deploy
 
