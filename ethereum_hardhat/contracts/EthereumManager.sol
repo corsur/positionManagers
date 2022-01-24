@@ -15,13 +15,13 @@ struct OwnershipInfo {
 }
 
 struct PositionInfo {
-    uint128 positionId;
-    uint16 chainId;
+    uint128 positionId; // The EVM position id.
+    uint16 chainId; // Chain id, following Wormhole's design.
 }
 
 struct Config {
-    uint32 crossChainFeeBPS;
-    address feeSink;
+    uint32 crossChainFeeBPS; // Cross-chain fee in bpq.
+    address feeSink; // Fee collecting address.
 }
 
 contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
