@@ -350,6 +350,16 @@
       "address": "0x7BEE018b4DD67C05E4B74CC3cf03fD7d4f14242f",
       "txHash": "0x2d0dfc8d11d4de87fec2c9382ef0ebc0c81eccfe196f385e051045ca302e1dbe",
       "kind": "uups"
+    },
+    {
+      "address": "0xC61d379f3b39E09645A2aC7637704b5A5Afb2115",
+      "txHash": "0xf55a59f264de7954ca6c7ce029edc21fb734f83cf41f031276fccc2e3f4db445",
+      "kind": "uups"
+    },
+    {
+      "address": "0xADf3c19b650AFC370E323e08204Cb79Ce74bf7d3",
+      "txHash": "0x669ec0b0ec10b7245d4a3057b0193a15153665154fb0490880f2f5202acee218",
+      "kind": "uups"
     }
   ],
   "impls": {
@@ -1056,6 +1066,164 @@
             "label": "mapping(uint128 => struct OwnershipInfo)"
           },
           "t_struct(OwnershipInfo)1680_storage": {
+            "label": "struct OwnershipInfo",
+            "members": [
+              {
+                "label": "ownerAddr",
+                "type": "t_address"
+              },
+              {
+                "label": "chainId",
+                "type": "t_uint16"
+              }
+            ]
+          },
+          "t_uint16": {
+            "label": "uint16"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          }
+        }
+      }
+    },
+    "625952021b90063dfa39bec16e2b59451f5a1896607cf719e172c8ade0043101": {
+      "address": "0x44f65003B331960D823A17D8Fd698fBE07b8a736",
+      "txHash": "0xe288524a7a0148f1c5e5007e2ecec8f020998c595390f50942707a1e49189584",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:39"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:44"
+          },
+          {
+            "contract": "ERC1967UpgradeUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:215"
+          },
+          {
+            "contract": "UUPSUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:81"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:82"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "CONSISTENCY_LEVEL",
+            "type": "t_uint8",
+            "src": "contracts/EthereumManager.sol:48"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "WORMHOLE_TOKEN_BRIDGE",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:49"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "TERRA_MANAGER_ADDRESS",
+            "type": "t_bytes32",
+            "src": "contracts/EthereumManager.sol:50"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "CROSS_CHAIN_FEE_BPS",
+            "type": "t_uint32",
+            "src": "contracts/EthereumManager.sol:52"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "FEE_SINK",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:54"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "nextPositionId",
+            "type": "t_uint128",
+            "src": "contracts/EthereumManager.sol:57"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "whitelistedStableTokens",
+            "type": "t_mapping(t_address,t_bool)",
+            "src": "contracts/EthereumManager.sol:60"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "completedTokenTransfers",
+            "type": "t_mapping(t_bytes32,t_bool)",
+            "src": "contracts/EthereumManager.sol:63"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "positionToOwnership",
+            "type": "t_mapping(t_uint128,t_struct(OwnershipInfo)1679_storage)",
+            "src": "contracts/EthereumManager.sol:66"
+          }
+        ],
+        "types": {
+          "t_uint8": {
+            "label": "uint8"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_bytes32": {
+            "label": "bytes32"
+          },
+          "t_uint32": {
+            "label": "uint32"
+          },
+          "t_uint128": {
+            "label": "uint128"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)"
+          },
+          "t_mapping(t_uint128,t_struct(OwnershipInfo)1679_storage)": {
+            "label": "mapping(uint128 => struct OwnershipInfo)"
+          },
+          "t_struct(OwnershipInfo)1679_storage": {
             "label": "struct OwnershipInfo",
             "members": [
               {

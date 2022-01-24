@@ -25,6 +25,8 @@ struct Config {
 }
 
 contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+    using SafeERC20 for IERC20;
+
     uint16 private constant TERRA_CHAIN_ID = 3;
     uint256 private constant BPS = 10000;
 
@@ -165,22 +167,17 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint64 tokenTransferSequence = 0;
         if (amount != 0) {
             // Transfer ERC-20 token from message sender to this contract.
-            SafeERC20.safeTransferFrom(
-                IERC20(token),
-                msg.sender,
-                address(this),
-                amount
-            );
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
             // Collect fee as needed.
             if (CROSS_CHAIN_FEE_BPS != 0) {
                 uint256 crossChainFee = (amount / BPS) * CROSS_CHAIN_FEE_BPS;
-                SafeERC20.safeTransfer(IERC20(token), FEE_SINK, crossChainFee);
+                IERC20(token).safeTransfer(FEE_SINK, crossChainFee);
                 amount -= crossChainFee;
             }
 
             // Allow wormhole to spend USTw from this contract.
-            SafeERC20.safeApprove(IERC20(token), WORMHOLE_TOKEN_BRIDGE, amount);
+            IERC20(token).safeApprove(WORMHOLE_TOKEN_BRIDGE, amount);
 
             // Initiate token transfer.
             tokenTransferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)

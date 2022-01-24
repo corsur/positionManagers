@@ -32,8 +32,8 @@ const {
   getVAA,
 } = require("../utils/helpers.js");
 
-describe("Stable yield integration", function () {
-  it("Should initiate Ethereum cross-chain tx and trigger Terra tx", async function () {
+describe("Stable yield integration test", function () {
+  it("Should open, increase and close.", async function () {
     const ethereumManager = await deployEthereumManager();
     console.log(
       `Successfully deployed Ethereum Proxy Address: ${ethereumManager.address}`
