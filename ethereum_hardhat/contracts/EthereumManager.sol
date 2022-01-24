@@ -1,8 +1,6 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.4;
 
-import "hardhat/console.sol";
-
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -21,8 +19,14 @@ struct PositionInfo {
     uint16 chainId;
 }
 
+struct Config {
+    uint32 crossChainFeeBPS;
+    address feeSink;
+}
+
 contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint16 private constant TERRA_CHAIN_ID = 3;
+    uint256 private constant BPS = 10000;
 
     // --- Cross-chain instruction format --- //
     // [uint128] position_id
@@ -38,9 +42,14 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint32 private constant INSTRUCTION_NONCE = 1324532;
     uint32 private constant TOKEN_TRANSFER_NONCE = 15971121;
 
+    // Cross-chain params.
     uint8 private CONSISTENCY_LEVEL;
     address private WORMHOLE_TOKEN_BRIDGE;
     bytes32 private TERRA_MANAGER_ADDRESS;
+    // Cross-chain fee in basis points (i.e. 0.01% or 0.0001)
+    uint32 private CROSS_CHAIN_FEE_BPS;
+    // Where fee is sent.
+    address private FEE_SINK;
 
     // Position ids for Ethereum.
     uint128 private nextPositionId;
@@ -60,7 +69,9 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint8 _consistencyLevel,
         address _wust,
         address _wormholeTokenBridge,
-        bytes32 _terraManagerAddress
+        bytes32 _terraManagerAddress,
+        uint32 _crossChainFeeBPS,
+        address _feeSink
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
@@ -69,11 +80,23 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         whitelistedStableTokens[_wust] = true;
         WORMHOLE_TOKEN_BRIDGE = _wormholeTokenBridge;
         TERRA_MANAGER_ADDRESS = _terraManagerAddress;
-        console.log("Successfully deployed contract.");
+        CROSS_CHAIN_FEE_BPS = _crossChainFeeBPS;
+        FEE_SINK = _feeSink;
     }
 
     // Only owner of this logic contract can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    function updateCrossChainFeeBPS(uint32 crossChainFeeBPS)
+        external
+        onlyOwner
+    {
+        CROSS_CHAIN_FEE_BPS = crossChainFeeBPS;
+    }
+
+    function updateFeeSink(address feeSink) external onlyOwner {
+        FEE_SINK = feeSink;
+    }
 
     function createPosition(
         uint64 strategyId,
@@ -148,8 +171,17 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
                 address(this),
                 amount
             );
+
+            // Collect fee as needed.
+            if (CROSS_CHAIN_FEE_BPS != 0) {
+                uint256 crossChainFee = (amount / BPS) * CROSS_CHAIN_FEE_BPS;
+                SafeERC20.safeTransfer(IERC20(token), FEE_SINK, crossChainFee);
+                amount -= crossChainFee;
+            }
+
             // Allow wormhole to spend USTw from this contract.
             SafeERC20.safeApprove(IERC20(token), WORMHOLE_TOKEN_BRIDGE, amount);
+
             // Initiate token transfer.
             tokenTransferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
                 .transferTokens(
@@ -212,5 +244,9 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             }
         }
         return positionIdVec;
+    }
+
+    function getConfig() external view returns (Config memory) {
+        return Config(CROSS_CHAIN_FEE_BPS, FEE_SINK);
     }
 }

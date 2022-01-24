@@ -43,6 +43,11 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
   const amount = 600 * 1e6;
   await approveERC20(ETH_UST_CONTRACT_ADDR, ethereumManager.address, amount);
 
+  // Update to 1000 BPS -> 10%.
+  await ethereumManager.updateCrossChainFeeBPS(1000, {
+    gasLimit: 600000,
+  });
+
   // Base64 encoding of the Action enum on Terra side.
   const encodedActionData = getDeltaNeutralOpenRequest();
   let createPositionTX = await ethereumManager.createPosition(

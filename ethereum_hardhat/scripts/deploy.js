@@ -24,9 +24,9 @@ async function main() {
       consistencyLevel,
       ETH_UST_CONTRACT_ADDR,
       ETH_TOKEN_BRIDGE_ADDR,
-      hexToUint8Array(
-        await getEmitterAddressTerra(TERRA_MANAGER_ADDR)
-      ),
+      hexToUint8Array(await getEmitterAddressTerra(TERRA_MANAGER_ADDR)),
+      0,
+      "0x689961608D2d7047F5411F9d9004D440449CbD27",
     ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
   );

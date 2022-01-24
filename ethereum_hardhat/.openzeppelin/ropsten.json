@@ -335,6 +335,21 @@
       "address": "0xB863C9F33565E725147C477EF62b7894F25a18C6",
       "txHash": "0xcc400fd4fbfd848ba27cd4c86b46caa19ff6bbafe937e9561553374a390a8a9c",
       "kind": "uups"
+    },
+    {
+      "address": "0xE0EABa599d0d6652ceaEF49E3fB966833B9d95a6",
+      "txHash": "0xbad1024317a168362349021765edd777e54cff64c445dfdb4c04cb612bd9b4df",
+      "kind": "uups"
+    },
+    {
+      "address": "0xB4b8CFea65edfCA52d45ba53f6658c3861B07AD0",
+      "txHash": "0x5df0937c4222fd50deb2537366b9467c4f0e22790dc714616d91b3584f85e644",
+      "kind": "uups"
+    },
+    {
+      "address": "0x7BEE018b4DD67C05E4B74CC3cf03fD7d4f14242f",
+      "txHash": "0x2d0dfc8d11d4de87fec2c9382ef0ebc0c81eccfe196f385e051045ca302e1dbe",
+      "kind": "uups"
     }
   ],
   "impls": {
@@ -866,6 +881,164 @@
           },
           "t_bytes32": {
             "label": "bytes32"
+          },
+          "t_uint128": {
+            "label": "uint128"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)"
+          },
+          "t_mapping(t_uint128,t_struct(OwnershipInfo)1680_storage)": {
+            "label": "mapping(uint128 => struct OwnershipInfo)"
+          },
+          "t_struct(OwnershipInfo)1680_storage": {
+            "label": "struct OwnershipInfo",
+            "members": [
+              {
+                "label": "ownerAddr",
+                "type": "t_address"
+              },
+              {
+                "label": "chainId",
+                "type": "t_uint16"
+              }
+            ]
+          },
+          "t_uint16": {
+            "label": "uint16"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          }
+        }
+      }
+    },
+    "45852c192642b893578b28d94547bb2fd9e273ae7aeb9b54047626fb1189e258": {
+      "address": "0x912963Ce14FB5bad46F9594A87C84687a4F5ccb1",
+      "txHash": "0x9fdbfe829b16aaddc12120decbe0c4248efcd67815414709b80d4a51089d0467",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:39"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:44"
+          },
+          {
+            "contract": "ERC1967UpgradeUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:215"
+          },
+          {
+            "contract": "UUPSUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:81"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:82"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "CONSISTENCY_LEVEL",
+            "type": "t_uint8",
+            "src": "contracts/EthereumManager.sol:48"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "WORMHOLE_TOKEN_BRIDGE",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:49"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "TERRA_MANAGER_ADDRESS",
+            "type": "t_bytes32",
+            "src": "contracts/EthereumManager.sol:50"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "CROSS_CHAIN_FEE_BPS",
+            "type": "t_uint32",
+            "src": "contracts/EthereumManager.sol:52"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "FEE_SINK",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:54"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "nextPositionId",
+            "type": "t_uint128",
+            "src": "contracts/EthereumManager.sol:57"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "whitelistedStableTokens",
+            "type": "t_mapping(t_address,t_bool)",
+            "src": "contracts/EthereumManager.sol:60"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "completedTokenTransfers",
+            "type": "t_mapping(t_bytes32,t_bool)",
+            "src": "contracts/EthereumManager.sol:63"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "positionToOwnership",
+            "type": "t_mapping(t_uint128,t_struct(OwnershipInfo)1680_storage)",
+            "src": "contracts/EthereumManager.sol:66"
+          }
+        ],
+        "types": {
+          "t_uint8": {
+            "label": "uint8"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_bytes32": {
+            "label": "bytes32"
+          },
+          "t_uint32": {
+            "label": "uint32"
           },
           "t_uint128": {
             "label": "uint128"
