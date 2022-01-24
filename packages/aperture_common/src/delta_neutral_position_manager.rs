@@ -45,7 +45,7 @@ pub enum InternalExecuteMsg {
     SendOpenPositionToPositionContract {
         position: Position,
         params: DeltaNeutralParams,
-        uusd_asset: terraswap::asset::Asset,
+        uusd_amount: Uint128,
     },
 }
 
@@ -68,7 +68,7 @@ pub enum ExecuteMsg {
     // Can only be called by admin.
     UpdateAdminConfig {
         admin_addr: Option<String>,
-        manager_addr: Option<String>,
+        terra_manager_addr: Option<String>,
         delta_neutral_position_code_id: Option<u64>,
     },
     // Can only be called by this contract itself.
