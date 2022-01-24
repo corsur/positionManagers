@@ -76,16 +76,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::DecreasePosition {
             proportion,
             recipient,
-        } => decrease_position(env, proportion, recipient),
+        } => decrease_position(deps.as_ref(), env, context, proportion, recipient),
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
             ControllerExecuteMsg::RebalanceAndReinvest {} => {
                 rebalance_and_reinvest(deps.as_ref(), env, context)
             }
         },
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
-            InternalExecuteMsg::AchieveDeltaNeutral {} => {
-                achieve_delta_neutral(deps.as_ref(), env, context)
-            }
             InternalExecuteMsg::AchieveSafeCollateralRatio {} => {
                 achieve_safe_collateral_ratios(deps.as_ref(), env, context)
             }
@@ -144,13 +141,11 @@ pub fn get_reinvest_internal_messages(deps: Deps, env: &Env, context: &Context) 
 
 pub fn rebalance_and_reinvest(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
     Ok(Response::new()
-        .add_messages(vec![
-            create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
-            create_internal_execute_message(
-                &env,
-                InternalExecuteMsg::AchieveSafeCollateralRatio {},
-            ),
-        ])
+        .add_messages(achieve_delta_neutral(deps, &env, &context)?)
+        .add_message(create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::AchieveSafeCollateralRatio {},
+        ))
         .add_messages(get_reinvest_internal_messages(deps, &env, &context)))
 }
 
@@ -233,7 +228,11 @@ pub fn claim_and_increase_uusd_balance(
     Ok((messages, uusd_increase_amount))
 }
 
-pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
+pub fn achieve_delta_neutral(
+    deps: Deps,
+    env: &Env,
+    context: &Context,
+) -> StdResult<Vec<CosmosMsg>> {
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
     let mut state = get_position_state(deps, &env, &context)?;
     let (mut messages, uusd_increase_amount) =
@@ -284,7 +283,7 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
             }
             Ordering::Equal => {}
         };
-        return Ok(Response::new().add_messages(messages));
+        return Ok(messages);
     }
 
     match state
@@ -492,7 +491,7 @@ pub fn achieve_delta_neutral(deps: Deps, env: Env, context: Context) -> StdResul
         }
         Ordering::Equal => {}
     }
-    Ok(Response::new().add_messages(messages))
+    Ok(messages)
 }
 
 pub fn achieve_safe_collateral_ratios(
@@ -626,20 +625,21 @@ pub fn delta_neutral_invest(
 }
 
 pub fn decrease_position(
+    deps: Deps,
     env: Env,
+    context: Context,
     proportion: Decimal,
     recipient: Recipient,
 ) -> StdResult<Response> {
-    Ok(Response::new().add_messages(vec![
-        create_internal_execute_message(&env, InternalExecuteMsg::AchieveDeltaNeutral {}),
-        create_internal_execute_message(
+    Ok(Response::new()
+        .add_messages(achieve_delta_neutral(deps, &env, &context)?)
+        .add_message(create_internal_execute_message(
             &env,
             InternalExecuteMsg::WithdrawFundsInUusd {
                 proportion,
                 recipient,
             },
-        ),
-    ]))
+        )))
 }
 
 pub fn send_uusd_to_recipient(

@@ -11,7 +11,6 @@ pub struct InstantiateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InternalExecuteMsg {
-    AchieveDeltaNeutral {},
     AchieveSafeCollateralRatio {},
     WithdrawFundsInUusd {
         proportion: Decimal,
