@@ -24,9 +24,6 @@ pub enum InternalExecuteMsg {
         recipient: Recipient,
     },
     PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
-    StakeTerraswapLpTokens {
-        lp_token_cw20_addr: String,
-    },
     DeltaNeutralReinvest {},
 }
 

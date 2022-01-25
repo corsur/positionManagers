@@ -192,10 +192,24 @@ pub fn increase_mirror_asset_balance_from_long_farm(
         return vec![];
     }
     let withdraw_mirror_asset_amount = target_mirror_asset_balance - state.mirror_asset_balance;
-    let withdraw_lp_token_amount = state
+    let mut withdraw_lp_token_amount = state
         .terraswap_pool_info
         .lp_token_amount
         .multiply_ratio(withdraw_mirror_asset_amount, state.mirror_asset_long_farm);
+
+    // Due to rounding, `withdraw_lp_token_amount` may not redeem for `withdraw_mirror_asset_amount` amount of mAsset, so we adjust it up if necessary.
+    while state
+        .terraswap_pool_info
+        .terraswap_pool_mirror_asset_amount
+        .multiply_ratio(
+            withdraw_lp_token_amount,
+            state.terraswap_pool_info.lp_token_amount,
+        )
+        < withdraw_mirror_asset_amount
+    {
+        withdraw_lp_token_amount += Uint128::from(1u128);
+    }
+
     unstake_lp_and_withdraw_liquidity(
         state,
         context,
