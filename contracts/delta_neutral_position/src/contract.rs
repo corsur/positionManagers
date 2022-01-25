@@ -384,7 +384,7 @@ pub fn withdraw_funds_in_uusd(
     };
     let manager_addr = MANAGER.load(deps.storage)?;
     const FEE_COLLECTION_CONFIG: Item<FeeCollectionConfig> = Item::new("fee_collection_config");
-    let fee_collection_config = FEE_COLLECTION_CONFIG.query(&deps.querier, manager_addr.clone())?;
+    let fee_collection_config = FEE_COLLECTION_CONFIG.query(&deps.querier, manager_addr)?;
     let fee_amount = gain * fee_collection_config.performance_rate;
     let fee_proportion = Decimal::from_ratio(fee_amount, position_value);
 

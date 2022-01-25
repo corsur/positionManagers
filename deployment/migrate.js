@@ -218,6 +218,33 @@ async function rebalance_position(position_contract) {
   console.log("Rebalanced position: ", position_contract);
 }
 
+async function collect_fees(position_contract) {
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgExecuteContract(
+        /*sender=*/ test_wallet.key.accAddress,
+        /*contract=*/ position_contract,
+        {
+          "controller": {
+            "rebalance_and_collect_fees": {}
+          }
+        },
+        []
+      ),
+    ],
+    memo: "Rebalance & collect fees position",
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  if (isTxError(response)) {
+    throw new Error(
+      `rebalance failed. code: ${response.code}, codespace: ${response.codespace}`//, raw_log: ${response.raw_log}`
+    );
+  }
+  console.log("Rebalanced position & collected fees: ", position_contract);
+}
+
 async function migrate_existing_position(position_manager_contract, position_id) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
@@ -252,13 +279,16 @@ async function migrate_existing_position(position_manager_contract, position_id)
 }
 
 await initializeSequence(test_wallet);
-const delta_neutral_manager = "terra1ht05u8u2yzs5387exydhj3fzzg2jkq0ft2q8uj";
-const stable_yield_manager = "terra1sxw6tpfnyr3a30mztqjv297qmpd5uu2a2m650q";
+const delta_neutral_manager = "terra13z92fhup8evcevgq7ss98e6jw47tr88psezl0y";
+const stable_yield_manager = "terra14tgqrxedusstuxutzqlshdargpxqxhgdre0quu";
 // await store_new_position_code(delta_neutral_manager);
 
-const terra_manager_addr = "terra1pvedfh9wv5vy5mc3c7mg7rln2j9ucwm8e75nk4";
+const terra_manager_addr = "terra1urvtfg54zdmlrvl0ejgp0wlnje9vt5arw0ns6j";
 // await migrate_contract(terra_manager_addr, 36018);
 // open_delta_neutral_position(terra_manager_addr, 1000000);
-// await open_delta_neutral_position(terra_manager_addr, 1500);
+// await open_delta_neutral_position(terra_manager_addr, 101);
+// await open_delta_neutral_position(terra_manager_addr, 50001);
 
-await close_position(terra_manager_addr, 0);
+await close_position(terra_manager_addr, 2);
+// await rebalance_position("terra1dhrd0my2d7nzv2003ypgy58nj00us3lxcz6hgp");
+// await collect_fees("terra1dhrd0my2d7nzv2003ypgy58nj00us3lxcz6hgp");

@@ -4,6 +4,7 @@ use cosmwasm_std::{
     Decimal, Empty, Querier, QuerierResult, QueryRequest, SystemError, SystemResult, Uint128,
     WasmQuery,
 };
+use terraswap::asset::AssetInfo;
 
 pub struct WasmMockQuerier {
     pub terraswap_factory: String,
@@ -15,9 +16,13 @@ pub struct WasmMockQuerier {
     pub cw20_token: String,
     pub terraswap_pool_cw20_balance: Uint128,
     pub terraswap_pool_uusd_balance: Uint128,
+    pub mirror_lock: String,
     pub mirror_mint: String,
     pub mirror_oracle: String,
+    pub mirror_staking: String,
+    pub mirror_collateral_oracle: String,
     pub anchor_market: String,
+    pub spectrum_mirror_farms: String,
 }
 
 impl Querier for WasmMockQuerier {
@@ -45,6 +50,16 @@ impl WasmMockQuerier {
                             amount: Coin {
                                 denom: String::from("uusd"),
                                 amount: self.terraswap_pool_uusd_balance,
+                            },
+                        })
+                        .unwrap(),
+                    ))
+                } else if *address == String::from("this") && denom == "uusd" {
+                    SystemResult::Ok(ContractResult::Ok(
+                        to_binary(&BalanceResponse {
+                            amount: Coin {
+                                denom: String::from("uusd"),
+                                amount: Uint128::from(10u128),
                             },
                         })
                         .unwrap(),
@@ -151,6 +166,48 @@ impl WasmMockQuerier {
                                 .unwrap(),
                             ))
                         }
+                        mirror_protocol::mint::QueryMsg::Position { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(mirror_protocol::mint::PositionResponse {
+                                        idx: Uint128::from(1u128),
+                                        owner: String::from("owner"),
+                                        collateral: terraswap::asset::Asset {
+                                            info: AssetInfo::Token {
+                                                contract_addr: String::from("aust_cw20"),
+                                            },
+                                            amount: Uint128::from(9000u128),
+                                        },
+                                        asset: terraswap::asset::Asset {
+                                            info: AssetInfo::Token {
+                                                contract_addr: self.cw20_token.to_string(),
+                                            },
+                                            amount: Uint128::from(5000u128),
+                                        },
+                                        is_short: true,
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
+                        _ => panic!(),
+                    }
+                } else if contract_addr == &self.mirror_lock {
+                    let msg: mirror_protocol::lock::QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        mirror_protocol::lock::QueryMsg::PositionLockInfo { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(mirror_protocol::lock::PositionLockInfoResponse {
+                                        idx: Uint128::from(1u128),
+                                        receiver: String::from("this"),
+                                        locked_amount: Uint128::from(20u128),
+                                        unlock_time: 12345,
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
                         _ => panic!(),
                     }
                 } else if contract_addr == &self.mirror_oracle {
@@ -170,6 +227,49 @@ impl WasmMockQuerier {
                         }
                         _ => panic!(),
                     }
+                } else if contract_addr == &self.mirror_collateral_oracle {
+                    let msg: mirror_protocol::collateral_oracle::QueryMsg =
+                        from_binary(&msg).unwrap();
+                    match msg {
+                        mirror_protocol::collateral_oracle::QueryMsg::CollateralPrice {
+                            ..
+                        } => SystemResult::Ok(ContractResult::Ok(
+                            to_binary(
+                                &(mirror_protocol::collateral_oracle::CollateralPriceResponse {
+                                    rate: Decimal::from_ratio(11u128, 10u128),
+                                    asset: String::from("aust_cw20"),
+                                    last_updated: 0,
+                                    multiplier: Decimal::one(),
+                                    is_revoked: false,
+                                }),
+                            )
+                            .unwrap(),
+                        )),
+                        _ => panic!(),
+                    }
+                } else if contract_addr == &self.mirror_staking {
+                    let msg: mirror_protocol::staking::QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        mirror_protocol::staking::QueryMsg::RewardInfo { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(mirror_protocol::staking::RewardInfoResponse {
+                                        staker_addr: String::from("this"),
+                                        reward_infos: vec![
+                                            mirror_protocol::staking::RewardInfoResponseItem {
+                                                asset_token: self.cw20_token.to_string(),
+                                                bond_amount: Uint128::from(1u128),
+                                                pending_reward: Uint128::from(3u128),
+                                                is_short: true,
+                                            },
+                                        ],
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
+                        _ => panic!(),
+                    }
                 } else if contract_addr == &self.anchor_market {
                     let msg: moneymarket::market::QueryMsg = from_binary(&msg).unwrap();
                     match msg {
@@ -179,6 +279,54 @@ impl WasmMockQuerier {
                                     &(moneymarket::market::EpochStateResponse {
                                         exchange_rate: Decimal256::from_ratio(11, 10),
                                         aterra_supply: Uint256::from(1000u128),
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
+                        _ => panic!(),
+                    }
+                } else if contract_addr == &self.spectrum_mirror_farms {
+                    let msg: spectrum_protocol::mirror_farm::QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        spectrum_protocol::mirror_farm::QueryMsg::reward_info { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(spectrum_protocol::mirror_farm::RewardInfoResponse {
+                                        staker_addr: String::from("staker"),
+                                        reward_infos: vec![spectrum_protocol::mirror_farm::RewardInfoResponseItem {
+                                            asset_token: self.cw20_token.to_string(),
+                                            farm_share_index: Decimal::zero(),
+                                            auto_spec_share_index: Decimal::zero(),
+                                            stake_spec_share_index: Decimal::zero(),
+                                            bond_amount: Uint128::from(1u128),
+                                            auto_bond_amount: Uint128::from(1u128),
+                                            stake_bond_amount: Uint128::zero(),
+                                            farm_share: Uint128::from(1u128),
+                                            spec_share: Uint128::from(1u128),
+                                            auto_bond_share: Uint128::from(1u128),
+                                            stake_bond_share: Uint128::from(1u128),
+                                            pending_farm_reward: Uint128::zero(),
+                                            pending_spec_reward: Uint128::from(5u128)
+                                        }],
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
+                        _ => panic!(),
+                    }
+                } else if contract_addr == &String::from("lp_token") {
+                    let msg: cw20::Cw20QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        cw20::Cw20QueryMsg::TokenInfo { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(cw20::TokenInfoResponse {
+                                        name: String::from("lp token"),
+                                        symbol: String::from("lp"),
+                                        decimals: 6,
+                                        total_supply: Uint128::from(1000u128),
                                     }),
                                 )
                                 .unwrap(),
@@ -215,9 +363,13 @@ impl WasmMockQuerier {
             cw20_token,
             terraswap_pool_cw20_balance,
             terraswap_pool_uusd_balance,
+            mirror_lock: String::from("mirror_lock"),
             mirror_mint: String::from("mirror_mint"),
             mirror_oracle: String::from("mirror_oracle"),
+            mirror_staking: String::from("mirror_staking"),
+            mirror_collateral_oracle: String::from("mirror_collateral_oracle"),
             anchor_market: String::from("anchor_market"),
+            spectrum_mirror_farms: String::from("spectrum_mirror_farms"),
         }
     }
 }

@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 
+use aperture_common::delta_neutral_position::PositionState;
 use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{to_binary, Coin, CosmosMsg, Decimal, Deps, Env, StdResult, Uint128, WasmMsg};
 
@@ -89,26 +90,39 @@ pub fn claim_and_increase_uusd_balance(
             uusd_increase_amount += position_lock_info_response.locked_amount;
         }
     }
-
     Ok((messages, uusd_increase_amount))
 }
 
-// Brings the position back to delta-neutral. If it's impossible to achieve an exact long-short amount match, then achieve a slight net-long position.
-// An example of such a situation: the mAsset is small-priced, and the Terraswap pair pool state is such that offering 1 extra uusd results in >1 extra mAsset returned.
 pub fn achieve_delta_neutral(
     deps: Deps,
     env: &Env,
     context: &Context,
 ) -> StdResult<Vec<CosmosMsg>> {
-    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
     let mut state = get_position_state(deps, env, context)?;
-    let info = &state.terraswap_pool_info;
-    let one = Uint128::from(1u128);
 
     // We first claim all available reward and exchange them for uusd.
     let (mut messages, uusd_increase_amount) = claim_and_increase_uusd_balance(deps, env, context)?;
     state.uusd_balance += uusd_increase_amount;
 
+    messages.extend(achieve_delta_neutral_from_state(deps, context, &state)?);
+    Ok(messages)
+}
+
+// Brings the position back to delta-neutral.
+// Our goal here is to minimize the amount of LP tokens that have to be unstaked and liquidity withdrawn, as:
+// (1) Re-staking the liquidity is subject to a 0.1% Spectrum protocol fee.
+// (2) Performing swaps while holding LP tokens allows us to earn a portion of the 0.3% Terraswap fees.
+//
+// An alternative, much simpler approach would be to unstake all LP tokens and withdraw liquidity, and then bring the position to delta-neutral without worrying about how Terraswap price movement affects our long position amount.
+pub fn achieve_delta_neutral_from_state(
+    deps: Deps,
+    context: &Context,
+    state: &PositionState,
+) -> StdResult<Vec<CosmosMsg>> {
+    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
+    let info = &state.terraswap_pool_info;
+    let mut messages = vec![];
+    let one = Uint128::from(1u128);
     match state
         .mirror_asset_long_amount
         .cmp(&state.mirror_asset_short_amount)
@@ -145,7 +159,7 @@ pub fn achieve_delta_neutral(
                 // We determined that we need to withdraw `a` amount of LP tokens.
                 let withdraw_lp_token_amount = a;
                 messages.extend(unstake_lp_and_withdraw_liquidity(
-                    &state,
+                    state,
                     context,
                     &mirror_asset_cw20_addr,
                     withdraw_lp_token_amount,
@@ -246,7 +260,7 @@ pub fn achieve_delta_neutral(
                     * Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply)
                     + state.uusd_balance;
                 messages.extend(unstake_lp_and_withdraw_liquidity(
-                    &state,
+                    state,
                     context,
                     &mirror_asset_cw20_addr,
                     withdraw_lp_token_amount,
@@ -305,4 +319,263 @@ pub fn achieve_delta_neutral(
         Ordering::Equal => {}
     }
     Ok(messages)
+}
+
+#[test]
+fn test_achieve_delta_neutral_from_net_long_simple_swap() {
+    use cosmwasm_std::testing::mock_env;
+    use cosmwasm_std::{Addr, Timestamp};
+
+    let terraswap_factory_addr = Addr::unchecked("mock_terraswap_factory");
+    let astroport_factory_addr = Addr::unchecked("mock_astroport_factory");
+    let cw20_token_addr = Addr::unchecked("mock_cw20_addr");
+    let terraswap_pair_addr = Addr::unchecked("mock_terraswap_pair");
+    let astroport_pair_addr = Addr::unchecked("mock_astroport_pair");
+    let querier = crate::mock_querier::WasmMockQuerier::new(
+        terraswap_factory_addr.to_string(),
+        astroport_factory_addr.to_string(),
+        terraswap_pair_addr.to_string(),
+        astroport_pair_addr.to_string(),
+        Uint128::from(10u128),
+        Uint128::from(9u128),
+        cw20_token_addr.to_string(),
+        Uint128::from(1000000u128),
+        Uint128::from(9000000u128),
+    );
+    let mut deps = cosmwasm_std::OwnedDeps {
+        storage: cosmwasm_std::testing::MockStorage::default(),
+        api: cosmwasm_std::testing::MockApi::default(),
+        querier,
+    };
+    MIRROR_ASSET_CW20_ADDR
+        .save(deps.as_mut().storage, &cw20_token_addr)
+        .unwrap();
+    CDP_IDX
+        .save(deps.as_mut().storage, &Uint128::from(1u128))
+        .unwrap();
+
+    let mut env = mock_env();
+    env.contract.address = Addr::unchecked("this");
+    env.block.time = Timestamp::from_seconds(12345);
+    let context = Context {
+        controller: Addr::unchecked("controller"),
+        anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
+        mirror_cw20_addr: Addr::unchecked("mirror_cw20"),
+        spectrum_cw20_addr: Addr::unchecked("spectrum_cw20"),
+        anchor_market_addr: Addr::unchecked("anchor_market"),
+        mirror_collateral_oracle_addr: Addr::unchecked("mirror_collateral_oracle"),
+        mirror_lock_addr: Addr::unchecked("mirror_lock"),
+        mirror_mint_addr: Addr::unchecked("mirror_mint"),
+        mirror_oracle_addr: Addr::unchecked("mirror_oracle"),
+        mirror_staking_addr: Addr::unchecked("mirror_staking"),
+        spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
+        spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
+        spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
+        terraswap_factory_addr: terraswap_factory_addr,
+        astroport_factory_addr: astroport_factory_addr,
+        collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
+        min_open_uusd_amount: Uint128::from(500u128),
+        min_reinvest_uusd_amount: Uint128::from(10u128),
+    };
+
+    let messages = achieve_delta_neutral(deps.as_ref(), &env, &context).unwrap();
+    assert_eq!(
+        messages[0],
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("spectrum_gov"),
+            msg: to_binary(&spectrum_protocol::gov::ExecuteMsg::mint {}).unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        messages[1],
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("spectrum_mirror_farms"),
+            msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::withdraw {
+                asset_token: None,
+                farm_amount: None,
+                spec_amount: None,
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        messages[2],
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("spectrum_cw20"),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: terraswap_pair_addr.to_string(),
+                amount: Uint128::from(5u128),
+                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
+                    belief_price: None,
+                    max_spread: None,
+                    to: None
+                })
+                .unwrap(),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        messages[3],
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("mirror_staking"),
+            msg: to_binary(&mirror_protocol::staking::ExecuteMsg::Withdraw { asset_token: None })
+                .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        messages[4],
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("mirror_cw20"),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: terraswap_pair_addr.to_string(),
+                amount: Uint128::from(3u128),
+                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
+                    belief_price: None,
+                    max_spread: None,
+                    to: None
+                })
+                .unwrap(),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        messages[5],
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("mirror_lock"),
+            msg: to_binary(&mirror_protocol::lock::ExecuteMsg::UnlockPositionFunds {
+                positions_idx: vec![Uint128::from(1u128)]
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        messages[6],
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: cw20_token_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: terraswap_pair_addr.to_string(),
+                amount: Uint128::from(996996u128),
+                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
+                    belief_price: None,
+                    max_spread: None,
+                    to: None
+                })
+                .unwrap(),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+}
+
+#[test]
+fn test_achieve_delta_neutral_from_net_short_simple_swap() {
+    use cosmwasm_std::testing::mock_env;
+    use cosmwasm_std::{Addr, Timestamp};
+
+    let terraswap_factory_addr = Addr::unchecked("mock_terraswap_factory");
+    let astroport_factory_addr = Addr::unchecked("mock_astroport_factory");
+    let cw20_token_addr = Addr::unchecked("mock_cw20_addr");
+    let terraswap_pair_addr = Addr::unchecked("mock_terraswap_pair");
+    let astroport_pair_addr = Addr::unchecked("mock_astroport_pair");
+    let querier = crate::mock_querier::WasmMockQuerier::new(
+        terraswap_factory_addr.to_string(),
+        astroport_factory_addr.to_string(),
+        terraswap_pair_addr.to_string(),
+        astroport_pair_addr.to_string(),
+        Uint128::from(10u128),
+        Uint128::from(9u128),
+        cw20_token_addr.to_string(),
+        Uint128::from(1000000u128),
+        Uint128::from(9000000u128),
+    );
+    let mut deps = cosmwasm_std::OwnedDeps {
+        storage: cosmwasm_std::testing::MockStorage::default(),
+        api: cosmwasm_std::testing::MockApi::default(),
+        querier,
+    };
+    MIRROR_ASSET_CW20_ADDR
+        .save(deps.as_mut().storage, &cw20_token_addr)
+        .unwrap();
+    CDP_IDX
+        .save(deps.as_mut().storage, &Uint128::from(1u128))
+        .unwrap();
+
+    let mut env = mock_env();
+    env.contract.address = Addr::unchecked("this");
+    env.block.time = Timestamp::from_seconds(12345);
+    let context = Context {
+        controller: Addr::unchecked("controller"),
+        anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
+        mirror_cw20_addr: Addr::unchecked("mirror_cw20"),
+        spectrum_cw20_addr: Addr::unchecked("spectrum_cw20"),
+        anchor_market_addr: Addr::unchecked("anchor_market"),
+        mirror_collateral_oracle_addr: Addr::unchecked("mirror_collateral_oracle"),
+        mirror_lock_addr: Addr::unchecked("mirror_lock"),
+        mirror_mint_addr: Addr::unchecked("mirror_mint"),
+        mirror_oracle_addr: Addr::unchecked("mirror_oracle"),
+        mirror_staking_addr: Addr::unchecked("mirror_staking"),
+        spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
+        spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
+        spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
+        terraswap_factory_addr: terraswap_factory_addr,
+        astroport_factory_addr: astroport_factory_addr,
+        collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
+        min_open_uusd_amount: Uint128::from(500u128),
+        min_reinvest_uusd_amount: Uint128::from(10u128),
+    };
+
+    let state = PositionState {
+        uusd_balance: Uint128::from(100000u128),
+        uusd_long_farm: Uint128::from(9000u128),
+        mirror_asset_short_amount: Uint128::from(2000u128),
+        mirror_asset_balance: Uint128::from(10u128),
+        mirror_asset_long_farm: Uint128::from(1000u128),
+        mirror_asset_long_amount: Uint128::from(1010u128),
+        collateral_anchor_ust_amount: Uint128::from(9000u128),
+        collateral_uusd_value: Uint128::from(9900u128),
+        mirror_asset_oracle_price: Decimal::from_ratio(10u128, 1u128),
+        anchor_ust_oracle_price: Decimal::from_ratio(11u128, 10u128),
+        terraswap_pool_info: aperture_common::delta_neutral_position::TerraswapPoolInfo {
+            lp_token_amount: Uint128::from(1u128),
+            lp_token_cw20_addr: String::from("lp_token"),
+            lp_token_total_supply: Uint128::from(1000u128),
+            terraswap_pair_addr: String::from("mock_terraswap_pair"),
+            terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
+            terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+        },
+    };
+
+    let messages = achieve_delta_neutral_from_state(deps.as_ref(), &context, &state).unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: terraswap_pair_addr.to_string(),
+            msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+                offer_asset: terraswap::asset::Asset {
+                    info: terraswap::asset::AssetInfo::NativeToken {
+                        denom: String::from("uusd")
+                    },
+                    amount: Uint128::from(8946u128)
+                },
+                belief_price: None,
+                max_spread: None,
+                to: None,
+            })
+            .unwrap(),
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(8946u128),
+            }],
+        })
+    );
 }

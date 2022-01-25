@@ -147,7 +147,8 @@ async function instantiate_delta_neutral_position_manager(
           allow_position_increase: false,
           allow_position_decrease: false,
           controller: test_wallet.key.accAddress,
-          min_delta_neutral_uusd_amount: (100 * 1e6).toString(),
+          min_open_uusd_amount: (100 * 1e6).toString(),
+          min_reinvest_uusd_amount: (10 * 1e6).toString(),
           anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
           mirror_cw20_addr: "terra10llyp6v3j3her8u3ce66ragytu45kcmd9asj3u",
           spectrum_cw20_addr: "terra1kvsxd94ue6f4rtchv2l6me5k07uh26s7637cza",
@@ -461,6 +462,4 @@ const terra_manager_addr = await deploy();
 console.log(
   `Successfully deployed TerraManager at address: ${terra_manager_addr}`
 );
-await open_delta_neutral_position(terra_manager_addr, 550);
-// await open_stable_yield_position(terra_manager_addr, 600);
-// await upload_and_migrate_contract('terra1uqryzpauak8tljlj9cl2gl99spgxqjvd008wvp');
+await open_delta_neutral_position(terra_manager_addr, 600000);

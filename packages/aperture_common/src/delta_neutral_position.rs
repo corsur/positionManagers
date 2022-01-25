@@ -36,12 +36,8 @@ pub enum ControllerExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    OpenPosition {
-        params: DeltaNeutralParams,
-    },
-    ClosePosition {
-        recipient: Recipient,
-    },
+    OpenPosition { params: DeltaNeutralParams },
+    ClosePosition { recipient: Recipient },
     Controller(ControllerExecuteMsg),
     Internal(InternalExecuteMsg),
 }
