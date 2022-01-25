@@ -1,30 +1,27 @@
-use std::cmp::{min, Ordering};
+use std::cmp::min;
 
 use aperture_common::common::Recipient;
 use aperture_common::delta_neutral_position_manager::{self, Context};
 use aperture_common::terra_manager;
 use cosmwasm_std::{
     entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
-    Response, StdError, StdResult, Uint128, WasmMsg,
+    Response, StdError, StdResult, WasmMsg,
 };
 use cw_storage_plus::Item;
 use terraswap::asset::{Asset, AssetInfo};
 
-use crate::dex_util::{
-    compute_terraswap_offer_amount, get_terraswap_mirror_asset_uusd_liquidity_info,
-    simulate_terraswap_swap, swap_cw20_token_for_uusd,
-};
+use crate::dex_util::get_terraswap_mirror_asset_uusd_liquidity_info;
 use crate::math::{decimal_division, decimal_multiplication, reverse_decimal};
 use crate::open::delta_neutral_invest;
+use crate::rebalance::achieve_delta_neutral;
 use crate::state::{
     CDP_IDX, MANAGER, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
     TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
-    get_position_state, get_uusd_asset_from_amount, get_uusd_balance,
-    increase_mirror_asset_balance_from_long_farm, increase_uusd_balance_from_aust_collateral,
-    query_position_info, unstake_lp_and_withdraw_liquidity,
+    get_cdp_uusd_lock_info_result, get_position_state, get_uusd_asset_from_amount,
+    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
+    increase_uusd_balance_from_aust_collateral, query_position_info,
 };
 use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
@@ -162,350 +159,6 @@ pub fn rebalance_and_reinvest(deps: Deps, env: Env, context: Context) -> StdResu
             InternalExecuteMsg::AchieveSafeCollateralRatio {},
         ))
         .add_messages(get_reinvest_internal_messages(deps, &env, &context)))
-}
-
-pub fn claim_and_increase_uusd_balance(
-    deps: Deps,
-    env: &Env,
-    context: &Context,
-) -> StdResult<(Vec<CosmosMsg>, Uint128)> {
-    let spec_reward = find_unclaimed_spec_amount(deps, env, context)?;
-    let mir_reward = find_unclaimed_mir_amount(deps, env, context)?;
-    let mut uusd_increase_amount = Uint128::zero();
-    let mut messages = vec![];
-
-    // Claim MIR / SPEC reward and swap them for uusd.
-    if spec_reward > Uint128::zero() {
-        // Mint SPEC tokens to ensure that emissable SPEC tokens are available for withdrawal.
-        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.spectrum_gov_addr.to_string(),
-            msg: to_binary(&spectrum_protocol::gov::ExecuteMsg::mint {})?,
-            funds: vec![],
-        }));
-
-        // Claim SPEC reward.
-        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.spectrum_mirror_farms_addr.to_string(),
-            msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::withdraw {
-                asset_token: None,
-                farm_amount: None,
-                spec_amount: None,
-            })?,
-            funds: vec![],
-        }));
-
-        // Swap SPEC reward for uusd.
-        let (spec_swap_msg, uusd_return_amount) = swap_cw20_token_for_uusd(
-            &deps.querier,
-            &context.terraswap_factory_addr,
-            &context.astroport_factory_addr,
-            &context.spectrum_cw20_addr,
-            spec_reward,
-        )?;
-        messages.push(spec_swap_msg);
-        uusd_increase_amount += uusd_return_amount;
-    }
-    if mir_reward > Uint128::zero() {
-        // Claim MIR reward.
-        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.mirror_staking_addr.to_string(),
-            msg: to_binary(&mirror_protocol::staking::ExecuteMsg::Withdraw { asset_token: None })?,
-            funds: vec![],
-        }));
-
-        // Swap MIR for uusd.
-        let (mir_swap_msg, uusd_return_amount) = swap_cw20_token_for_uusd(
-            &deps.querier,
-            &context.terraswap_factory_addr,
-            &context.astroport_factory_addr,
-            &context.mirror_cw20_addr,
-            mir_reward,
-        )?;
-        messages.push(mir_swap_msg);
-        uusd_increase_amount += uusd_return_amount;
-    }
-
-    // If there are any unlocked funds in the short farm, claim them.
-    let position_lock_info_result = get_cdp_uusd_lock_info_result(deps, context);
-    if let Ok(position_lock_info_response) = position_lock_info_result {
-        if position_lock_info_response.unlock_time <= env.block.time.seconds() {
-            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: context.mirror_lock_addr.to_string(),
-                msg: to_binary(&mirror_protocol::lock::ExecuteMsg::UnlockPositionFunds {
-                    positions_idx: vec![CDP_IDX.load(deps.storage)?],
-                })?,
-                funds: vec![],
-            }));
-            uusd_increase_amount += position_lock_info_response.locked_amount;
-        }
-    }
-
-    Ok((messages, uusd_increase_amount))
-}
-
-pub fn achieve_delta_neutral(
-    deps: Deps,
-    env: &Env,
-    context: &Context,
-) -> StdResult<Vec<CosmosMsg>> {
-    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
-    let mut state = get_position_state(deps, env, context)?;
-    let (mut messages, uusd_increase_amount) = claim_and_increase_uusd_balance(deps, env, context)?;
-    state.uusd_balance += uusd_increase_amount;
-
-    if state.mirror_asset_long_farm.is_zero() {
-        // There are no staked LP tokens.
-        match state
-            .mirror_asset_long_amount
-            .cmp(&state.mirror_asset_short_amount)
-        {
-            Ordering::Greater => messages.push(
-                swap_cw20_token_for_uusd(
-                    &deps.querier,
-                    &context.terraswap_factory_addr,
-                    &context.astroport_factory_addr,
-                    &mirror_asset_cw20_addr,
-                    state.mirror_asset_balance - state.mirror_asset_short_amount,
-                )?
-                .0,
-            ),
-            Ordering::Less => {
-                let (pair_info, pool_mirror_asset_amount, pool_uusd_amount) =
-                    get_terraswap_mirror_asset_uusd_liquidity_info(
-                        deps,
-                        &context.terraswap_factory_addr,
-                        &mirror_asset_cw20_addr,
-                    )?;
-                let offer_uusd_amount = compute_terraswap_offer_amount(
-                    pool_mirror_asset_amount,
-                    pool_uusd_amount,
-                    state.mirror_asset_short_amount - state.mirror_asset_balance,
-                )?;
-                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: pair_info.contract_addr,
-                    msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                        offer_asset: get_uusd_asset_from_amount(offer_uusd_amount),
-                        max_spread: None,
-                        belief_price: None,
-                        to: None,
-                    })?,
-                    funds: vec![Coin {
-                        denom: String::from("uusd"),
-                        amount: offer_uusd_amount,
-                    }],
-                }))
-            }
-            Ordering::Equal => {}
-        };
-        return Ok(messages);
-    }
-
-    match state
-        .mirror_asset_long_amount
-        .cmp(&state.mirror_asset_short_amount)
-    {
-        Ordering::Greater => {
-            let info = state.terraswap_pool_info.as_ref().unwrap();
-            let need_to_withdraw_lp_token = if state.mirror_asset_balance > Uint128::zero() {
-                let new_mirror_asset_pool_amount =
-                    info.terraswap_pool_mirror_asset_amount + state.mirror_asset_balance;
-                let mirror_asset_long_amount = new_mirror_asset_pool_amount
-                    * Decimal::from_ratio(info.lp_token_amount, info.lp_token_total_supply);
-                mirror_asset_long_amount > state.mirror_asset_short_amount
-            } else {
-                false
-            };
-
-            let one = Uint128::from(1u128);
-            let mut a = Uint128::zero();
-            if need_to_withdraw_lp_token {
-                let mut b = info.lp_token_amount + one;
-                while b > a + one {
-                    let withdraw_lp_token_amount = (a + b) >> 1;
-                    let fraction =
-                        Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
-                    let withdrawn_mirror_asset_amount =
-                        info.terraswap_pool_mirror_asset_amount * fraction;
-                    let new_lp_total_supply = info.lp_token_total_supply - withdraw_lp_token_amount;
-                    let pool_mirror_asset_amount_after_withdrawal =
-                        info.terraswap_pool_mirror_asset_amount - withdrawn_mirror_asset_amount;
-                    let pool_mirror_asset_amount_after_swap =
-                        pool_mirror_asset_amount_after_withdrawal
-                            + withdrawn_mirror_asset_amount
-                            + state.mirror_asset_balance;
-                    let new_long_farm_mirror_asset_amount = pool_mirror_asset_amount_after_swap
-                        * Decimal::from_ratio(
-                            info.lp_token_amount - withdraw_lp_token_amount,
-                            new_lp_total_supply,
-                        );
-                    if new_long_farm_mirror_asset_amount >= state.mirror_asset_short_amount {
-                        a = withdraw_lp_token_amount;
-                    } else {
-                        b = withdraw_lp_token_amount;
-                    }
-                }
-                messages.extend(unstake_lp_and_withdraw_liquidity(
-                    &state,
-                    context,
-                    &mirror_asset_cw20_addr,
-                    a,
-                ));
-                messages.push(
-                    swap_cw20_token_for_uusd(
-                        &deps.querier,
-                        &context.terraswap_factory_addr,
-                        &context.astroport_factory_addr,
-                        &mirror_asset_cw20_addr,
-                        info.terraswap_pool_mirror_asset_amount
-                            * Decimal::from_ratio(a, info.lp_token_total_supply)
-                            + state.mirror_asset_balance,
-                    )?
-                    .0,
-                );
-            } else {
-                let mut b = state.mirror_asset_balance + one;
-                while b > a + one {
-                    let offer_mirror_asset_amount = (a + b) >> 1;
-                    let pool_mirror_asset_amount_after_swap =
-                        info.terraswap_pool_mirror_asset_amount + offer_mirror_asset_amount;
-                    let new_mirror_asset_long_amount = state.mirror_asset_balance
-                        - offer_mirror_asset_amount
-                        + pool_mirror_asset_amount_after_swap
-                            * Decimal::from_ratio(info.lp_token_amount, info.lp_token_total_supply);
-                    if new_mirror_asset_long_amount >= state.mirror_asset_short_amount {
-                        a = offer_mirror_asset_amount;
-                    } else {
-                        b = offer_mirror_asset_amount;
-                    }
-                }
-                messages.push(
-                    swap_cw20_token_for_uusd(
-                        &deps.querier,
-                        &context.terraswap_factory_addr,
-                        &context.astroport_factory_addr,
-                        &mirror_asset_cw20_addr,
-                        a,
-                    )?
-                    .0,
-                );
-            }
-        }
-        Ordering::Less => {
-            let info = state.terraswap_pool_info.as_ref().unwrap();
-            let need_to_withdraw_lp_token = if state.uusd_balance > Uint128::zero() {
-                let (_, pool_mirror_asset_amount_after_swap, return_mirror_asset_amount) =
-                    simulate_terraswap_swap(
-                        info.terraswap_pool_uusd_amount,
-                        info.terraswap_pool_mirror_asset_amount,
-                        state.uusd_balance,
-                    );
-                let mirror_asset_long_amount = pool_mirror_asset_amount_after_swap
-                    * Decimal::from_ratio(info.lp_token_amount, info.lp_token_total_supply)
-                    + return_mirror_asset_amount
-                    + state.mirror_asset_balance;
-                mirror_asset_long_amount < state.mirror_asset_short_amount
-            } else {
-                false
-            };
-
-            let mut a = Uint128::zero();
-            let one = Uint128::from(1u128);
-            if need_to_withdraw_lp_token {
-                let mut b = info.lp_token_amount + one;
-                while b > a + one {
-                    let withdraw_lp_token_amount = (a + b) >> 1;
-                    let fraction =
-                        Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
-                    let withdrawn_mirror_asset_amount =
-                        info.terraswap_pool_mirror_asset_amount * fraction;
-                    let withdrawn_uusd_amount = info.terraswap_pool_uusd_amount * fraction;
-                    let new_lp_total_supply = info.lp_token_total_supply - withdraw_lp_token_amount;
-                    let pool_mirror_asset_amount_after_withdrawal =
-                        info.terraswap_pool_mirror_asset_amount - withdrawn_mirror_asset_amount;
-                    let pool_uusd_amount_after_withdrawal =
-                        info.terraswap_pool_uusd_amount - withdrawn_uusd_amount;
-                    let (_, pool_mirror_asset_amount_after_swap, return_mirror_asset_amount) =
-                        simulate_terraswap_swap(
-                            pool_uusd_amount_after_withdrawal,
-                            pool_mirror_asset_amount_after_withdrawal,
-                            withdrawn_uusd_amount + state.uusd_balance,
-                        );
-                    let mirror_asset_long_farm_amount = pool_mirror_asset_amount_after_swap
-                        * Decimal::from_ratio(
-                            info.lp_token_amount - withdraw_lp_token_amount,
-                            new_lp_total_supply,
-                        );
-                    let mirror_asset_long_amount = state.mirror_asset_balance
-                        + withdrawn_mirror_asset_amount
-                        + return_mirror_asset_amount
-                        + mirror_asset_long_farm_amount;
-                    if mirror_asset_long_amount <= state.mirror_asset_short_amount {
-                        a = withdraw_lp_token_amount;
-                    } else {
-                        b = withdraw_lp_token_amount;
-                    }
-                }
-
-                let offer_uusd_amount = info.terraswap_pool_uusd_amount
-                    * Decimal::from_ratio(a, info.lp_token_total_supply)
-                    + state.uusd_balance;
-                messages.extend(unstake_lp_and_withdraw_liquidity(
-                    &state,
-                    context,
-                    &mirror_asset_cw20_addr,
-                    a,
-                ));
-                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: info.terraswap_pair_addr.clone(),
-                    msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                        offer_asset: get_uusd_asset_from_amount(offer_uusd_amount),
-                        max_spread: None,
-                        belief_price: None,
-                        to: None,
-                    })?,
-                    funds: vec![Coin {
-                        denom: String::from("uusd"),
-                        amount: offer_uusd_amount,
-                    }],
-                }));
-            } else {
-                let mut b = state.uusd_balance + one;
-                while b > a + one {
-                    let offer_uusd_amount = (a + b) >> 1;
-                    let (_, pool_mirror_asset_amount_after_swap, return_mirror_asset_amount) =
-                        simulate_terraswap_swap(
-                            info.terraswap_pool_uusd_amount,
-                            info.terraswap_pool_mirror_asset_amount,
-                            offer_uusd_amount,
-                        );
-                    let mirror_asset_long_amount = pool_mirror_asset_amount_after_swap
-                        * Decimal::from_ratio(info.lp_token_amount, info.lp_token_total_supply)
-                        + return_mirror_asset_amount
-                        + state.mirror_asset_balance;
-                    if mirror_asset_long_amount <= state.mirror_asset_short_amount {
-                        a = offer_uusd_amount;
-                    } else {
-                        b = offer_uusd_amount;
-                    }
-                }
-                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: info.terraswap_pair_addr.clone(),
-                    msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                        offer_asset: get_uusd_asset_from_amount(a),
-                        max_spread: None,
-                        belief_price: None,
-                        to: None,
-                    })?,
-                    funds: vec![Coin {
-                        denom: String::from("uusd"),
-                        amount: a,
-                    }],
-                }));
-            }
-        }
-        Ordering::Equal => {}
-    }
-    Ok(messages)
 }
 
 pub fn achieve_safe_collateral_ratios(
@@ -720,23 +373,24 @@ pub fn withdraw_funds_in_uusd(
 
     // Reduce mAsset short position.
     let mirror_asset_burn_amount = state.mirror_asset_short_amount * proportion;
-    response = response.add_messages(increase_mirror_asset_balance_from_long_farm(
-        &state,
-        &context,
-        &mirror_asset_cw20_addr,
-        mirror_asset_burn_amount,
-    ));
-    response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: mirror_asset_cw20_addr.to_string(),
-        msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-            contract: context.mirror_mint_addr.to_string(),
-            amount: mirror_asset_burn_amount,
-            msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
-                position_idx: CDP_IDX.load(deps.storage)?,
+    response = response
+        .add_messages(increase_mirror_asset_balance_from_long_farm(
+            &state,
+            &context,
+            &mirror_asset_cw20_addr,
+            mirror_asset_burn_amount,
+        ))
+        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: mirror_asset_cw20_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: context.mirror_mint_addr.to_string(),
+                amount: mirror_asset_burn_amount,
+                msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
+                    position_idx: CDP_IDX.load(deps.storage)?,
+                })?,
             })?,
-        })?,
-        funds: vec![],
-    }));
+            funds: vec![],
+        }));
 
     // Send uusd to recipient.
     response = response.add_messages(vec![

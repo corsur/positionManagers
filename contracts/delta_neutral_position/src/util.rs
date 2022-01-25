@@ -79,7 +79,6 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
             block_height: None,
         },
     )?;
-
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
     let spectrum_info: spectrum_protocol::mirror_farm::RewardInfoResponse =
         deps.querier.query_wasm_smart(
@@ -89,59 +88,47 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
                 asset_token: Some(mirror_asset_cw20_addr.to_string()),
             },
         )?;
-    let mut terraswap_pool_info: Option<TerraswapPoolInfo> = None;
-    let mut uusd_long_farm = Uint128::zero();
-    let mut mirror_asset_long_farm = Uint128::zero();
+
+    let mut lp_token_amount = Uint128::zero();
     for info in spectrum_info.reward_infos.iter() {
         if info.asset_token == mirror_asset_cw20_addr {
-            let lp_token_amount = info.bond_amount;
-
-            let asset_infos = create_terraswap_cw20_uusd_pair_asset_info(&mirror_asset_cw20_addr);
-            let terraswap_pair_info = terraswap::querier::query_pair_info(
-                &deps.querier,
-                context.terraswap_factory_addr.clone(),
-                &asset_infos,
-            )?;
-            let terraswap_pair_addr = terraswap_pair_info.contract_addr;
-            let validated_pair_addr = deps.api.addr_validate(&terraswap_pair_addr)?;
-            let lp_token_cw20_addr = terraswap_pair_info.liquidity_token;
-            let lp_token_total_supply = terraswap::querier::query_supply(
-                &deps.querier,
-                deps.api.addr_validate(&lp_token_cw20_addr)?,
-            )?;
-
-            let terraswap_pool_mirror_asset_amount =
-                asset_infos[0].query_pool(&deps.querier, deps.api, validated_pair_addr.clone())?;
-            mirror_asset_long_farm = lp_token_amount
-                .multiply_ratio(terraswap_pool_mirror_asset_amount, lp_token_total_supply);
-            let terraswap_pool_uusd_amount =
-                asset_infos[1].query_pool(&deps.querier, deps.api, validated_pair_addr)?;
-            uusd_long_farm =
-                lp_token_amount.multiply_ratio(terraswap_pool_uusd_amount, lp_token_total_supply);
-
-            terraswap_pool_info = Some(TerraswapPoolInfo {
-                lp_token_amount,
-                lp_token_cw20_addr,
-                lp_token_total_supply,
-                terraswap_pair_addr,
-                terraswap_pool_mirror_asset_amount,
-                terraswap_pool_uusd_amount,
-            });
+            lp_token_amount = info.bond_amount;
         }
     }
+    let asset_infos = create_terraswap_cw20_uusd_pair_asset_info(&mirror_asset_cw20_addr);
+    let terraswap_pair_info = terraswap::querier::query_pair_info(
+        &deps.querier,
+        context.terraswap_factory_addr.clone(),
+        &asset_infos,
+    )?;
+    let terraswap_pair_addr = terraswap_pair_info.contract_addr;
+    let validated_pair_addr = deps.api.addr_validate(&terraswap_pair_addr)?;
+    let lp_token_cw20_addr = terraswap_pair_info.liquidity_token;
+    let lp_token_total_supply = terraswap::querier::query_supply(
+        &deps.querier,
+        deps.api.addr_validate(&lp_token_cw20_addr)?,
+    )?;
+
+    let terraswap_pool_mirror_asset_amount =
+        asset_infos[0].query_pool(&deps.querier, deps.api, validated_pair_addr.clone())?;
+    let terraswap_pool_uusd_amount =
+        asset_infos[1].query_pool(&deps.querier, deps.api, validated_pair_addr)?;
 
     let mirror_asset_balance = terraswap::querier::query_token_balance(
         &deps.querier,
         mirror_asset_cw20_addr.clone(),
         env.contract.address.clone(),
     )?;
+    let mirror_asset_long_farm =
+        lp_token_amount.multiply_ratio(terraswap_pool_mirror_asset_amount, lp_token_total_supply);
     let state = PositionState {
         uusd_balance: terraswap::querier::query_balance(
             &deps.querier,
             env.contract.address.clone(),
             "uusd".into(),
         )?,
-        uusd_long_farm,
+        uusd_long_farm: lp_token_amount
+            .multiply_ratio(terraswap_pool_uusd_amount, lp_token_total_supply),
         mirror_asset_short_amount: position_response.asset.amount,
         mirror_asset_balance,
         mirror_asset_long_farm,
@@ -154,7 +141,14 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
             mirror_asset_cw20_addr.as_str(),
         )?,
         anchor_ust_oracle_price: collateral_price_response.rate,
-        terraswap_pool_info,
+        terraswap_pool_info: TerraswapPoolInfo {
+            lp_token_amount,
+            lp_token_cw20_addr,
+            lp_token_total_supply,
+            terraswap_pair_addr,
+            terraswap_pool_mirror_asset_amount,
+            terraswap_pool_uusd_amount,
+        },
     };
     Ok(state)
 }
@@ -176,20 +170,10 @@ pub fn unstake_lp_and_withdraw_liquidity(
             .unwrap(),
         }),
         CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: state
-                .terraswap_pool_info
-                .as_ref()
-                .unwrap()
-                .lp_token_cw20_addr
-                .to_string(),
+            contract_addr: state.terraswap_pool_info.lp_token_cw20_addr.to_string(),
             funds: vec![],
             msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: state
-                    .terraswap_pool_info
-                    .as_ref()
-                    .unwrap()
-                    .terraswap_pair_addr
-                    .to_string(),
+                contract: state.terraswap_pool_info.terraswap_pair_addr.to_string(),
                 amount: withdraw_lp_token_amount,
                 msg: to_binary(&terraswap::pair::Cw20HookMsg::WithdrawLiquidity {}).unwrap(),
             })
@@ -210,8 +194,6 @@ pub fn increase_mirror_asset_balance_from_long_farm(
     let withdraw_mirror_asset_amount = target_mirror_asset_balance - state.mirror_asset_balance;
     let withdraw_lp_token_amount = state
         .terraswap_pool_info
-        .as_ref()
-        .unwrap()
         .lp_token_amount
         .multiply_ratio(withdraw_mirror_asset_amount, state.mirror_asset_long_farm);
     unstake_lp_and_withdraw_liquidity(

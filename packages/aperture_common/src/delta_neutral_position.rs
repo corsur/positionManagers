@@ -102,8 +102,7 @@ pub struct PositionState {
     // Oracle price of aUST.
     pub anchor_ust_oracle_price: Decimal,
     // Information about the Terraswap mAsset-UST pool.
-    // Only populated if long farm is active, i.e. `uusd_long_farm` > 0 and `mirror_asset_long_farm` > 0.
-    pub terraswap_pool_info: Option<TerraswapPoolInfo>,
+    pub terraswap_pool_info: TerraswapPoolInfo,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

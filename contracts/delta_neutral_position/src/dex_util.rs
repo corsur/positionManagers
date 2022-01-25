@@ -312,6 +312,18 @@ fn test_simulate_terraswap_swap() {
             Uint128::zero()
         )
     );
+    assert_eq!(
+        simulate_terraswap_swap(
+            Uint128::from(123456u128),
+            Uint128::from(1234u128),
+            Uint128::zero()
+        ),
+        (
+            Uint128::from(123456u128),
+            Uint128::from(1234u128),
+            Uint128::zero()
+        )
+    );
 }
 
 /// Given a Terraswap pool state (a constant-product AMM w/ a fixed 0.3% commission), find the least amount of `offer asset` that can be swapped for at least `ask_amount` of the `ask asset`.

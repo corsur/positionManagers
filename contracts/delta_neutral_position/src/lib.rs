@@ -4,6 +4,7 @@ pub mod state;
 mod dex_util;
 mod math;
 mod open;
+mod rebalance;
 mod util;
 
 #[cfg(test)]
