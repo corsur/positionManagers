@@ -2,15 +2,105 @@
   "manifestVersion": "3.2",
   "proxies": [
     {
+      "address": "0x4BE63C56f4317B35409e5B2a3d1B7A92b8cA67B5",
+      "txHash": "0x9f1bccef9e9514eee8f00e42451bd6a0a84bb77c966c6af755fc5572f2cec9f4",
+      "kind": "uups"
+    },
+    {
+      "address": "0x3e4b27220906365A63340F117b8dadcB9aBf519D",
+      "txHash": "0x7b6e5004825125a8d96231f267d027389589c7659b50ff84c9f9fcf24c5f6ec1",
+      "kind": "uups"
+    },
+    {
+      "address": "0x41C08c495aDC314644df76E9f62d1BaC63d086D9",
+      "txHash": "0xcd260249e41e05bab12ead7333039c3dad0f3f00193250e68ba39e97d0eff893",
+      "kind": "uups"
+    },
+    {
+      "address": "0x8558Ee673843840C625F6219b408B1b3537C9044",
+      "txHash": "0x593f374a9ce8841f0d9f9c9a58b37bb735faddc4fe88c6b61d66d2e2f52cfc77",
+      "kind": "uups"
+    },
+    {
+      "address": "0xB4cDA799D8BDdaA6D37eC1D36E7934C665C7A0aE",
+      "txHash": "0xca9502905f799347e1f36a04590a53f7c50c5ec991bdc5a5d6d595f841bf1be6",
+      "kind": "uups"
+    },
+    {
+      "address": "0xDAD5a164A3049A443eD1530B70390Ed7663AaD1f",
+      "txHash": "0xa77b1f58233492018e4ceae4a4ca03152065834900bffd6f92b36aea560324a1",
+      "kind": "uups"
+    },
+    {
+      "address": "0x64aC182F1952658963029EeCd1258a9aDb8781E7",
+      "txHash": "0x999b98e31ffbd29b7b6f123f816ee10cc2552da197c64ffcde628fac6bfdb0dd",
+      "kind": "uups"
+    },
+    {
+      "address": "0x57fd4825620cdF37a94cAd24013c5103088969F7",
+      "txHash": "0xd20620913fdd6eb19b479729dfb282f5ad5feec6685d3555257c0d2b36f7c2e4",
+      "kind": "uups"
+    },
+    {
+      "address": "0x1380Ba5AF0799da9eD4f1072929bdC55Cb899BD5",
+      "txHash": "0xc49ce61b37f6aef1bf9d2396ff82c4878932c0b4173caa437e55ecf11391e587",
+      "kind": "uups"
+    },
+    {
+      "address": "0x8f9374e559272F7f8CB9AA5E6E207de02eD8A03B",
+      "txHash": "0xbf97c9d23bdcbd71f3f2b2a44485fa41f492c8681a71ba8371d5528ec363e0b3",
+      "kind": "uups"
+    },
+    {
+      "address": "0xe7C7253083693E59C1F0F499c1ed8900b7e27522",
+      "txHash": "0x801bb8528636257dfa61fb191219dcb607140ae6a034876df804811e6f75f042",
+      "kind": "uups"
+    },
+    {
+      "address": "0x4c64D96ca5Ed86d878DD574D034A396ffFF592a7",
+      "txHash": "0x16e89e95e80280f6e266012827b8f4c1434f98646474f840d17cd08396988c30",
+      "kind": "uups"
+    },
+    {
+      "address": "0x57eECddbB316E97FD019fd7DAB1053B2CdDcd555",
+      "txHash": "0xb9f0d92dd48729d7e164fad18d8613878ccb87eea74bd8acc1fb7077ca5c41f0",
+      "kind": "uups"
+    },
+    {
+      "address": "0x2e98CA49cfa1Fb8dE6f76D64CCb2Fbd7E7Ab915E",
+      "txHash": "0x7f36b77676d0c1c79d0cefa6bd1bc757fa947cc18069965c47eade8bd6bc91fc",
+      "kind": "uups"
+    },
+    {
+      "address": "0x16e33c991900B3C9374b652e07116f2b26914d49",
+      "txHash": "0xca91fa2985e910182635545dc061b42fe273117b8402176ec3aa3ba1d68b175e",
+      "kind": "uups"
+    },
+    {
       "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-      "txHash": "0xd84a6db950019c63b9fa76f2be64c75c11b085e4973151c5c691ab668a8480a2",
+      "txHash": "0x78c9bc5721859a67db65fa501d2afe11a30d745ea83ec453c917aefb24138573",
+      "kind": "uups"
+    },
+    {
+      "address": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+      "txHash": "0x0c945166b553718283a424adbccf490b0f82e8d5243af15cfce446dbe2c26cbc",
+      "kind": "uups"
+    },
+    {
+      "address": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
+      "txHash": "0x17bb2c0eacff47e14172f34726800bdb9505379d04d43cd5563dc193395a880a",
+      "kind": "uups"
+    },
+    {
+      "address": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853",
+      "txHash": "0x5257e1297805da12a4f9357422c65a543e6f06b671b7e0bee2f3c864999e51a6",
       "kind": "uups"
     }
   ],
   "impls": {
-    "849281cc6055c8ce1ec7e1dcb0179c4362e08982d9cac75296108962cdfcae5f": {
+    "3d843a6f5ffd09bdf2069ebb5c77ebc2791cca85d6973e85459f1e67bb0bb950": {
       "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-      "txHash": "0x59f0c45bf5911d1b3acf06aef40df8ef3b77738b44b7d65290303a6ba79c1a82",
+      "txHash": "0xc9e1bb254fd4811a4b97724889e8e2c909e4b510bb0002ba4b9ee3f63fb61401",
       "layout": {
         "storage": [
           {
@@ -59,55 +149,55 @@
             "contract": "EthereumManager",
             "label": "CONSISTENCY_LEVEL",
             "type": "t_uint8",
-            "src": "contracts/EthereumManager.sol:52"
+            "src": "contracts/EthereumManager.sol:57"
           },
           {
             "contract": "EthereumManager",
             "label": "WORMHOLE_TOKEN_BRIDGE",
             "type": "t_address",
-            "src": "contracts/EthereumManager.sol:53"
+            "src": "contracts/EthereumManager.sol:58"
           },
           {
             "contract": "EthereumManager",
             "label": "TERRA_MANAGER_ADDRESS",
             "type": "t_bytes32",
-            "src": "contracts/EthereumManager.sol:54"
+            "src": "contracts/EthereumManager.sol:59"
           },
           {
             "contract": "EthereumManager",
             "label": "CROSS_CHAIN_FEE_BPS",
             "type": "t_uint32",
-            "src": "contracts/EthereumManager.sol:56"
+            "src": "contracts/EthereumManager.sol:61"
           },
           {
             "contract": "EthereumManager",
             "label": "FEE_SINK",
             "type": "t_address",
-            "src": "contracts/EthereumManager.sol:58"
+            "src": "contracts/EthereumManager.sol:63"
           },
           {
             "contract": "EthereumManager",
             "label": "nextPositionId",
             "type": "t_uint128",
-            "src": "contracts/EthereumManager.sol:61"
+            "src": "contracts/EthereumManager.sol:66"
           },
           {
             "contract": "EthereumManager",
             "label": "whitelistedStableTokens",
             "type": "t_mapping(t_address,t_bool)",
-            "src": "contracts/EthereumManager.sol:64"
+            "src": "contracts/EthereumManager.sol:69"
           },
           {
             "contract": "EthereumManager",
             "label": "completedTokenTransfers",
             "type": "t_mapping(t_bytes32,t_bool)",
-            "src": "contracts/EthereumManager.sol:67"
+            "src": "contracts/EthereumManager.sol:72"
           },
           {
             "contract": "EthereumManager",
             "label": "positionToOwnership",
             "type": "t_mapping(t_uint128,t_struct(OwnershipInfo)2014_storage)",
-            "src": "contracts/EthereumManager.sol:70"
+            "src": "contracts/EthereumManager.sol:75"
           }
         ],
         "types": {
