@@ -35,7 +35,9 @@ pub struct InstantiateMsg {
     // See also `DeltaNeutralParams` below for more context.
     pub collateral_ratio_safety_margin: Decimal,
     // The minimum allowed uusd amount when opening a delta-neutral position.
-    pub min_delta_neutral_uusd_amount: Uint128,
+    pub min_open_uusd_amount: Uint128,
+    // The minimum uusd amount eligible for delta-neutral reinvestment.
+    pub min_reinvest_uusd_amount: Uint128,
     pub fee_collection_config: FeeCollectionConfig,
 }
 
@@ -117,7 +119,8 @@ pub struct Context {
     pub terraswap_factory_addr: Addr,
     pub astroport_factory_addr: Addr,
     pub collateral_ratio_safety_margin: Decimal,
-    pub min_delta_neutral_uusd_amount: Uint128,
+    pub min_open_uusd_amount: Uint128,
+    pub min_reinvest_uusd_amount: Uint128,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

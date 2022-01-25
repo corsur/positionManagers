@@ -4,8 +4,8 @@ use aperture_common::common::Recipient;
 use aperture_common::delta_neutral_position_manager::{self, Context};
 use aperture_common::terra_manager;
 use cosmwasm_std::{
-    entry_point, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
-    MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
+    entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
+    Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::Item;
 use terraswap::asset::{Asset, AssetInfo};
@@ -15,16 +15,16 @@ use crate::dex_util::{
     simulate_terraswap_swap, swap_cw20_token_for_uusd,
 };
 use crate::math::{decimal_division, decimal_multiplication, reverse_decimal};
+use crate::open::delta_neutral_invest;
 use crate::state::{
     CDP_IDX, MANAGER, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
     TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
-    find_collateral_uusd_amount, find_unclaimed_mir_amount, find_unclaimed_spec_amount,
-    get_cdp_uusd_lock_info_result, get_position_state, get_uusd_asset_from_amount,
-    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
-    increase_uusd_balance_from_aust_collateral, query_position_info,
-    unstake_lp_and_withdraw_liquidity,
+    find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
+    get_position_state, get_uusd_asset_from_amount, get_uusd_balance,
+    increase_mirror_asset_balance_from_long_farm, increase_uusd_balance_from_aust_collateral,
+    query_position_info, unstake_lp_and_withdraw_liquidity,
 };
 use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
@@ -110,7 +110,22 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             InternalExecuteMsg::DeltaNeutralReinvest {} => {
                 let cdp_idx = CDP_IDX.load(deps.storage)?;
                 let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
-                delta_neutral_invest(deps, env, context, &mirror_asset_cw20_addr, Some(cdp_idx))
+                let target_collateral_ratio_range =
+                    TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
+                let uusd_amount = get_uusd_balance(&deps.querier, &env)?;
+                if uusd_amount >= context.min_reinvest_uusd_amount {
+                    delta_neutral_invest(
+                        deps,
+                        env,
+                        context,
+                        uusd_amount,
+                        &target_collateral_ratio_range,
+                        &mirror_asset_cw20_addr,
+                        Some(cdp_idx),
+                    )
+                } else {
+                    Ok(Response::default())
+                }
             }
         },
     }
@@ -566,7 +581,7 @@ pub fn open_position(
     }
 
     let uusd_balance = get_uusd_balance(&deps.querier, &env)?;
-    if uusd_balance < context.min_delta_neutral_uusd_amount {
+    if uusd_balance < context.min_open_uusd_amount {
         return Err(StdError::generic_err(
             "UST amount too small to open a delta-neutral position",
         ));
@@ -591,36 +606,19 @@ pub fn open_position(
         )?;
     CDP_IDX.save(deps.storage, &cdp_idx_response.next_position_idx)?;
 
-    TARGET_COLLATERAL_RATIO_RANGE.save(
-        deps.storage,
-        &TargetCollateralRatioRange {
-            min: target_min_collateral_ratio,
-            max: target_max_collateral_ratio,
-        },
-    )?;
-    delta_neutral_invest(deps, env, context, &mirror_asset_cw20_addr, None)
-}
-
-pub fn delta_neutral_invest(
-    deps: DepsMut,
-    env: Env,
-    context: Context,
-    mirror_asset_cw20_addr: &Addr,
-    cdp_idx: Option<Uint128>,
-) -> StdResult<Response> {
-    let uusd_balance = get_uusd_balance(&deps.querier, &env)?;
-    if uusd_balance < context.min_delta_neutral_uusd_amount {
-        return Ok(Response::default());
-    }
-    let target_collateral_ratio_range = TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
-    find_collateral_uusd_amount(
-        deps.as_ref(),
-        &env,
-        &context,
-        mirror_asset_cw20_addr,
-        &target_collateral_ratio_range,
+    let target_collateral_ratio_range = TargetCollateralRatioRange {
+        min: target_min_collateral_ratio,
+        max: target_max_collateral_ratio,
+    };
+    TARGET_COLLATERAL_RATIO_RANGE.save(deps.storage, &target_collateral_ratio_range)?;
+    delta_neutral_invest(
+        deps,
+        env,
+        context,
         uusd_balance,
-        cdp_idx,
+        &target_collateral_ratio_range,
+        &mirror_asset_cw20_addr,
+        None,
     )
 }
 

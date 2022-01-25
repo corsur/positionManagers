@@ -51,7 +51,8 @@ pub fn instantiate(
         terraswap_factory_addr: deps.api.addr_validate(&msg.terraswap_factory_addr)?,
         astroport_factory_addr: deps.api.addr_validate(&msg.astroport_factory_addr)?,
         collateral_ratio_safety_margin: msg.collateral_ratio_safety_margin,
-        min_delta_neutral_uusd_amount: msg.min_delta_neutral_uusd_amount,
+        min_open_uusd_amount: msg.min_open_uusd_amount,
+        min_reinvest_uusd_amount: msg.min_reinvest_uusd_amount,
     };
     CONTEXT.save(deps.storage, &context)?;
 
@@ -290,7 +291,7 @@ fn validate_assets(info: &MessageInfo, context: &Context, assets: &[Asset]) -> S
         let asset = &assets[0];
         if let AssetInfo::NativeToken { denom } = &asset.info {
             if denom == "uusd"
-                && asset.amount >= context.min_delta_neutral_uusd_amount
+                && asset.amount >= context.min_open_uusd_amount
                 && asset.assert_sent_native_token_balance(info).is_ok()
             {
                 return Ok(asset.amount);
@@ -329,7 +330,8 @@ fn test_contract() {
         terraswap_factory_addr: String::from("terraswap_factory"),
         astroport_factory_addr: String::from("astroport_factory"),
         collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
-        min_delta_neutral_uusd_amount: Uint128::from(500u128),
+        min_open_uusd_amount: Uint128::from(500u128),
+        min_reinvest_uusd_amount: Uint128::from(10u128),
         fee_collection_config: FeeCollectionConfig {
             performance_rate: Decimal::from_ratio(1u128, 10u128),
             collector_addr: String::from("collector"),
@@ -375,7 +377,8 @@ fn test_contract() {
             terraswap_factory_addr: Addr::unchecked("terraswap_factory"),
             astroport_factory_addr: Addr::unchecked("astroport_factory"),
             collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
-            min_delta_neutral_uusd_amount: Uint128::from(500u128)
+            min_open_uusd_amount: Uint128::from(500u128),
+            min_reinvest_uusd_amount: Uint128::from(10u128),
         }
     );
     assert_eq!(
