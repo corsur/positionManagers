@@ -13,8 +13,7 @@ pub struct InstantiateMsg {}
 pub enum InternalExecuteMsg {
     AchieveSafeCollateralRatio {},
     WithdrawFundsInUusd {
-        proportion: Decimal,
-        recipient: Recipient,
+        recipient: Option<Recipient>,
     },
     WithdrawCollateralAndRedeemForUusd {
         proportion: Decimal,
@@ -31,6 +30,7 @@ pub enum InternalExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ControllerExecuteMsg {
     RebalanceAndReinvest {},
+    RebalanceAndCollectFees {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -39,8 +39,7 @@ pub enum ExecuteMsg {
     OpenPosition {
         params: DeltaNeutralParams,
     },
-    DecreasePosition {
-        proportion: Decimal,
+    ClosePosition {
         recipient: Recipient,
     },
     Controller(ControllerExecuteMsg),

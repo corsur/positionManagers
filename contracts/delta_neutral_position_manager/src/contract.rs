@@ -5,8 +5,8 @@ use aperture_common::delta_neutral_position_manager::{
     MigrateMsg, QueryMsg,
 };
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
-    MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
+    entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
+    Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
 };
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
@@ -244,10 +244,7 @@ pub fn close_position(
     send_execute_message_to_position_contract(
         deps.as_ref(),
         position,
-        delta_neutral_position::ExecuteMsg::DecreasePosition {
-            proportion: Decimal::one(),
-            recipient,
-        },
+        delta_neutral_position::ExecuteMsg::ClosePosition { recipient },
         None,
     )
 }
@@ -306,7 +303,7 @@ fn test_contract() {
     use aperture_common::delta_neutral_position_manager::FeeCollectionConfig;
     use cosmwasm_std::testing::MOCK_CONTRACT_ADDR;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::Addr;
+    use cosmwasm_std::{Addr, Decimal};
 
     let mut deps = mock_dependencies(&[]);
     let env = mock_env();
@@ -612,8 +609,7 @@ fn test_contract() {
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: String::from("position_contract"),
             funds: vec![],
-            msg: to_binary(&delta_neutral_position::ExecuteMsg::DecreasePosition {
-                proportion: Decimal::one(),
+            msg: to_binary(&delta_neutral_position::ExecuteMsg::ClosePosition {
                 recipient: Recipient::TerraChain {
                     recipient: String::from("terra1recipient"),
                 },

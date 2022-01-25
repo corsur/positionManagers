@@ -1,11 +1,11 @@
 use std::cmp::min;
 
 use aperture_common::common::Recipient;
-use aperture_common::delta_neutral_position_manager::{self, Context};
+use aperture_common::delta_neutral_position_manager::{self, Context, FeeCollectionConfig};
 use aperture_common::terra_manager;
 use cosmwasm_std::{
-    entry_point, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
-    Response, StdError, StdResult, WasmMsg,
+    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::Item;
 use terraswap::asset::{Asset, AssetInfo};
@@ -14,8 +14,8 @@ use crate::math::{decimal_division, decimal_multiplication, reverse_decimal};
 use crate::open::delta_neutral_invest;
 use crate::rebalance::achieve_delta_neutral;
 use crate::state::{
-    CDP_IDX, MANAGER, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
-    TARGET_COLLATERAL_RATIO_RANGE,
+    CDP_IDX, LAST_FEE_COLLECTION_POSITION_UUSD_VALUE, MANAGER, MIRROR_ASSET_CW20_ADDR,
+    POSITION_CLOSE_INFO, POSITION_OPEN_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
     get_cdp_uusd_lock_info_result, get_position_state, get_uusd_asset_from_amount,
@@ -69,23 +69,24 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             params.target_max_collateral_ratio,
             params.mirror_asset_cw20_addr,
         ),
-        ExecuteMsg::DecreasePosition {
-            proportion,
-            recipient,
-        } => decrease_position(deps.as_ref(), env, context, proportion, recipient),
+        ExecuteMsg::ClosePosition { recipient } => {
+            close_position(deps.as_ref(), env, context, recipient)
+        }
         ExecuteMsg::Controller(controller_msg) => match controller_msg {
             ControllerExecuteMsg::RebalanceAndReinvest {} => {
                 rebalance_and_reinvest(deps.as_ref(), env, context)
+            }
+            ControllerExecuteMsg::RebalanceAndCollectFees {} => {
+                rebalance_and_collect_fees(deps.as_ref(), env, context)
             }
         },
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
             InternalExecuteMsg::AchieveSafeCollateralRatio {} => {
                 achieve_safe_collateral_ratios(deps.as_ref(), env, context)
             }
-            InternalExecuteMsg::WithdrawFundsInUusd {
-                proportion,
-                recipient,
-            } => withdraw_funds_in_uusd(deps.as_ref(), env, context, proportion, recipient),
+            InternalExecuteMsg::WithdrawFundsInUusd { recipient } => {
+                withdraw_funds_in_uusd(deps, env, context, recipient)
+            }
             InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd { proportion } => {
                 withdraw_collateral_and_redeem_for_uusd(deps.as_ref(), context, proportion)
             }
@@ -155,6 +156,15 @@ pub fn rebalance_and_reinvest(deps: Deps, env: Env, context: Context) -> StdResu
             InternalExecuteMsg::AchieveSafeCollateralRatio {},
         ))
         .add_messages(get_reinvest_internal_messages(deps, &env, &context)))
+}
+
+pub fn rebalance_and_collect_fees(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
+    Ok(Response::new()
+        .add_messages(achieve_delta_neutral(deps, &env, &context)?)
+        .add_message(create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::WithdrawFundsInUusd { recipient: None },
+        )))
 }
 
 pub fn achieve_safe_collateral_ratios(
@@ -235,6 +245,7 @@ pub fn open_position(
         ));
     }
 
+    LAST_FEE_COLLECTION_POSITION_UUSD_VALUE.save(deps.storage, &uusd_balance)?;
     POSITION_OPEN_INFO.save(
         deps.storage,
         &PositionActionInfo {
@@ -270,11 +281,10 @@ pub fn open_position(
     )
 }
 
-pub fn decrease_position(
+pub fn close_position(
     deps: Deps,
     env: Env,
     context: Context,
-    proportion: Decimal,
     recipient: Recipient,
 ) -> StdResult<Response> {
     Ok(Response::new()
@@ -282,8 +292,7 @@ pub fn decrease_position(
         .add_message(create_internal_execute_message(
             &env,
             InternalExecuteMsg::WithdrawFundsInUusd {
-                proportion,
-                recipient,
+                recipient: Some(recipient),
             },
         )))
 }
@@ -355,19 +364,42 @@ pub fn withdraw_collateral_and_redeem_for_uusd(
     )
 }
 
+// Reduce position for protocol fee collection and/or position close.
+// If `recipient` is None, then only protocol fees are collected;
+// otherwise, this closes the position, and will send the remaining amount to `recipient`.
 pub fn withdraw_funds_in_uusd(
-    deps: Deps,
+    deps: DepsMut,
     env: Env,
     context: Context,
-    proportion: Decimal,
-    recipient: Recipient,
+    recipient: Option<Recipient>,
 ) -> StdResult<Response> {
-    let state = get_position_state(deps, &env, &context)?;
-    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
+    let state = get_position_state(deps.as_ref(), &env, &context)?;
+    let position_value = state.collateral_uusd_value + state.uusd_balance + state.uusd_long_farm;
+    let last_fee_collection_position_uusd_value =
+        LAST_FEE_COLLECTION_POSITION_UUSD_VALUE.load(deps.storage)?;
+    let gain = if last_fee_collection_position_uusd_value < position_value {
+        position_value - last_fee_collection_position_uusd_value
+    } else {
+        Uint128::zero()
+    };
+    let manager_addr = MANAGER.load(deps.storage)?;
+    const FEE_COLLECTION_CONFIG: Item<FeeCollectionConfig> = Item::new("fee_collection_config");
+    let fee_collection_config = FEE_COLLECTION_CONFIG.query(&deps.querier, manager_addr.clone())?;
+    let fee_amount = gain * fee_collection_config.performance_rate;
+    let fee_proportion = Decimal::from_ratio(fee_amount, position_value);
 
+    let proportion = if recipient.is_some() {
+        Decimal::one()
+    } else {
+        fee_proportion
+    };
+    if proportion.is_zero() {
+        return Ok(Response::default());
+    }
     let mut response = Response::new();
 
     // Reduce mAsset short position.
+    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
     let mirror_asset_burn_amount = state.mirror_asset_short_amount * proportion;
     response = response
         .add_messages(increase_mirror_asset_balance_from_long_farm(
@@ -388,20 +420,35 @@ pub fn withdraw_funds_in_uusd(
             funds: vec![],
         }));
 
-    // Send uusd to recipient.
-    response = response.add_messages(vec![
-        create_internal_execute_message(
-            &env,
-            InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd { proportion },
-        ),
-        create_internal_execute_message(
+    // Withdraw aUST collateral and redeem for uusd.
+    response = response.add_message(create_internal_execute_message(
+        &env,
+        InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd { proportion },
+    ));
+
+    // Send protocol fees to fee collector.
+    if !fee_amount.is_zero() {
+        response = response.add_message(CosmosMsg::Bank(BankMsg::Send {
+            to_address: fee_collection_config.collector_addr,
+            amount: vec![Coin {
+                denom: String::from("uusd"),
+                amount: fee_amount,
+            }],
+        }));
+        LAST_FEE_COLLECTION_POSITION_UUSD_VALUE
+            .save(deps.storage, &(position_value - fee_amount))?;
+    }
+
+    // If position is being closed, send the remaining amount to the recipient specified in the position closure request.
+    if let Some(recipient) = recipient {
+        response = response.add_message(create_internal_execute_message(
             &env,
             InternalExecuteMsg::SendUusdToRecipient {
                 proportion,
                 recipient,
             },
-        ),
-    ]);
+        ));
+    }
 
     Ok(response)
 }
