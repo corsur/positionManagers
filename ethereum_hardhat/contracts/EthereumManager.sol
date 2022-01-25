@@ -1,6 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.4;
 
+import "hardhat/console.sol";
+
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -8,6 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "contracts/Wormhole.sol";
+import "contracts/BytesLib.sol";
 
 struct OwnershipInfo {
     address ownerAddr; // The owner of the position.
@@ -24,8 +27,14 @@ struct Config {
     address feeSink; // Fee collecting address.
 }
 
+struct AssetInfo {
+    address assetAddr; // The ERC20 address.
+    uint256 amount;
+}
+
 contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     using SafeERC20 for IERC20;
+    using BytesLib for bytes;
 
     uint16 private constant TERRA_CHAIN_ID = 3;
     uint256 private constant BPS = 10000;
@@ -103,14 +112,10 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function createPosition(
         uint64 strategyId,
         uint16 targetChainId,
-        address token,
-        uint256 amount,
+        AssetInfo[] calldata assetInfos,
         uint32 encodedActionLen,
         bytes calldata encodedAction
     ) external {
-        // Check that `token` is a whitelisted stablecoin token.
-        require(whitelistedStableTokens[token]);
-
         // Craft ownership info for bookkeeping.
         uint128 positionId = nextPositionId++;
         OwnershipInfo memory ownershipInfo = OwnershipInfo(
@@ -122,8 +127,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         handleExecuteStrategy(
             strategyId,
             targetChainId,
-            token,
-            amount,
+            assetInfos,
             positionId,
             encodedActionLen,
             encodedAction
@@ -133,22 +137,17 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function executeStrategy(
         uint128 positionId,
         uint64 strategyId,
-        address token,
-        uint256 amount,
+        AssetInfo[] calldata assetInfos,
         uint32 encodedActionLen,
         bytes calldata encodedAction
     ) external {
-        // Check that `token` is a whitelisted stablecoin token.
-        require(whitelistedStableTokens[token]);
-
         // Check that msg.sender owns this position.
         require(positionToOwnership[positionId].ownerAddr == msg.sender);
 
         handleExecuteStrategy(
             strategyId,
             positionToOwnership[positionId].chainId,
-            token,
-            amount,
+            assetInfos,
             positionId,
             encodedActionLen,
             encodedAction
@@ -158,57 +157,63 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function handleExecuteStrategy(
         uint64 strategyId,
         uint16 targetChainId,
-        address token,
-        uint256 amount,
+        AssetInfo[] calldata assetInfos,
         uint128 positionId,
         uint32 encodedActionLen,
         bytes calldata encodedAction
     ) internal {
-        uint64 tokenTransferSequence = 0;
-        if (amount != 0) {
+        bytes memory payload = abi.encodePacked(
+            positionId,
+            targetChainId,
+            strategyId,
+            uint32(assetInfos.length)
+        );
+        for (uint32 i = 0; i < assetInfos.length; i++) {
+            // Check that `token` is a whitelisted stablecoin token.
+            require(whitelistedStableTokens[assetInfos[i].assetAddr]);
+
             // Transfer ERC-20 token from message sender to this contract.
-            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+            uint256 amount = assetInfos[i].amount;
+            IERC20(assetInfos[i].assetAddr).safeTransferFrom(
+                msg.sender,
+                address(this),
+                amount
+            );
 
             // Collect fee as needed.
             if (CROSS_CHAIN_FEE_BPS != 0) {
                 uint256 crossChainFee = (amount / BPS) * CROSS_CHAIN_FEE_BPS;
-                IERC20(token).safeTransfer(FEE_SINK, crossChainFee);
+                IERC20(assetInfos[i].assetAddr).safeTransfer(
+                    FEE_SINK,
+                    crossChainFee
+                );
                 amount -= crossChainFee;
             }
 
             // Allow wormhole to spend USTw from this contract.
-            IERC20(token).safeApprove(WORMHOLE_TOKEN_BRIDGE, amount);
+            IERC20(assetInfos[i].assetAddr).safeApprove(
+                WORMHOLE_TOKEN_BRIDGE,
+                amount
+            );
 
             // Initiate token transfer.
-            tokenTransferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
+            uint64 transferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
                 .transferTokens(
-                    token,
+                    assetInfos[i].assetAddr,
                     amount,
                     targetChainId,
                     TERRA_MANAGER_ADDRESS,
                     0,
                     TOKEN_TRANSFER_NONCE
                 );
+            payload = payload.concat(abi.encodePacked(transferSequence));
         }
+
         // Send instruction message to Terra manager.
-        bytes memory payload = amount != 0
-            ? abi.encodePacked(
-                positionId,
-                targetChainId,
-                strategyId,
-                uint32(1),
-                tokenTransferSequence,
-                encodedActionLen,
-                encodedAction
-            )
-            : abi.encodePacked(
-                positionId,
-                targetChainId,
-                strategyId,
-                uint32(0),
-                encodedActionLen,
-                encodedAction
-            );
+        payload = payload.concat(
+            abi.encodePacked(encodedActionLen, encodedAction)
+        );
+
         WormholeCoreBridge(
             WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE).wormhole()
         ).publishMessage(INSTRUCTION_NONCE, payload, CONSISTENCY_LEVEL);

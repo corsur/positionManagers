@@ -49,8 +49,7 @@ describe("Stable yield integration test", function () {
     let createPositionTX = await ethereumManager.createPosition(
       STABLE_YIELD,
       CHAIN_ID_TERRA,
-      ETH_UST_CONTRACT_ADDR,
-      amount,
+      [{ assetAddr: ETH_UST_CONTRACT_ADDR, amount: amount }],
       openActionRequest.length,
       openActionRequest,
       { gasLimit: 600000 }
@@ -89,8 +88,7 @@ describe("Stable yield integration test", function () {
     let increasePositionTX = await ethereumManager.executeStrategy(
       positionId,
       STABLE_YIELD,
-      ETH_UST_CONTRACT_ADDR,
-      additionalAmount,
+      [{ assetAddr: ETH_UST_CONTRACT_ADDR, amount: additionalAmount }],
       increaseActionRequest.length,
       increaseActionRequest,
       { gasLimit: 600000 }
@@ -112,8 +110,7 @@ describe("Stable yield integration test", function () {
     let closePositionTX = await ethereumManager.executeStrategy(
       positionId,
       STABLE_YIELD,
-      ETH_UST_CONTRACT_ADDR,
-      0,
+      [],
       closeActionRequest.length,
       closeActionRequest
     );

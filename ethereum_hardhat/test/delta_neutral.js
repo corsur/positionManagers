@@ -52,8 +52,7 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
   let createPositionTX = await ethereumManager.createPosition(
     DELTA_NEUTRAL,
     CHAIN_ID_TERRA,
-    ETH_UST_CONTRACT_ADDR,
-    amount,
+    [{ assetAddr: ETH_UST_CONTRACT_ADDR, amount: amount }],
     encodedActionData.length,
     encodedActionData,
     { gasLimit: 600000 }
@@ -98,8 +97,7 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
   let closePositionTX = await ethereumManager.executeStrategy(
     positionId,
     DELTA_NEUTRAL,
-    ETH_UST_CONTRACT_ADDR,
-    0,
+    [],
     encodedCloseActionData.length,
     encodedCloseActionData
   );
@@ -130,7 +128,7 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
 }
 
 describe("Delta-neutral integration test", function () {
-  it("Should initiate Ethereum cross-chain tx and trigger Terra tx", async function () {
+  it.only("Should initiate Ethereum cross-chain tx and trigger Terra tx", async function () {
     await deployOpenAndClose();
   });
 
