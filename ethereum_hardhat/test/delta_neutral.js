@@ -128,7 +128,7 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
 }
 
 describe("Delta-neutral integration test", function () {
-  it.only("Should initiate Ethereum cross-chain tx and trigger Terra tx", async function () {
+  it("Should initiate Ethereum cross-chain tx and trigger Terra tx", async function () {
     await deployOpenAndClose();
   });
 
