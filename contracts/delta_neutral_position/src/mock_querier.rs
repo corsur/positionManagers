@@ -1,6 +1,8 @@
+use cosmwasm_bignumber::{Decimal256, Uint256};
 use cosmwasm_std::{
     from_binary, from_slice, to_binary, Addr, BalanceResponse, BankQuery, Coin, ContractResult,
-    Empty, Querier, QuerierResult, QueryRequest, SystemError, SystemResult, Uint128, WasmQuery,
+    Decimal, Empty, Querier, QuerierResult, QueryRequest, SystemError, SystemResult, Uint128,
+    WasmQuery,
 };
 
 pub struct WasmMockQuerier {
@@ -13,6 +15,9 @@ pub struct WasmMockQuerier {
     pub cw20_token: String,
     pub terraswap_pool_cw20_balance: Uint128,
     pub terraswap_pool_uusd_balance: Uint128,
+    pub mirror_mint: String,
+    pub mirror_oracle: String,
+    pub anchor_market: String,
 }
 
 impl Querier for WasmMockQuerier {
@@ -129,6 +134,58 @@ impl WasmMockQuerier {
                         )),
                         _ => panic!(),
                     }
+                } else if contract_addr == &self.mirror_mint {
+                    let msg: mirror_protocol::mint::QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        mirror_protocol::mint::QueryMsg::AssetConfig { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(mirror_protocol::mint::AssetConfigResponse {
+                                        token: String::from("token"),
+                                        auction_discount: Decimal::zero(),
+                                        min_collateral_ratio: Decimal::from_ratio(15u128, 10u128),
+                                        end_price: None,
+                                        ipo_params: None,
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
+                        _ => panic!(),
+                    }
+                } else if contract_addr == &self.mirror_oracle {
+                    let msg: mirror_protocol::oracle::QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        mirror_protocol::oracle::QueryMsg::Price { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(mirror_protocol::oracle::PriceResponse {
+                                        rate: Decimal::from_ratio(10u128, 1u128),
+                                        last_updated_base: 0,
+                                        last_updated_quote: 0,
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
+                        _ => panic!(),
+                    }
+                } else if contract_addr == &self.anchor_market {
+                    let msg: moneymarket::market::QueryMsg = from_binary(&msg).unwrap();
+                    match msg {
+                        moneymarket::market::QueryMsg::EpochState { .. } => {
+                            SystemResult::Ok(ContractResult::Ok(
+                                to_binary(
+                                    &(moneymarket::market::EpochStateResponse {
+                                        exchange_rate: Decimal256::from_ratio(11, 10),
+                                        aterra_supply: Uint256::from(1000u128),
+                                    }),
+                                )
+                                .unwrap(),
+                            ))
+                        }
+                        _ => panic!(),
+                    }
                 } else {
                     panic!()
                 }
@@ -158,6 +215,9 @@ impl WasmMockQuerier {
             cw20_token,
             terraswap_pool_cw20_balance,
             terraswap_pool_uusd_balance,
+            mirror_mint: String::from("mirror_mint"),
+            mirror_oracle: String::from("mirror_oracle"),
+            anchor_market: String::from("anchor_market"),
         }
     }
 }

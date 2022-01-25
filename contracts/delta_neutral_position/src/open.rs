@@ -17,6 +17,19 @@ use crate::{
     util::{get_mirror_asset_oracle_uusd_price, get_uusd_asset_from_amount},
 };
 
+// Open a (or increase an existing) delta-neutral position with the following parameters:
+// (1) mAsset: `mirror_asset_cw20_addr`.
+// (2) Collateral ratio: `target_collateral_ratio_range.midpoint()`.
+// (3) Amount of uusd: `uusd_amount`. This is our budget for both the collateral and the long swap.
+//
+// If `cdp_idx` is Some(idx), then there is an existing delta-neutral position; otherwise, this opens a new position.
+//
+// This process consists of three stages:
+// (1) Find `uusd_collateral_amount`, the amount of uusd to be deposited to Anchor, and the resultant aUST will be used to open a Mirror collateralized debit position (CDP) of the specified mAsset.
+// (2) As part of the short position opening process, Mirror automatically swaps the minted mAsset for uusd. The uusd proceed is locked up for a period of time.
+// (3) We swap `uusd_long_swap_amount` amount of uusd for mAsset; the returned mAsset amount should match the shorted amount so the position is delta-neutral overall.
+//
+// This function uses binary search to find the largest possible `uusd_collateral_amount` such that `uusd_collateral_amount + uusd_long_swap_amount <= uusd_amount`.
 pub fn delta_neutral_invest(
     deps: DepsMut,
     env: Env,
@@ -235,4 +248,125 @@ fn open_or_increase_cdp(
             }),
         ]),
     }
+}
+
+#[test]
+fn test_delta_neutral_invest() {
+    use cosmwasm_std::testing::mock_env;
+    use cosmwasm_std::Addr;
+
+    let terraswap_factory_addr = Addr::unchecked("mock_terraswap_factory");
+    let astroport_factory_addr = Addr::unchecked("mock_astroport_factory");
+    let cw20_token_addr = Addr::unchecked("mock_cw20_addr");
+    let terraswap_pair_addr = Addr::unchecked("mock_terraswap_pair");
+    let astroport_pair_addr = Addr::unchecked("mock_astroport_pair");
+    let querier = crate::mock_querier::WasmMockQuerier::new(
+        terraswap_factory_addr.to_string(),
+        astroport_factory_addr.to_string(),
+        terraswap_pair_addr.to_string(),
+        astroport_pair_addr.to_string(),
+        Uint128::from(10u128),
+        Uint128::from(9u128),
+        cw20_token_addr.to_string(),
+        Uint128::from(1000000u128),
+        Uint128::from(9000000u128),
+    );
+    let mut deps = cosmwasm_std::OwnedDeps {
+        storage: cosmwasm_std::testing::MockStorage::default(),
+        api: cosmwasm_std::testing::MockApi::default(),
+        querier,
+    };
+
+    let env = mock_env();
+    let context = Context {
+        controller: Addr::unchecked("controller"),
+        anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
+        mirror_cw20_addr: Addr::unchecked("mirror_cw20"),
+        spectrum_cw20_addr: Addr::unchecked("spectrum_cw20"),
+        anchor_market_addr: Addr::unchecked("anchor_market"),
+        mirror_collateral_oracle_addr: Addr::unchecked("mirror_collateral_oracle"),
+        mirror_lock_addr: Addr::unchecked("mirror_lock"),
+        mirror_mint_addr: Addr::unchecked("mirror_mint"),
+        mirror_oracle_addr: Addr::unchecked("mirror_oracle"),
+        mirror_staking_addr: Addr::unchecked("mirror_staking"),
+        spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
+        spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
+        spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
+        terraswap_factory_addr: terraswap_factory_addr,
+        astroport_factory_addr: astroport_factory_addr,
+        collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
+        min_open_uusd_amount: Uint128::from(500u128),
+        min_reinvest_uusd_amount: Uint128::from(10u128),
+    };
+    let target_collateral_ratio_range = &TargetCollateralRatioRange {
+        min: Decimal::from_ratio(18u128, 10u128),
+        max: Decimal::from_ratio(22u128, 10u128),
+    };
+    let response = delta_neutral_invest(
+        deps.as_mut(),
+        env,
+        context,
+        Uint128::from(600u128),
+        target_collateral_ratio_range,
+        &cw20_token_addr,
+        None,
+    )
+    .unwrap();
+    assert_eq!(response.messages.len(), 3);
+    assert_eq!(
+        response.messages[0].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("anchor_market"),
+            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {}).unwrap(),
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(420u128),
+            }],
+        })
+    );
+    assert_eq!(
+        response.messages[1].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("anchor_ust_cw20"),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: String::from("mirror_mint"),
+                amount: Uint128::from(381u128),
+                msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
+                    asset_info: AssetInfo::Token {
+                        contract_addr: cw20_token_addr.to_string(),
+                    },
+                    collateral_ratio: target_collateral_ratio_range.midpoint(),
+                    short_params: Some(mirror_protocol::mint::ShortParams {
+                        belief_price: None,
+                        max_spread: None,
+                    }),
+                })
+                .unwrap(),
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        response.messages[2].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("mock_terraswap_pair"),
+            msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+                offer_asset: Asset {
+                    amount: Uint128::from(180u128),
+                    info: AssetInfo::NativeToken {
+                        denom: String::from("uusd"),
+                    }
+                },
+                belief_price: None,
+                max_spread: None,
+                to: None,
+            })
+            .unwrap(),
+            funds: vec![Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(180u128),
+            }],
+        })
+    );
 }

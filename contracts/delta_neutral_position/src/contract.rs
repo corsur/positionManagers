@@ -249,9 +249,8 @@ pub fn achieve_delta_neutral(
     context: &Context,
 ) -> StdResult<Vec<CosmosMsg>> {
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
-    let mut state = get_position_state(deps, &env, &context)?;
-    let (mut messages, uusd_increase_amount) =
-        claim_and_increase_uusd_balance(deps, &env, &context)?;
+    let mut state = get_position_state(deps, env, context)?;
+    let (mut messages, uusd_increase_amount) = claim_and_increase_uusd_balance(deps, env, context)?;
     state.uusd_balance += uusd_increase_amount;
 
     if state.mirror_asset_long_farm.is_zero() {
@@ -347,7 +346,7 @@ pub fn achieve_delta_neutral(
                 }
                 messages.extend(unstake_lp_and_withdraw_liquidity(
                     &state,
-                    &context,
+                    context,
                     &mirror_asset_cw20_addr,
                     a,
                 ));
@@ -452,7 +451,7 @@ pub fn achieve_delta_neutral(
                     + state.uusd_balance;
                 messages.extend(unstake_lp_and_withdraw_liquidity(
                     &state,
-                    &context,
+                    context,
                     &mirror_asset_cw20_addr,
                     a,
                 ));
