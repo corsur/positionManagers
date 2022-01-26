@@ -33,13 +33,6 @@ const testnet = new LCDClient({
   gasAdjustment: gasAdjustment,
 });
 
-const mainnet = new LCDClient({
-  URL: "https://lcd.terra.dev",
-  chainID: "columbus-5",
-  gasPrices: gasPrices,
-  gasAdjustment: gasAdjustment,
-});
-
 const test_wallet = testnet.wallet(
   new MnemonicKey({
     mnemonic:
@@ -462,4 +455,4 @@ const terra_manager_addr = await deploy();
 console.log(
   `Successfully deployed TerraManager at address: ${terra_manager_addr}`
 );
-await open_delta_neutral_position(terra_manager_addr, 600000);
+await open_delta_neutral_position(terra_manager_addr, 1000);

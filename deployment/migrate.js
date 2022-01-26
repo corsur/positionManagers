@@ -289,6 +289,6 @@ const terra_manager_addr = "terra1urvtfg54zdmlrvl0ejgp0wlnje9vt5arw0ns6j";
 // await open_delta_neutral_position(terra_manager_addr, 101);
 // await open_delta_neutral_position(terra_manager_addr, 50001);
 
-await close_position(terra_manager_addr, 2);
-// await rebalance_position("terra1dhrd0my2d7nzv2003ypgy58nj00us3lxcz6hgp");
+// await close_position(terra_manager_addr, 2);
+await rebalance_position("terra1f7k9820vcus54433ew2scazq2526k0hsgdhzeg");
 // await collect_fees("terra1dhrd0my2d7nzv2003ypgy58nj00us3lxcz6hgp");

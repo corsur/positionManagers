@@ -134,8 +134,11 @@ pub fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Co
 }
 
 pub fn get_reinvest_internal_messages(deps: Deps, env: &Env, context: &Context) -> Vec<CosmosMsg> {
+    // If there is still short proceeds pending unlock, we don't reinvest as this could reset the locking period.
     if let Ok(lock_info_response) = get_cdp_uusd_lock_info_result(deps, context) {
-        if !lock_info_response.locked_amount.is_zero() {
+        if !lock_info_response.locked_amount.is_zero()
+            && lock_info_response.unlock_time > env.block.time.seconds()
+        {
             return vec![];
         }
     }
