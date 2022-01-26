@@ -15,7 +15,9 @@ This monorepository contains the source code for the core smart contracts implem
     |-- data_pipeline // Scripts to periodically push analysis data for web app and dashboard uses.
     |-- deployment // Scripts to deploy Terra contracts.
     |-- ethereum_hardhat // All EVM related contracts built using Hardhat.
-    |-- packages // Libraries and common code for CosmWasm.
+    |-- packages // Terra packages
+        |-- spectrum_protocol // This is copied from Spectrum Protocol's repo; this package is not uploaded to crates.io index.
+        |-- aperture_common // Aperture common util libraries and data types.
 
 ## Development
 
@@ -181,11 +183,13 @@ Initially, Aperture will launch on Terra first without the aforementioned cross-
 - Delta-neutral position manager
   - Is a full position manager
   - Handles bookkeeping and delegate requests to specific delta-neutral contract.
+  - See Aperture's [Medium article](https://medium.com/@aperturefinance/the-delta-neutral-strategy-on-synthetic-tokens-4b3e6428486d) for an overview.
 - Delta-neutral contract
   - Contains actual logic to carry out the delta-neutral strategy.
 - Stable yield manager
   - Is a lite position manager
   - Contract that contains business logic specific to anchor based strategies.
+  - This simple strategy accumulates yield at a fixed rate per time period. This is intended to be offered to non-Terra users (for example, Solana users can use this strategy to get, say, 15% APY fixed yield using this strategy). This strategy internally invests UST in Anchor Earn. The difference between treasury and liability can be collected in the form of protocol fees.
 
 To put the above modules together, we have the following localized setup:
 

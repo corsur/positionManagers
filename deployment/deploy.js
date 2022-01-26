@@ -455,4 +455,6 @@ const terra_manager_addr = await deploy();
 console.log(
   `Successfully deployed TerraManager at address: ${terra_manager_addr}`
 );
-await open_delta_neutral_position(terra_manager_addr, 1000);
+
+// Sample function call to open a delta-neutral position:
+// await open_delta_neutral_position(terra_manager_addr, 1000);

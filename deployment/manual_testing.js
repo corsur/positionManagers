@@ -279,16 +279,16 @@ async function migrate_existing_position(position_manager_contract, position_id)
 }
 
 await initializeSequence(test_wallet);
-const delta_neutral_manager = "terra13z92fhup8evcevgq7ss98e6jw47tr88psezl0y";
-const stable_yield_manager = "terra14tgqrxedusstuxutzqlshdargpxqxhgdre0quu";
+const delta_neutral_manager = "terra1qycrwtsmxnnklc42yzexveyhjls657qhuwhmlw";
+const stable_yield_manager = "terra1gkg2287wgg7q8cljseke0e0204tvuxevpcqcpq";
 // await store_new_position_code(delta_neutral_manager);
 
-const terra_manager_addr = "terra1urvtfg54zdmlrvl0ejgp0wlnje9vt5arw0ns6j";
+const terra_manager_addr = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
 // await migrate_contract(terra_manager_addr, 36018);
 // open_delta_neutral_position(terra_manager_addr, 1000000);
 // await open_delta_neutral_position(terra_manager_addr, 101);
 // await open_delta_neutral_position(terra_manager_addr, 50001);
 
 // await close_position(terra_manager_addr, 2);
-await rebalance_position("terra1f7k9820vcus54433ew2scazq2526k0hsgdhzeg");
-// await collect_fees("terra1dhrd0my2d7nzv2003ypgy58nj00us3lxcz6hgp");
+await rebalance_position("terra1azg8cmmey8hk6y7l420u2s5yzlmjaqlltf7ex9");
+// await collect_fees("terra1azg8cmmey8hk6y7l420u2s5yzlmjaqlltf7ex9");
