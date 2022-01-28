@@ -21,11 +21,5 @@ npm install
 ## Deploy
 
 ```sh
-node deploy.js
-```
-
-OR
-
-``sh
-npm start
+node deploy_terra_testnet.js
 ```

@@ -137,8 +137,6 @@ async function instantiate_delta_neutral_position_manager(
           admin_addr: test_wallet.key.accAddress,
           terra_manager_addr: terra_manager_addr,
           delta_neutral_position_code_id: position_code_id,
-          allow_position_increase: false,
-          allow_position_decrease: false,
           controller: test_wallet.key.accAddress,
           min_open_uusd_amount: (100 * 1e6).toString(),
           min_reinvest_uusd_amount: (10 * 1e6).toString(),
