@@ -24,13 +24,6 @@ const mainnet = new LCDClient({
   gasAdjustment: gasAdjustment,
 });
 
-const test_wallet = testnet.wallet(
-  new MnemonicKey({
-    mnemonic:
-      "plastic evidence song forest fence daughter nuclear road angry knife wing punch sustain suit resist vapor thrive diesel collect easily minimum thing cost phone",
-  })
-);
-
 const terra_manager_mainnet = "terra1ajkmy2c0g84seh66apv9x6xt6kd3ag80jmcvtz";
 const terra_manager_testnet = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
 
@@ -49,15 +42,18 @@ async function run_pipeline() {
   var terra_manager = "";
   var position_ticks_table = "";
   var strategy_tvl_table = "";
+  var connection = undefined;
 
   if (process.argv[2] == "testnet") {
     terra_manager = terra_manager_testnet;
     position_ticks_table = position_ticks_dev;
     strategy_tvl_table = strategy_tvl_dev;
+    connection = testnet;
   } else if (process.argv[2] == "mainnet") {
     terra_manager = terra_manager_mainnet;
     position_ticks_table = position_ticks_prod;
     strategy_tvl_table = strategy_tvl_prod;
+    connection = mainnet;
   } else {
     console.log("Malformed environment variable: ", process.argv[2]);
     return;
@@ -75,13 +71,13 @@ async function run_pipeline() {
   var mAssetToTVL = {};
 
   // Get next position id to establish limit.
-  const next_position_res = await testnet.wasm.contractQuery(terra_manager, {
+  const next_position_res = await connection.wasm.contractQuery(terra_manager, {
     get_next_position_id: {},
   });
   console.log("next position id: ", next_position_res.next_position_id);
 
   // Get delta neutral position manager.
-  const delta_neutral_pos_mgr_res = await testnet.wasm.contractQuery(
+  const delta_neutral_pos_mgr_res = await connection.wasm.contractQuery(
     terra_manager,
     {
       get_strategy_metadata: {
@@ -98,7 +94,7 @@ async function run_pipeline() {
   // Loop over all positions to craft <wallet, position_id + metadata> map.
   for (var i = 0; i < parseInt(next_position_res.next_position_id); i++) {
     // Query position metadata.
-    const position_metadata_res = await testnet.wasm.contractQuery(
+    const position_metadata_res = await connection.wasm.contractQuery(
       terra_manager,
       {
         get_terra_position_info: {
@@ -111,7 +107,7 @@ async function run_pipeline() {
     const holder_addr = position_metadata_res.holder;
     console.log("Holder: ", holder_addr);
 
-    const position_addr = await testnet.wasm.contractQuery(
+    const position_addr = await connection.wasm.contractQuery(
       position_manager_addr,
       {
         get_position_contract_addr: {
@@ -125,7 +121,7 @@ async function run_pipeline() {
     console.log("position addr: ", position_addr);
 
     // Get position info.
-    const position_info = await testnet.wasm.contractQuery(position_addr, {
+    const position_info = await connection.wasm.contractQuery(position_addr, {
       get_position_info: {},
     });
     console.log("position info: ", position_info);
