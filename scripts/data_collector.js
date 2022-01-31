@@ -1,35 +1,12 @@
-import { LCDClient, MnemonicKey } from "@terra-money/terra.js";
+import { LCDClient } from "@terra-money/terra.js";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import big from "big.js";
 
+import { mainnetTerra, TERRA_MANAGER_MAINNET, TERRA_MANAGER_TESTNET, testnetTerra} from "./utils/terra";
+
 const client = new DynamoDBClient({ region: "us-west-2" });
-
-const gasPrices = {
-  uusd: 0.15,
-};
-
-const gasAdjustment = 1.5;
-
-const testnet = new LCDClient({
-  URL: "https://bombay-lcd.terra.dev",
-  chainID: "bombay-12",
-  gasPrices: gasPrices,
-  gasAdjustment: gasAdjustment,
-});
-
-const mainnet = new LCDClient({
-  URL: "https://lcd.terra.dev",
-  chainID: "columbus-5",
-  gasPrices: gasPrices,
-  gasAdjustment: gasAdjustment,
-});
-
-const terra_manager_mainnet = "terra1ajkmy2c0g84seh66apv9x6xt6kd3ag80jmcvtz";
-const terra_manager_testnet = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
-
 const position_ticks_dev = "position_ticks_dev";
 const position_ticks_prod = "position_ticks";
-
 const strategy_tvl_dev = "strategy_tvl_dev";
 const strategy_tvl_prod = "strategy_tvl";
 
@@ -45,15 +22,15 @@ async function run_pipeline() {
   var connection = undefined;
 
   if (process.argv[2] == "testnet") {
-    terra_manager = terra_manager_testnet;
+    terra_manager = TERRA_MANAGER_TESTNET;
     position_ticks_table = position_ticks_dev;
     strategy_tvl_table = strategy_tvl_dev;
-    connection = testnet;
+    connection = testnetTerra;
   } else if (process.argv[2] == "mainnet") {
-    terra_manager = terra_manager_mainnet;
+    terra_manager = TERRA_MANAGER_MAINNET;
     position_ticks_table = position_ticks_prod;
     strategy_tvl_table = strategy_tvl_prod;
-    connection = mainnet;
+    connection = mainnetTerra;
   } else {
     console.log("Malformed environment variable: ", process.argv[2]);
     return;
@@ -102,10 +79,6 @@ async function run_pipeline() {
         },
       }
     );
-    console.log("position metadata response: ", position_metadata_res);
-
-    const holder_addr = position_metadata_res.holder;
-    console.log("Holder: ", holder_addr);
 
     const position_addr = await connection.wasm.contractQuery(
       position_manager_addr,
@@ -118,7 +91,6 @@ async function run_pipeline() {
         },
       }
     );
-    console.log("position addr: ", position_addr);
 
     // Get position info.
     const position_info = await connection.wasm.contractQuery(position_addr, {
@@ -141,7 +113,6 @@ async function run_pipeline() {
 
     // Process per-strategy level aggregate metrics.
     const mirror_asset_addr = position_info.mirror_asset_cw20_addr;
-    console.log("Processing asset addr: ", mirror_asset_addr);
     if (mirror_asset_addr in mAssetToTVL) {
       mAssetToTVL[mirror_asset_addr] =
         mAssetToTVL[mirror_asset_addr].add(uusd_value);
@@ -156,8 +127,6 @@ async function run_pipeline() {
     await write_strategy_metrics(strategy_tvl_table, strategy_id, tvl_uusd);
   }
 }
-
-await run_pipeline();
 
 async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
   const input = {
@@ -201,3 +170,6 @@ async function write_position_ticks(
     console.error(err);
   }
 }
+
+// Start.
+await run_pipeline();
