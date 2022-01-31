@@ -1,8 +1,12 @@
-import { LCDClient } from "@terra-money/terra.js";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import big from "big.js";
-
-import { mainnetTerra, TERRA_MANAGER_MAINNET, TERRA_MANAGER_TESTNET, testnetTerra} from "./utils/terra";
+import { ArgumentParser } from "argparse";
+import {
+  mainnetTerra,
+  TERRA_MANAGER_MAINNET,
+  TERRA_MANAGER_TESTNET,
+  testnetTerra,
+} from "./utils/terra.js";
 
 const client = new DynamoDBClient({ region: "us-west-2" });
 const position_ticks_dev = "position_ticks_dev";
@@ -11,8 +15,19 @@ const strategy_tvl_dev = "strategy_tvl_dev";
 const strategy_tvl_prod = "strategy_tvl";
 
 async function run_pipeline() {
-  if (process.argv.length <= 2) {
-    console.log("ERROR: please specify prod or dev argument.");
+  const parser = new ArgumentParser({
+    description: "Data collector for Aperture.",
+  });
+
+  parser.add_argument("-n", "--network", {
+    help: "The blockchain network to extract data from. Either mainnet or testnet.",
+  });
+
+  if (
+    parser.parse_args().network != "testnet" &&
+    parser.parse_args().network != "mainnet"
+  ) {
+    console.log("ERROR: please specify testnet or mainnet argument.");
     return;
   }
 
@@ -21,12 +36,12 @@ async function run_pipeline() {
   var strategy_tvl_table = "";
   var connection = undefined;
 
-  if (process.argv[2] == "testnet") {
+  if (parser.parse_args().network == "testnet") {
     terra_manager = TERRA_MANAGER_TESTNET;
     position_ticks_table = position_ticks_dev;
     strategy_tvl_table = strategy_tvl_dev;
     connection = testnetTerra;
-  } else if (process.argv[2] == "mainnet") {
+  } else if (parser.parse_args().network == "mainnet") {
     terra_manager = TERRA_MANAGER_MAINNET;
     position_ticks_table = position_ticks_prod;
     strategy_tvl_table = strategy_tvl_prod;

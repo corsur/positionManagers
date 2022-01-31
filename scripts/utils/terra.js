@@ -2,6 +2,9 @@ import { LCDClient } from "@terra-money/terra.js";
 
 // Internals.
 const gasAdjustment = 1.5;
+const gasPrices = {
+  uusd: 0.15,
+};
 
 // Constants.
 export const TERRA_MANAGER_MAINNET =
