@@ -11,7 +11,11 @@ import {
   TERRA_MANAGER_TESTNET,
   testnetTerra,
 } from "./utils/terra.js";
-import { MnemonicKey, MsgExecuteContract } from "@terra-money/terra.js";
+import {
+  isTxError,
+  MnemonicKey,
+  MsgExecuteContract,
+} from "@terra-money/terra.js";
 
 var sequence = -1;
 async function initializeSequence(wallet) {
@@ -24,7 +28,6 @@ function getAndIncrementSequence() {
 }
 
 async function run_pipeline() {
-  const t = new Big(2);
   const parser = new ArgumentParser({
     description: "Aperture Finance Controller",
   });
@@ -136,19 +139,28 @@ async function run_pipeline() {
       continue;
     }
     // Rebalance.
-    await wallet.createAndSignTx({
+    const tx = await wallet.createAndSignTx({
       msgs: [
         new MsgExecuteContract(
           /*sender=*/ wallet.key.accAddress,
           /*contract=*/ position_addr,
           {
-            rebalance_and_reinvest: {},
+            controller: {
+              rebalance_and_reinvest: {},
+            },
           }
         ),
       ],
       memo: `Rebalance position id ${i}.`,
       sequence: getAndIncrementSequence(),
     });
+
+    const response = await connection.tx.broadcast(tx);
+    if (isTxError(response)) {
+      console.log(
+        `Rebalance failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+      );
+    }
   }
 }
 
