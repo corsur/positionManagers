@@ -20,16 +20,11 @@ async function run_pipeline() {
   });
 
   parser.add_argument("-n", "--network", {
-    help: "The blockchain network to extract data from. Either mainnet or testnet.",
+    help: "The blockchain network to operate on. Either mainnet or testnet.",
+    required: true,
+    type: "str",
+    choices: ["mainnet", "testnet"],
   });
-
-  if (
-    parser.parse_args().network != "testnet" &&
-    parser.parse_args().network != "mainnet"
-  ) {
-    console.log("ERROR: please specify testnet or mainnet argument.");
-    return;
-  }
 
   var terra_manager = "";
   var position_ticks_table = "";
