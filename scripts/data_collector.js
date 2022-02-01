@@ -47,12 +47,14 @@ async function run_pipeline() {
     strategy_tvl_table = strategy_tvl_prod;
     connection = mainnetTerra;
   } else {
-    console.log("Malformed environment variable: ", process.argv[2]);
+    console.log(`Invalid network argument ${parser.parse_args().network}`);
     return;
   }
 
   console.log(
-    `Generating data for ${process.argv[2]} with terra manager address: ${terra_manager}`
+    `Generating data for ${
+      parser.parse_args().network
+    } with terra manager address: ${terra_manager}`
   );
   console.log(
     `Position ticks table: ${position_ticks_table}. Strategy tvl table: ${strategy_tvl_table}`

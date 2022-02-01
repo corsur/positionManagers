@@ -1,74 +1,84 @@
-import { LCDClient } from "@terra-money/terra.js";
-import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
 import big from "big.js";
+const { Big } = big;
+import { ArgumentParser } from "argparse";
+import {
+  DELTA_NEUTRAL_STRATEGY_ID,
+  mainnetTerra,
+  MIRROR_ORACLE_MAINNET,
+  MIRROR_ORACLE_TESTNET,
+  TERRA_CHAIN_ID,
+  TERRA_MANAGER_MAINNET,
+  TERRA_MANAGER_TESTNET,
+  testnetTerra,
+} from "./utils/terra.js";
+import { MnemonicKey, MsgExecuteContract } from "@terra-money/terra.js";
 
-const client = new DynamoDBClient({ region: "us-west-2" });
+var sequence = -1;
+async function initializeSequence(wallet) {
+  const account_and_sequence = await wallet.accountNumberAndSequence();
+  sequence = account_and_sequence.sequence;
+}
 
-const gasPrices = {
-  uusd: 0.15,
-};
-
-const gasAdjustment = 1.5;
-
-const testnet = new LCDClient({
-  URL: "https://bombay-lcd.terra.dev",
-  chainID: "bombay-12",
-  gasPrices: gasPrices,
-  gasAdjustment: gasAdjustment,
-});
-
-const mainnet = new LCDClient({
-  URL: "https://lcd.terra.dev",
-  chainID: "columbus-5",
-  gasPrices: gasPrices,
-  gasAdjustment: gasAdjustment,
-});
-
-const terra_manager_mainnet = "terra1ajkmy2c0g84seh66apv9x6xt6kd3ag80jmcvtz";
-const terra_manager_testnet = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
-
-const position_ticks_dev = "position_ticks_dev";
-const position_ticks_prod = "position_ticks";
-
-const strategy_tvl_dev = "strategy_tvl_dev";
-const strategy_tvl_prod = "strategy_tvl";
+function getAndIncrementSequence() {
+  return sequence++;
+}
 
 async function run_pipeline() {
-  if (process.argv.length <= 2) {
-    console.log("ERROR: please specify prod or dev argument.");
-    return;
-  }
+  const t = new Big(2);
+  const parser = new ArgumentParser({
+    description: "Aperture Finance Controller",
+  });
+
+  parser.add_argument("-n", "--network", {
+    help: "The blockchain network to operate on. Either mainnet or testnet.",
+    required: true,
+    type: "str",
+    choices: ["mainnet", "testnet"],
+  });
+  parser.add_argument("-d", "--delta_tolerance", {
+    help: "The delta neutral tolerance percentage to trigger rebalance.",
+    required: true,
+    type: "float",
+  });
+  parser.add_argument("-b", "--balance_tolerance", {
+    help: "The balance tolerance percentage to trigger rebalance.",
+    required: true,
+    type: "float",
+  });
+
+  // Parse and validate.
+  const { network, delta_tolerance, balance_tolerance } = parser.parse_args();
 
   var terra_manager = "";
-  var position_ticks_table = "";
-  var strategy_tvl_table = "";
   var connection = undefined;
+  var mirror_oracle_addr = "";
 
-  if (process.argv[2] == "testnet") {
-    terra_manager = terra_manager_testnet;
-    position_ticks_table = position_ticks_dev;
-    strategy_tvl_table = strategy_tvl_dev;
-    connection = testnet;
-  } else if (process.argv[2] == "mainnet") {
-    terra_manager = terra_manager_mainnet;
-    position_ticks_table = position_ticks_prod;
-    strategy_tvl_table = strategy_tvl_prod;
-    connection = mainnet;
+  if (network == "testnet") {
+    terra_manager = TERRA_MANAGER_TESTNET;
+    connection = testnetTerra;
+    mirror_oracle_addr = MIRROR_ORACLE_TESTNET;
+  } else if (network == "mainnet") {
+    terra_manager = TERRA_MANAGER_MAINNET;
+    connection = mainnetTerra;
+    mirror_oracle_addr = MIRROR_ORACLE_MAINNET;
   } else {
-    console.log("Malformed environment variable: ", process.argv[2]);
+    console.log(`Invalid network argument ${parser.parse_args().network}`);
     return;
   }
 
-  console.log(
-    `Generating data for ${process.argv[2]} with terra manager address: ${terra_manager}`
+  const wallet = connection.wallet(
+    new MnemonicKey({
+      mnemonic:
+        "witness produce visit clock feature chicken rural trend sock play weird barrel excess edge correct weird toilet buffalo vocal sock early similar unhappy gospel",
+    })
   );
-  console.log(
-    `Position ticks table: ${position_ticks_table}. Strategy tvl table: ${strategy_tvl_table}`
-  );
+  initializeSequence(wallet);
 
-  const delta_neutral_strategy_id = "0";
-  const terra_chain_id = 3;
-  var mAssetToTVL = {};
+  console.log(
+    `Controller operating on ${
+      parser.parse_args().network
+    } with terra manager address: ${terra_manager}`
+  );
 
   // Get next position id to establish limit.
   const next_position_res = await connection.wasm.contractQuery(terra_manager, {
@@ -81,38 +91,20 @@ async function run_pipeline() {
     terra_manager,
     {
       get_strategy_metadata: {
-        strategy_id: delta_neutral_strategy_id,
+        strategy_id: DELTA_NEUTRAL_STRATEGY_ID,
       },
     }
   );
   const position_manager_addr = delta_neutral_pos_mgr_res.manager_addr;
-  console.log(
-    "Delta-neutral position manager addr: ",
-    delta_neutral_pos_mgr_res
-  );
 
-  // Loop over all positions to craft <wallet, position_id + metadata> map.
   for (var i = 0; i < parseInt(next_position_res.next_position_id); i++) {
     // Query position metadata.
-    const position_metadata_res = await connection.wasm.contractQuery(
-      terra_manager,
-      {
-        get_terra_position_info: {
-          position_id: i.toString(),
-        },
-      }
-    );
-    console.log("position metadata response: ", position_metadata_res);
-
-    const holder_addr = position_metadata_res.holder;
-    console.log("Holder: ", holder_addr);
-
     const position_addr = await connection.wasm.contractQuery(
       position_manager_addr,
       {
         get_position_contract_addr: {
           position: {
-            chain_id: terra_chain_id,
+            chain_id: TERRA_CHAIN_ID,
             position_id: i.toString(),
           },
         },
@@ -124,80 +116,108 @@ async function run_pipeline() {
     const position_info = await connection.wasm.contractQuery(position_addr, {
       get_position_info: {},
     });
-    console.log("position info: ", position_info);
+
     if (position_info.detailed_info == null) {
       console.log("Position id ", i, " is closed.");
       continue;
     }
-    // Process position ticks.
-    const uusd_value = big(position_info.detailed_info.uusd_value);
-    await write_position_ticks(
-      position_ticks_table,
-      i,
-      parseInt(new Date().getTime() / 1e3),
-      terra_chain_id,
-      uusd_value
-    );
 
-    // Process per-strategy level aggregate metrics.
-    const mirror_asset_addr = position_info.mirror_asset_cw20_addr;
-    console.log("Processing asset addr: ", mirror_asset_addr);
-    if (mirror_asset_addr in mAssetToTVL) {
-      mAssetToTVL[mirror_asset_addr] =
-        mAssetToTVL[mirror_asset_addr].add(uusd_value);
-    } else {
-      mAssetToTVL[mirror_asset_addr] = uusd_value;
+    // Determine whether we should trigger rebalance.
+    if (
+      !(await shouldRebalance(
+        connection,
+        position_info,
+        mirror_oracle_addr,
+        delta_tolerance,
+        balance_tolerance
+      ))
+    ) {
+      console.log(`Skipping rebalance for position ${i}.`);
+      continue;
     }
-  }
-
-  // Persist per-strategy level aggregate metrics.
-  for (var strategy_id in mAssetToTVL) {
-    const tvl_uusd = mAssetToTVL[strategy_id];
-    await write_strategy_metrics(strategy_tvl_table, strategy_id, tvl_uusd);
-  }
-}
-
-await run_pipeline();
-
-async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
-  const input = {
-    TableName: table_name,
-    Item: {
-      strategy_id: { S: strategy_id.toString() },
-      tvl_uusd: { S: tvl_uusd.toString() },
-      timestamp_sec: { N: parseInt(new Date().getTime() / 1e3).toString() },
-    },
-  };
-  const command = new PutItemCommand(input);
-  try {
-    const results = await client.send(command);
-    console.log(results);
-  } catch (err) {
-    console.error(err);
+    // Rebalance.
+    await wallet.createAndSignTx({
+      msgs: [
+        new MsgExecuteContract(
+          /*sender=*/ wallet.key.accAddress,
+          /*contract=*/ position_addr,
+          {
+            rebalance_and_reinvest: {},
+          }
+        ),
+      ],
+      memo: `Rebalance position id ${i}.`,
+      sequence: getAndIncrementSequence(),
+    });
   }
 }
 
-async function write_position_ticks(
-  table_name,
-  position_id,
-  timestamp_sec,
-  chain_id,
-  uusd_value
+async function shouldRebalance(
+  connection,
+  position_info,
+  mirror_orcale_addr,
+  delta_tolerance,
+  balance_tolerance
 ) {
-  const input = {
-    TableName: table_name,
-    Item: {
-      position_id: { N: position_id.toString() },
-      timestamp_sec: { N: timestamp_sec.toString() },
-      chain_id: { N: chain_id.toString() },
-      uusd_value: { N: uusd_value.toString() },
+  const detailed_info = position_info.detailed_info;
+  // Check market hours.
+  const mirror_res = await connection.wasm.contractQuery(mirror_orcale_addr, {
+    price: {
+      quote_asset: "uusd",
+      base_asset: position_info.mirror_asset_cw20_addr,
     },
-  };
-  const command = new PutItemCommand(input);
-  try {
-    const results = await client.send(command);
-    console.log(results);
-  } catch (err) {
-    console.error(err);
+  });
+
+  const last_updated_base_sec = mirror_res.last_updated_base;
+
+  // Do not rebalance if oracle price timestamp is too old.
+  if (new Date() - last_updated_base_sec * 1e3 > 60 * 1e3) {
+    console.log("Oracle price too old.");
+    return false;
   }
+
+  // Check if current CR is within range.
+  console.log(`CR: ${parseFloat(detailed_info.collateral_ratio)}`);
+  if (
+    parseFloat(detailed_info.collateral_ratio) <
+      parseFloat(detailed_info.target_collateral_ratio_range.min) ||
+    parseFloat(detailed_info.collateral_ratio) >
+      parseFloat(detailed_info.target_collateral_ratio_range.max)
+  ) {
+    console.log("CR out of range.");
+    return true;
+  }
+
+  // Check delta-neutrality.
+  const short_amount = new Big(detailed_info.state.mirror_asset_short_amount);
+  const long_amount = new Big(detailed_info.state.mirror_asset_long_amount);
+  console.log(
+    `delta percentage: ${short_amount.minus(long_amount).abs() / long_amount}`
+  );
+
+  if (
+    short_amount.minus(long_amount).abs().div(long_amount).gte(delta_tolerance)
+  ) {
+    console.log("Violating delta-neutral constraint.");
+    return true;
+  }
+
+  // Check balance.
+  const uusd_value = new Big(detailed_info.uusd_value);
+  const uusd_balance = new Big(
+    detailed_info.claimable_short_proceeds_uusd_amount
+  )
+    .plus(detailed_info.claimable_mir_reward_uusd_value)
+    .plus(detailed_info.claimable_spec_reward_uusd_value)
+    .plus(detailed_info.state.uusd_balance);
+  console.log(`balance percentage: ${uusd_balance.div(uusd_value).toString()}`);
+  if (uusd_balance.div(uusd_value).gte(balance_tolerance)) {
+    console.log("Reinvest balance.");
+    return true;
+  }
+
+  return false;
 }
+
+// Start.
+await run_pipeline();
