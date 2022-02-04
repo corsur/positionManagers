@@ -27,6 +27,8 @@ function getAndIncrementSequence() {
   return sequence++;
 }
 
+const delay = ms => new Promise(res => setTimeout(res, ms));
+
 async function run_pipeline() {
   const parser = new ArgumentParser({
     description: "Aperture Finance Controller",
@@ -53,9 +55,15 @@ async function run_pipeline() {
     required: true,
     type: "int",
   });
+  parser.add_argument("-q", "--qps", {
+    help: "Number of rebalance per second.",
+    required: false,
+    default: 10,
+    type: "int",
+  });
 
   // Parse and validate.
-  const { network, delta_tolerance, balance_tolerance, time_tolerance } =
+  const { network, delta_tolerance, balance_tolerance, time_tolerance, qps } =
     parser.parse_args();
 
   var terra_manager = "";
@@ -108,6 +116,11 @@ async function run_pipeline() {
 
   var promises = [];
   for (var i = 0; i < parseInt(next_position_res.next_position_id); i++) {
+    // Trottle request.
+    if (i % qps == 0) {
+      await delay(1000);
+    }
+
     promises.push(
       maybeExecuteRebalance(
         connection,
