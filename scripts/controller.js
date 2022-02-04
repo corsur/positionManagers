@@ -235,7 +235,7 @@ async function shouldRebalance(
   );
 
   if (
-    short_amount.minus(long_amount).abs().div(long_amount).gte(delta_tolerance)
+    short_amount.minus(long_amount).abs().div(long_amount).gt(delta_tolerance)
   ) {
     console.log("Should rebalance due to: Violating delta-neutral constraint.");
     return true;
@@ -250,7 +250,10 @@ async function shouldRebalance(
     .plus(detailed_info.claimable_spec_reward_uusd_value)
     .plus(detailed_info.state.uusd_balance);
   console.log(`balance percentage: ${uusd_balance.div(uusd_value).toString()}`);
-  if (uusd_balance.div(uusd_value).gte(balance_tolerance)) {
+  if (
+    uusd_balance.div(uusd_value).gt(balance_tolerance) &&
+    new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(0)
+  ) {
     console.log("Should rebalance due to: Balance too big.");
     return true;
   }
