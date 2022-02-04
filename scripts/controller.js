@@ -48,9 +48,15 @@ async function run_pipeline() {
     required: true,
     type: "float",
   });
+  parser.add_argument("-t", "--time_tolerance", {
+    help: "The maximum allowed time in seconds after last orcale update timestamp.",
+    required: true,
+    type: "int",
+  });
 
   // Parse and validate.
-  const { network, delta_tolerance, balance_tolerance } = parser.parse_args();
+  const { network, delta_tolerance, balance_tolerance, time_tolerance } =
+    parser.parse_args();
 
   var terra_manager = "";
   var connection = undefined;
@@ -132,34 +138,42 @@ async function run_pipeline() {
         position_info,
         mirror_oracle_addr,
         delta_tolerance,
-        balance_tolerance
+        balance_tolerance,
+        time_tolerance
       ))
     ) {
-      console.log(`Skipping rebalance for position ${i}.`);
+      console.log(`Skipping rebalance for position ${i}.\n`);
       continue;
     }
-    // Rebalance.
-    const tx = await wallet.createAndSignTx({
-      msgs: [
-        new MsgExecuteContract(
-          /*sender=*/ wallet.key.accAddress,
-          /*contract=*/ position_addr,
-          {
-            controller: {
-              rebalance_and_reinvest: {},
-            },
-          }
-        ),
-      ],
-      memo: `Rebalance position id ${i}.`,
-      sequence: getAndIncrementSequence(),
-    });
 
-    const response = await connection.tx.broadcast(tx);
-    if (isTxError(response)) {
-      console.log(
-        `Rebalance failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
-      );
+    // Rebalance.
+    console.log("Initiating rebalance.");
+    try {
+      const tx = await wallet.createAndSignTx({
+        msgs: [
+          new MsgExecuteContract(
+            /*sender=*/ wallet.key.accAddress,
+            /*contract=*/ position_addr,
+            {
+              controller: {
+                rebalance_and_reinvest: {},
+              },
+            }
+          ),
+        ],
+        memo: `Rebalance position id ${i}.`,
+        sequence: getAndIncrementSequence(),
+      });
+      const response = await connection.tx.broadcast(tx);
+      if (isTxError(response)) {
+        console.log(
+          `Rebalance failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+        );
+      }
+    } catch (error) {
+      console.log(`create or broadcast tx failed with error ${error}`);
+    } finally {
+      console.log("\n");
     }
   }
 }
@@ -169,7 +183,8 @@ async function shouldRebalance(
   position_info,
   mirror_orcale_addr,
   delta_tolerance,
-  balance_tolerance
+  balance_tolerance,
+  time_tolerance
 ) {
   const detailed_info = position_info.detailed_info;
   // Check market hours.
@@ -183,20 +198,32 @@ async function shouldRebalance(
   const last_updated_base_sec = mirror_res.last_updated_base;
 
   // Do not rebalance if oracle price timestamp is too old.
-  if (new Date() - last_updated_base_sec * 1e3 > 60 * 1e3) {
-    console.log("Oracle price too old.");
+  const current_time = new Date();
+  if (current_time - last_updated_base_sec * 1e3 > time_tolerance * 1e3) {
+    console.log(
+      `Oracle price too old. Current time: ${current_time.toString()}. Oracle time: ${new Date(
+        last_updated_base_sec * 1e3
+      ).toString()}. Time tolerance is ${time_tolerance} seconds.`
+    );
     return false;
   }
 
   // Check if current CR is within range.
-  console.log(`CR: ${parseFloat(detailed_info.collateral_ratio)}`);
+  console.log(
+    `Current CR: ${parseFloat(
+      detailed_info.collateral_ratio
+    )}. Position CR range is [${
+      detailed_info.target_collateral_ratio_range.min
+    }, ${detailed_info.target_collateral_ratio_range.max}]`
+  );
+
   if (
     parseFloat(detailed_info.collateral_ratio) <
       parseFloat(detailed_info.target_collateral_ratio_range.min) ||
     parseFloat(detailed_info.collateral_ratio) >
       parseFloat(detailed_info.target_collateral_ratio_range.max)
   ) {
-    console.log("CR out of range.");
+    console.log("Should rebalance due to: CR out of range.");
     return true;
   }
 
@@ -210,7 +237,7 @@ async function shouldRebalance(
   if (
     short_amount.minus(long_amount).abs().div(long_amount).gte(delta_tolerance)
   ) {
-    console.log("Violating delta-neutral constraint.");
+    console.log("Should rebalance due to: Violating delta-neutral constraint.");
     return true;
   }
 
@@ -224,7 +251,7 @@ async function shouldRebalance(
     .plus(detailed_info.state.uusd_balance);
   console.log(`balance percentage: ${uusd_balance.div(uusd_value).toString()}`);
   if (uusd_balance.div(uusd_value).gte(balance_tolerance)) {
-    console.log("Reinvest balance.");
+    console.log("Should rebalance due to: Balance too big.");
     return true;
   }
 
