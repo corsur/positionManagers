@@ -186,7 +186,6 @@ async function shouldRebalance(
   balance_tolerance,
   time_tolerance
 ) {
-  console.log("Position info", position_info);
   const detailed_info = position_info.detailed_info;
   // Check market hours.
   const mirror_res = await connection.wasm.contractQuery(mirror_orcale_addr, {
