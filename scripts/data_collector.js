@@ -13,6 +13,10 @@ const position_ticks_dev = "position_ticks_dev";
 const position_ticks_prod = "position_ticks";
 const strategy_tvl_dev = "strategy_tvl_dev";
 const strategy_tvl_prod = "strategy_tvl";
+const terraswap_data_table_dev = "terraswap_data_dev";
+const terraswap_data_table_prod = "terraswap_data";
+const terraswap_api_address_dev = "https://api-bombay.terraswap.io/pairs";
+const terraswap_api_address_prod = "https://api.terraswap.io/dashboard/pairs"
 
 async function run_pipeline() {
   const parser = new ArgumentParser({
@@ -29,17 +33,23 @@ async function run_pipeline() {
   var terra_manager = "";
   var position_ticks_table = "";
   var strategy_tvl_table = "";
+  var terraswap_data_table = "";
+  var terraswap_api_address = "";
   var connection = undefined;
 
   if (parser.parse_args().network == "testnet") {
     terra_manager = TERRA_MANAGER_TESTNET;
     position_ticks_table = position_ticks_dev;
     strategy_tvl_table = strategy_tvl_dev;
+    terraswap_data_table = terraswap_data_table_dev;
+    terraswap_api_address = terraswap_api_address_dev;
     connection = testnetTerra;
   } else if (parser.parse_args().network == "mainnet") {
     terra_manager = TERRA_MANAGER_MAINNET;
     position_ticks_table = position_ticks_prod;
     strategy_tvl_table = strategy_tvl_prod;
+    terraswap_data_table = terraswap_data_table_prod;
+    terraswap_api_address = terraswap_api_address_prod;
     connection = mainnetTerra;
   } else {
     console.log(`Invalid network argument ${parser.parse_args().network}`);
@@ -47,8 +57,7 @@ async function run_pipeline() {
   }
 
   console.log(
-    `Generating data for ${
-      parser.parse_args().network
+    `Generating data for ${parser.parse_args().network
     } with terra manager address: ${terra_manager}`
   );
   console.log(
@@ -137,6 +146,35 @@ async function run_pipeline() {
   for (var strategy_id in mAssetToTVL) {
     const tvl_uusd = mAssetToTVL[strategy_id];
     await write_strategy_metrics(strategy_tvl_table, strategy_id, tvl_uusd);
+  }
+
+  // Query and persist Terraswap data.
+  axios.get(terraswap_api_address)
+    .then((response) => {
+      response.data.forEach(pair_data => {
+        const timestamp_sec = Date.parse(pair_data.timestamp).getTime() / 1e3;
+        await write_terraswap_data(terraswap_data_table, timestamp_sec, pair_data.pairAddress, pair_data.apr);
+      });
+    }, (error) => {
+      console.log(error);
+    });
+}
+
+async function write_terraswap_data(table_name, timestamp_sec, pairAddress, apr) {
+  const input = {
+    TableName: table_name,
+    Item: {
+      timestamp_sec: { N: timestamp_sec },
+      pair_address: { S: pairAddress },
+      apr: { S: apr },
+    },
+  };
+  const command = new PutItemCommand(input);
+  try {
+    const results = await client.send(command);
+    console.log(results);
+  } catch (err) {
+    console.error(err);
   }
 }
 
