@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "contracts/Wormhole.sol";
-import "contracts/BytesLib.sol";
+import "contracts/libraries/BytesLib.sol";
 
 struct OwnershipInfo {
     address ownerAddr; // The owner of the position.
