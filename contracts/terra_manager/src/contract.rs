@@ -143,6 +143,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                 strategy_location_vec,
             })
         }
+        QueryMsg::GetStrategyLocationByPosition { position } => to_binary(
+            &POSITION_TO_STRATEGY_LOCATION_MAP.load(deps.storage, get_position_key(&position))?,
+        ),
     }
 }
 

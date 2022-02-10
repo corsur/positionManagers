@@ -1,4 +1,4 @@
-use crate::common::{Action, ChainId, PositionId, Recipient, Strategy, StrategyLocation};
+use crate::common::{Action, ChainId, Position, PositionId, Recipient, Strategy, StrategyLocation};
 use cosmwasm_std::{Binary, Decimal, Uint64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -94,6 +94,10 @@ pub enum QueryMsg {
         holder: String,
         start_after: Option<PositionId>,
         limit: Option<u32>,
+    },
+    // Returns `StrategyLocation`.
+    GetStrategyLocationByPosition {
+        position: Position,
     },
 }
 

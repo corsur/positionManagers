@@ -1,9 +1,10 @@
 use crate::contract::{execute, instantiate, query};
-use crate::state::NEXT_STRATEGY_ID;
+use crate::state::{NEXT_STRATEGY_ID, POSITION_TO_STRATEGY_LOCATION_MAP};
 use aperture_common::terra_manager::{ExecuteMsg, InstantiateMsg, QueryMsg, TERRA_CHAIN_ID};
 
 use aperture_common::common::{
-    Action, Position, Recipient, Strategy, StrategyMetadata, StrategyPositionManagerExecuteMsg,
+    get_position_key, Action, Position, Recipient, Strategy, StrategyLocation, StrategyMetadata,
+    StrategyPositionManagerExecuteMsg,
 };
 use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
@@ -245,4 +246,43 @@ fn test_create_position() {
             reply_on: ReplyOn::Never,
         }]
     );
+}
+
+#[test]
+fn test_query_strategy_location_by_position() {
+    let mut deps = mock_dependencies(&[]);
+    let position = Position {
+        chain_id: 1u16,
+        position_id: Uint128::from(2u128),
+    };
+    let strategy_location = StrategyLocation::TerraChain(Uint64::from(3u64));
+    POSITION_TO_STRATEGY_LOCATION_MAP
+        .save(
+            deps.as_mut().storage,
+            get_position_key(&position),
+            &strategy_location,
+        )
+        .unwrap();
+    assert_eq!(
+        query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::GetStrategyLocationByPosition { position }
+        )
+        .unwrap(),
+        to_binary(&strategy_location).unwrap()
+    );
+
+    // Querying a non-existent position should results in an error.
+    assert!(query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::GetStrategyLocationByPosition {
+            position: Position {
+                chain_id: 2u16,
+                position_id: Uint128::from(3u128),
+            }
+        }
+    )
+    .is_err());
 }
