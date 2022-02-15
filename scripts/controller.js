@@ -268,7 +268,7 @@ async function maybeExecuteRebalance(
   const mAssetName = mAssetMap[position_info.mirror_asset_cw20_addr];
 
   // Determine whether we should trigger rebalance.
-  const { result, logging, reason} = await shouldRebalance(
+  const { result, logging, reason } = await shouldRebalance(
     connection,
     position_info,
     mirror_oracle_addr,
@@ -277,7 +277,9 @@ async function maybeExecuteRebalance(
     time_tolerance
   );
 
-  console.log(`position id ${position_id} ${mAssetName} with address ${position_addr}`);
+  console.log(
+    `position id ${position_id} ${mAssetName} with address ${position_addr}`
+  );
   process.stdout.write(logging);
 
   if (!result) {
@@ -349,7 +351,7 @@ async function shouldRebalance(
     logging += `Failed to query Mirror Orcale with error: ${error}\n`;
     metrics[MIRROR_ORACLE_QUERY_FAILURE]++;
     metrics[CONTRACT_QUERY_ERROR]++;
-    return { result: false, logging: logging, reason: "NA"};
+    return { result: false, logging: logging, reason: "NA" };
   }
 
   const last_updated_base_sec = mirror_res.last_updated_base;
@@ -360,7 +362,7 @@ async function shouldRebalance(
     logging += `Oracle price too old. Current time: ${current_time.toString()}. Oracle time: ${new Date(
       last_updated_base_sec * 1e3
     ).toString()}. Time tolerance is ${time_tolerance} seconds.\n`;
-    return { result: false, logging: logging, reason: "NA"};
+    return { result: false, logging: logging, reason: "NA" };
   }
 
   // Check if current CR is within range.
@@ -372,12 +374,22 @@ async function shouldRebalance(
 
   if (
     parseFloat(detailed_info.collateral_ratio) <
-      parseFloat(detailed_info.target_collateral_ratio_range.min) ||
-    parseFloat(detailed_info.collateral_ratio) >
-      parseFloat(detailed_info.target_collateral_ratio_range.max)
+    parseFloat(detailed_info.target_collateral_ratio_range.min)
   ) {
-    logging += "Should rebalance due to: CR out of range.\n";
-    return { result: true, logging: logging, reason: "CR"};
+    logging += "Should rebalance due to: CR too small.\n";
+    return { result: true, logging: logging, reason: "CRL" };
+  }
+
+  if (
+    parseFloat(detailed_info.collateral_ratio) >
+      parseFloat(detailed_info.target_collateral_ratio_range.max) &&
+    (new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(0) ||
+      new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(
+        detailed_info.claimable_short_proceeds_uusd_amount
+      ))
+  ) {
+    logging += "Should rebalance due to: CR too big.\n";
+    return { result: true, logging: logging, reason: "CRG" };
   }
 
   // Check delta-neutrality.
@@ -391,7 +403,7 @@ async function shouldRebalance(
     short_amount.minus(long_amount).abs().div(long_amount).gt(delta_tolerance)
   ) {
     logging += "Should rebalance due to: Violating delta-neutral constraint.\n";
-    return { result: true, logging: logging, reason: "DL"};
+    return { result: true, logging: logging, reason: "DL" };
   }
 
   // Check balance.
@@ -413,7 +425,7 @@ async function shouldRebalance(
 
   logging +=
     "Delta is neutral, CR looks okay and balance is not enough or eligible for rebalance.\n";
-  return { result: false, logging: logging, reason: "NA"};
+  return { result: false, logging: logging, reason: "NA" };
 }
 
 // Start.
