@@ -1,3 +1,7 @@
+import {
+  CloudWatchClient,
+  PutMetricDataCommand,
+} from "@aws-sdk/client-cloudwatch";
 import big from "big.js";
 const { Big } = big;
 import { ArgumentParser } from "argparse";
@@ -27,7 +31,46 @@ function getAndIncrementSequence() {
   return sequence++;
 }
 
-const delay = ms => new Promise(res => setTimeout(res, ms));
+async function publishMetrics(metrics_and_count) {
+  var metrics_data = [];
+  for (var key in metrics_and_count) {
+    const metric_data = {
+      MetricName: key,
+      Timestamp: new Date(),
+      Dimensions: [
+        {
+          Name: "Network",
+          Value: "Mainnet",
+        },
+      ],
+      Unit: "Count",
+      Value: metrics_and_count[key],
+    };
+    metrics_data.push(metric_data);
+  }
+  const metrics_to_publish = {
+    MetricData: metrics_data,
+    Namespace: "ApertureController",
+  };
+  await client.send(new PutMetricDataCommand(metrics_to_publish));
+}
+
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+const client = new CloudWatchClient({ region: "us-west-2" });
+var metrics = {};
+const CONTRACT_QUERY_ERROR = "CONTRACT_QUERY_ERROR";
+const CONTROLLER_START = "CONTROLLER_START";
+const MIRROR_ORACLE_QUERY_FAILURE = "MIRROR_ORACLE_QUERY_FAILURE";
+const GET_NEXT_POSITION_ID_FAILURE = "GET_NEXT_POSITION_ID_FAILURE";
+const GET_POSITION_MANAGER_FAILURE = "GET_POSITION_MANAGER_FAILURE";
+const NUM_PROCESSED_POSITION = "NUM_PROCESSED_POSITION";
+const GET_POSITION_CONTRACT_FAILURE = "GET_POSITION_CONTRACT_FAILURE";
+const GET_POSITION_INFO_FAILURE = "GET_POSITION_INFO_FAILURE";
+const SHOULD_REBALANCE_POSITION = "SHOULD_REBALANCE_POSITION";
+const REBALANCE_FAILURE = "REBALANCE_FAILURE";
+const REBALANCE_SUCCESS = "REBALANCE_SUCCESS";
+const REBALANCE_CONTRACT_CREATION_OR_BROADCAST_FAILURE =
+  "REBALANCE_CONTRACT_CREATION_OR_BROADCAST_FAILURE";
 
 async function run_pipeline() {
   const parser = new ArgumentParser({
@@ -83,6 +126,23 @@ async function run_pipeline() {
     return;
   }
 
+  // Initialize metric counters.
+  metrics[CONTRACT_QUERY_ERROR] = 0;
+  metrics[CONTROLLER_START] = 0;
+  metrics[MIRROR_ORACLE_QUERY_FAILURE] = 0;
+  metrics[GET_NEXT_POSITION_ID_FAILURE] = 0;
+  metrics[GET_POSITION_MANAGER_FAILURE] = 0;
+  metrics[NUM_PROCESSED_POSITION] = 0;
+  metrics[GET_POSITION_CONTRACT_FAILURE] = 0;
+  metrics[GET_POSITION_INFO_FAILURE] = 0;
+  metrics[SHOULD_REBALANCE_POSITION] = 0;
+  metrics[REBALANCE_FAILURE] = 0;
+  metrics[REBALANCE_SUCCESS] = 0;
+  metrics[REBALANCE_CONTRACT_CREATION_OR_BROADCAST_FAILURE] = 0;
+
+  // Send running signal to AWS CloudWatch.
+  metrics[CONTROLLER_START]++;
+
   const wallet = connection.wallet(
     new MnemonicKey({
       mnemonic:
@@ -98,20 +158,38 @@ async function run_pipeline() {
   );
 
   // Get next position id to establish limit.
-  const next_position_res = await connection.wasm.contractQuery(terra_manager, {
-    get_next_position_id: {},
-  });
-  console.log("next position id: ", next_position_res.next_position_id);
+  var next_position_res = undefined;
+  try {
+    next_position_res = await connection.wasm.contractQuery(terra_manager, {
+      get_next_position_id: {},
+    });
+    console.log("next position id: ", next_position_res.next_position_id);
+  } catch (error) {
+    console.log(`Failed to get next position id with error: ${error}`);
+    metrics[GET_NEXT_POSITION_ID_FAILURE]++;
+    metrics[CONTRACT_QUERY_ERROR]++;
+    return;
+  }
 
   // Get delta neutral position manager.
-  const delta_neutral_pos_mgr_res = await connection.wasm.contractQuery(
-    terra_manager,
-    {
-      get_strategy_metadata: {
-        strategy_id: DELTA_NEUTRAL_STRATEGY_ID,
-      },
-    }
-  );
+  var delta_neutral_pos_mgr_res = undefined;
+  try {
+    delta_neutral_pos_mgr_res = await connection.wasm.contractQuery(
+      terra_manager,
+      {
+        get_strategy_metadata: {
+          strategy_id: DELTA_NEUTRAL_STRATEGY_ID,
+        },
+      }
+    );
+  } catch (error) {
+    console.log(
+      `Failed to get delta-neutral position manager with error: ${error}`
+    );
+    metrics[GET_POSITION_MANAGER_FAILURE]++;
+    metrics[CONTRACT_QUERY_ERROR]++;
+    return;
+  }
   const position_manager_addr = delta_neutral_pos_mgr_res.manager_addr;
 
   var promises = [];
@@ -120,20 +198,20 @@ async function run_pipeline() {
     if (i % qps == 0) {
       await delay(1000);
     }
-
-    promises.push(
-      maybeExecuteRebalance(
-        connection,
-        position_manager_addr,
-        i,
-        mirror_oracle_addr,
-        delta_tolerance,
-        balance_tolerance,
-        time_tolerance,
-        wallet
-      )
+    let promise = maybeExecuteRebalance(
+      connection,
+      position_manager_addr,
+      i,
+      mirror_oracle_addr,
+      delta_tolerance,
+      balance_tolerance,
+      time_tolerance,
+      wallet
     );
+    promise.catch((err) => console.log("Caught unexpected error: ", err));
+    promises.push(promise);
   }
+
   console.log(`Waiting for ${promises.length} requests to complete.`);
   await Promise.allSettled(promises);
 }
@@ -148,23 +226,38 @@ async function maybeExecuteRebalance(
   time_tolerance,
   wallet
 ) {
+  metrics[NUM_PROCESSED_POSITION]++;
+
   // Query position metadata.
-  const position_addr = await connection.wasm.contractQuery(
-    position_manager_addr,
-    {
+  var position_addr = undefined;
+  try {
+    position_addr = await connection.wasm.contractQuery(position_manager_addr, {
       get_position_contract_addr: {
         position: {
           chain_id: TERRA_CHAIN_ID,
           position_id: position_id.toString(),
         },
       },
-    }
-  );
+    });
+  } catch (error) {
+    console.log(`Failed to get position contract address with error: ${error}`);
+    metrics[GET_POSITION_CONTRACT_FAILURE]++;
+    metrics[CONTRACT_QUERY_ERROR]++;
+    return;
+  }
 
   // Get position info.
-  const position_info = await connection.wasm.contractQuery(position_addr, {
-    get_position_info: {},
-  });
+  var position_info = undefined;
+  try {
+    position_info = await connection.wasm.contractQuery(position_addr, {
+      get_position_info: {},
+    });
+  } catch (error) {
+    console.log(`Failed to get position info with error: ${error}`);
+    metrics[GET_POSITION_INFO_FAILURE]++;
+    metrics[CONTRACT_QUERY_ERROR]++;
+    return;
+  }
 
   if (position_info.detailed_info == null) {
     console.log("Position id ", position_id, " is closed.");
@@ -191,6 +284,7 @@ async function maybeExecuteRebalance(
 
   // Rebalance.
   console.log(`Initiating rebalance for position ${position_id}.`);
+  metrics[SHOULD_REBALANCE_POSITION]++;
   try {
     const tx = await wallet.createAndSignTx({
       msgs: [
@@ -209,15 +303,18 @@ async function maybeExecuteRebalance(
     });
     const response = await connection.tx.broadcast(tx);
     if (isTxError(response)) {
+      metrics[REBALANCE_FAILURE]++;
       console.log(
         `Rebalance failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
       );
     } else {
+      metrics[REBALANCE_SUCCESS]++;
       console.log(
         `Successfully initiated rebalance for position ${position_id}.`
       );
     }
   } catch (error) {
+    metrics[REBALANCE_CONTRACT_CREATION_OR_BROADCAST_FAILURE]++;
     console.log(
       `create or broadcast tx failed with error ${error} for position id: ${position_id}`
     );
@@ -237,12 +334,20 @@ async function shouldRebalance(
   var logging = "";
   const detailed_info = position_info.detailed_info;
   // Check market hours.
-  const mirror_res = await connection.wasm.contractQuery(mirror_orcale_addr, {
-    price: {
-      quote_asset: "uusd",
-      base_asset: position_info.mirror_asset_cw20_addr,
-    },
-  });
+  var mirror_res = undefined;
+  try {
+    mirror_res = await connection.wasm.contractQuery(mirror_orcale_addr, {
+      price: {
+        quote_asset: "uusd",
+        base_asset: position_info.mirror_asset_cw20_addr,
+      },
+    });
+  } catch (error) {
+    logging += `Failed to query Mirror Orcale with error: ${error}\n`;
+    metrics[MIRROR_ORACLE_QUERY_FAILURE]++;
+    metrics[CONTRACT_QUERY_ERROR]++;
+    return { result: false, logging: logging };
+  }
 
   const last_updated_base_sec = mirror_res.last_updated_base;
 
@@ -309,4 +414,11 @@ async function shouldRebalance(
 }
 
 // Start.
-await run_pipeline();
+try {
+  await run_pipeline();
+} catch (error) {
+  console.log(`Some part of the operations failed with error: ${error}`);
+} finally {
+  await publishMetrics(metrics);
+  console.log("Rebalance script execution completed.");
+}
