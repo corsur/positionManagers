@@ -70,8 +70,8 @@ const GET_POSITION_INFO_FAILURE = "GET_POSITION_INFO_FAILURE";
 const SHOULD_REBALANCE_POSITION = "SHOULD_REBALANCE_POSITION";
 const REBALANCE_FAILURE = "REBALANCE_FAILURE";
 const REBALANCE_SUCCESS = "REBALANCE_SUCCESS";
-const REBALANCE_CONTRACT_CREATION_OR_BROADCAST_FAILURE =
-  "REBALANCE_CONTRACT_CREATION_OR_BROADCAST_FAILURE";
+const REBALANCE_CREATE_AND_SIGN_FAILURE = "REBALANCE_CREATE_AND_SIGN_FAILURE";
+const REBALANCE_BROADCAST_FAILURE = "REBALANCE_BROADCAST_FAILURE";
 
 async function run_pipeline() {
   const parser = new ArgumentParser({
@@ -139,7 +139,8 @@ async function run_pipeline() {
   metrics[SHOULD_REBALANCE_POSITION] = 0;
   metrics[REBALANCE_FAILURE] = 0;
   metrics[REBALANCE_SUCCESS] = 0;
-  metrics[REBALANCE_CONTRACT_CREATION_OR_BROADCAST_FAILURE] = 0;
+  metrics[REBALANCE_CREATE_AND_SIGN_FAILURE] = 0;
+  metrics[REBALANCE_BROADCAST_FAILURE] = 0;
 
   // Send running signal to AWS CloudWatch.
   metrics[CONTROLLER_START]++;
@@ -290,8 +291,9 @@ async function maybeExecuteRebalance(
   // Rebalance.
   console.log(`Initiating rebalance for position ${position_id}.`);
   metrics[SHOULD_REBALANCE_POSITION]++;
+  var tx = undefined;
   try {
-    const tx = await wallet.createAndSignTx({
+    tx = await wallet.createAndSignTx({
       msgs: [
         new MsgExecuteContract(
           /*sender=*/ wallet.key.accAddress,
@@ -306,11 +308,19 @@ async function maybeExecuteRebalance(
       memo: `p: ${position_id}, a:${mAssetName}, r: ${reason}`,
       sequence: getAndIncrementSequence(),
     });
+  } catch (error) {
+    console.log(`Failed to createAndSignTx with error ${error}`);
+    metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
+    console.log("\n");
+    return;
+  }
+
+  try {
     const response = await connection.tx.broadcast(tx);
     if (isTxError(response)) {
       metrics[REBALANCE_FAILURE]++;
       console.log(
-        `Rebalance failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+        `Rebalance broadcast failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
       );
     } else {
       metrics[REBALANCE_SUCCESS]++;
@@ -319,9 +329,9 @@ async function maybeExecuteRebalance(
       );
     }
   } catch (error) {
-    metrics[REBALANCE_CONTRACT_CREATION_OR_BROADCAST_FAILURE]++;
+    metrics[REBALANCE_BROADCAST_FAILURE]++;
     console.log(
-      `create or broadcast tx failed with error ${error} for position id: ${position_id}`
+      `Broadcast tx failed with error ${error} for position id: ${position_id}`
     );
   } finally {
     console.log("\n");
