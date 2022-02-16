@@ -149,15 +149,15 @@ async function run_pipeline() {
   }
 
   // Query and persist Terraswap data.
-  axios.get(terraswap_api_address)
-    .then((response) => {
-      response.data.forEach(pair_data => {
-        const timestamp_sec = Date.parse(pair_data.timestamp).getTime() / 1e3;
-        await write_terraswap_data(terraswap_data_table, timestamp_sec, pair_data.pairAddress, pair_data.apr);
-      });
-    }, (error) => {
-      console.log(error);
-    });
+  // axios.get(terraswap_api_address)
+  //   .then((response) => {
+  //     response.data.forEach(pair_data => {
+  //       const timestamp_sec = Date.parse(pair_data.timestamp).getTime() / 1e3;
+  //       await write_terraswap_data(terraswap_data_table, timestamp_sec, pair_data.pairAddress, pair_data.apr);
+  //     });
+  //   }, (error) => {
+  //     console.log(error);
+  //   });
 }
 
 async function write_terraswap_data(table_name, timestamp_sec, pairAddress, apr) {
