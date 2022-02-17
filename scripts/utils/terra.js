@@ -53,10 +53,19 @@ export const mAssetMap = {
   terra149755r3y0rve30e209awkhn5cxgkn5c8ju9pm5: "mDIS",
   terra17ana8hvzea0q7w367dm0dw48sxwql39qekpt7g: "mNKE",
 };
+export const DYNAMODB_BATCH_WRITE_ITEM_LIMIT = 25;
 
-export const mainnetTerra = new LCDClient({
+export const mainnetTerraController = new LCDClient({
   // URL: "https://lcd.terra.dev",
   URL: "https://broken-aged-feather.terra-mainnet.quiknode.pro/6536ded4ddea43ff5b4b4318ec4cdf90f2ce4aee/",
+  chainID: "columbus-5",
+  gasPrices: gasPrices,
+  gasAdjustment: gasAdjustment,
+});
+
+export const mainnetTerraData = new LCDClient({
+  // URL: "https://lcd.terra.dev",
+  URL: "https://thrumming-wispy-snow.terra-mainnet.quiknode.pro/767455606a361ac0fdfba9d94fbc16f307f4096b/",
   chainID: "columbus-5",
   gasPrices: gasPrices,
   gasAdjustment: gasAdjustment,
@@ -68,3 +77,5 @@ export const testnetTerra = new LCDClient({
   gasPrices: gasPrices,
   gasAdjustment: gasAdjustment,
 });
+
+export const delay = (ms) => new Promise((res) => setTimeout(res, ms));

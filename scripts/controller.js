@@ -6,8 +6,9 @@ import big from "big.js";
 const { Big } = big;
 import { ArgumentParser } from "argparse";
 import {
+  delay,
   DELTA_NEUTRAL_STRATEGY_ID,
-  mainnetTerra,
+  mainnetTerraController,
   mAssetMap,
   MIRROR_ORACLE_MAINNET,
   MIRROR_ORACLE_TESTNET,
@@ -56,7 +57,6 @@ async function publishMetrics(metrics_and_count) {
   await client.send(new PutMetricDataCommand(metrics_to_publish));
 }
 
-const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 const client = new CloudWatchClient({ region: "us-west-2" });
 var metrics = {};
 const CONTRACT_QUERY_ERROR = "CONTRACT_QUERY_ERROR";
@@ -120,7 +120,7 @@ async function run_pipeline() {
     mirror_oracle_addr = MIRROR_ORACLE_TESTNET;
   } else if (network == "mainnet") {
     terra_manager = TERRA_MANAGER_MAINNET;
-    connection = mainnetTerra;
+    connection = mainnetTerraController;
     mirror_oracle_addr = MIRROR_ORACLE_MAINNET;
   } else {
     console.log(`Invalid network argument ${parser.parse_args().network}`);
