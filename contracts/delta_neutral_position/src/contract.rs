@@ -13,6 +13,7 @@ use terraswap::asset::{Asset, AssetInfo};
 use crate::math::{decimal_division, decimal_multiplication, reverse_decimal};
 use crate::open::delta_neutral_invest;
 use crate::rebalance::achieve_delta_neutral;
+use crate::spectrum_util::check_spectrum_mirror_farm_existence;
 use crate::state::{
     CDP_IDX, LAST_FEE_COLLECTION_POSITION_UUSD_VALUE, MANAGER, MIRROR_ASSET_CW20_ADDR,
     POSITION_CLOSE_INFO, POSITION_OPEN_INFO, TARGET_COLLATERAL_RATIO_RANGE,
@@ -464,7 +465,10 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
     let state = get_position_state(deps, &env, &context)?;
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
     let mut response = Response::new();
-    if state.mirror_asset_balance.is_zero() || state.uusd_balance.is_zero() {
+    if state.mirror_asset_balance.is_zero()
+        || state.uusd_balance.is_zero()
+        || !check_spectrum_mirror_farm_existence(deps, &context, &mirror_asset_cw20_addr)
+    {
         return Ok(response);
     }
 
@@ -529,7 +533,7 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
             contract: context.spectrum_mirror_farms_addr.to_string(),
             amount: return_lp_token_amount,
             msg: to_binary(&spectrum_protocol::mirror_farm::Cw20HookMsg::bond {
-                asset_token: MIRROR_ASSET_CW20_ADDR.load(deps.storage)?.to_string(),
+                asset_token: mirror_asset_cw20_addr.to_string(),
                 compound_rate: Some(Decimal::one()),
                 staker_addr: None,
             })?,

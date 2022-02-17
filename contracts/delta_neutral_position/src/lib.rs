@@ -5,6 +5,7 @@ mod dex_util;
 mod math;
 mod open;
 mod rebalance;
+mod spectrum_util;
 mod util;
 
 #[cfg(test)]
