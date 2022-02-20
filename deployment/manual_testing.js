@@ -285,10 +285,10 @@ const stable_yield_manager = "terra1gkg2287wgg7q8cljseke0e0204tvuxevpcqcpq";
 
 const terra_manager_addr = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
 // await migrate_contract(terra_manager_addr, 36018);
-// open_delta_neutral_position(terra_manager_addr, 1000000);
 // await open_delta_neutral_position(terra_manager_addr, 101);
-// await open_delta_neutral_position(terra_manager_addr, 50001);
-
 // await close_position(terra_manager_addr, 2);
-await rebalance_position("terra1azg8cmmey8hk6y7l420u2s5yzlmjaqlltf7ex9");
 // await collect_fees("terra1azg8cmmey8hk6y7l420u2s5yzlmjaqlltf7ex9");
+// await store_new_position_code(delta_neutral_manager);
+// await migrate_existing_position(delta_neutral_manager, 1075);
+// await open_delta_neutral_position(terra_manager_addr, 101);
+await rebalance_position("terra1kzy63zu9g34f4rlnmkx6n2djsf9fpgjjka0d6v");

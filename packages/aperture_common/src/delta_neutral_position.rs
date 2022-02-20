@@ -51,6 +51,8 @@ pub struct MigrateMsg {}
 pub enum QueryMsg {
     // Returns PositionInfoResponse.
     GetPositionInfo {},
+    // Returns bool.
+    CheckSpectrumMirrorFarmExistence { mirror_asset_cw20_addr: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

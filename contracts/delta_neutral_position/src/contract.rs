@@ -550,6 +550,13 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         .query_wasm_smart(&manager_addr, &ManagerQueryMsg::GetContext {})?;
     match msg {
         QueryMsg::GetPositionInfo {} => to_binary(&query_position_info(deps, &env, &context)?),
+        QueryMsg::CheckSpectrumMirrorFarmExistence {
+            mirror_asset_cw20_addr,
+        } => to_binary(&check_spectrum_mirror_farm_existence(
+            deps,
+            &context,
+            &deps.api.addr_validate(&mirror_asset_cw20_addr)?,
+        )),
     }
 }
 
