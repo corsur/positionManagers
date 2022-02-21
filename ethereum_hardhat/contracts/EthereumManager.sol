@@ -38,6 +38,8 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     uint16 private constant TERRA_CHAIN_ID = 3;
     uint256 private constant BPS = 10000;
+    // The maximum allowed CROSS_CHAIN_FEE_BPS value (100 basis points, i.e. 1%).
+    uint32 private constant MAX_CROSS_CHAIN_FEE_BPS = 100;
 
     // --- Cross-chain instruction format --- //
     // [uint128] position_id
@@ -102,10 +104,15 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         external
         onlyOwner
     {
+        require(
+            crossChainFeeBPS <= MAX_CROSS_CHAIN_FEE_BPS,
+            "crossChainFeeBPS exceeds maximum allowed value of 100"
+        );
         CROSS_CHAIN_FEE_BPS = crossChainFeeBPS;
     }
 
     function updateFeeSink(address feeSink) external onlyOwner {
+        require(feeSink != address(0), "feeSink address must be non-zero");
         FEE_SINK = feeSink;
     }
 
@@ -182,7 +189,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
             // Collect fee as needed.
             if (CROSS_CHAIN_FEE_BPS != 0) {
-                uint256 crossChainFee = (amount / BPS) * CROSS_CHAIN_FEE_BPS;
+                uint256 crossChainFee = (amount * CROSS_CHAIN_FEE_BPS) / BPS;
                 IERC20(assetInfos[i].assetAddr).safeTransfer(
                     FEE_SINK,
                     crossChainFee
