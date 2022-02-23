@@ -294,7 +294,7 @@ async function run_pipeline() {
           );
           metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
           console.log("\n");
-          continue;
+          return;
         }
 
         console.log(
