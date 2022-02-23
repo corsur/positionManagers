@@ -256,88 +256,89 @@ async function run_pipeline() {
   console.log(`Waiting for ${promises.length} requests to complete.`);
   const resolved_promises = await Promise.allSettled(promises);
 
-  var num_position_to_rebalance = 0;
+  // Extract out promises with msgs to execute.
+  var promises_with_result = [];
+  for (const promise of resolved_promises) {
+    if (promise.status == "fulfilled" && promise.value != undefined) {
+      promises_with_result.push(promise);
+    }
+  }
+  console.log(
+    `Total number of positions to rebalance: ${promises_with_result.length}`
+  );
+
   var num_included_positions = 0;
   var msgs_acc = [];
   var memos = [];
   var position_ids = [];
-  for (const [index, resolved_promise] of resolved_promises.entries()) {
+  for (const [index, resolved_promise] of promises_with_result.entries()) {
+    const { msgs, asset_name, position_id, reason } = resolved_promise.value;
+    num_included_positions++;
+    msgs_acc.push(...msgs);
+    memos.push(`p:${position_id},a:${asset_name},r:${reason}`);
+    position_ids.push(position_id);
+    // Send out tx if:
+    //   1. We have accumulated enough positions.
+    //   2. Or, we are at the last batch.
     if (
-      resolved_promise.status == "fulfilled" &&
-      resolved_promise.value != undefined
+      num_included_positions == batch_size ||
+      index == (promises_with_result.length - 1)
     ) {
-      num_position_to_rebalance++;
-      const { msgs, asset_name, position_id, reason } = resolved_promise.value;
-      num_included_positions++;
-      msgs_acc.push(...msgs);
-      memos.push(`p:${position_id},a:${asset_name},r:${reason}`);
-      position_ids.push(position_id);
-      // Send out tx if:
-      //   1. We have accumulated enough positions.
-      //   2. Or, we are at the last batch.
-      if (
-        num_included_positions == batch_size ||
-        index == resolved_promises.length - 1
-      ) {
-        var tx = undefined;
-        try {
-          tx = await wallet.createAndSignTx({
-            msgs: msgs_acc,
-            memo: memos.join(";"),
-            sequence: getAndIncrementSequence(),
-          });
-        } catch (error) {
-          console.log(
-            `Failed to createAndSignTx with error ${error} for position ids: ${position_ids.join(
-              ","
-            )}`
-          );
-          metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
-          console.log("\n");
-          return;
-        }
-
+      var tx = undefined;
+      try {
+        tx = await wallet.createAndSignTx({
+          msgs: msgs_acc,
+          memo: memos.join(";"),
+          sequence: getAndIncrementSequence(),
+        });
+      } catch (error) {
         console.log(
-          `Succeeded to createAndSignTx for position ids: ${position_ids.join(
+          `Failed to createAndSignTx with error ${error} for position ids: ${position_ids.join(
             ","
           )}`
         );
+        metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
+        console.log("\n");
+        return;
+      }
 
-        try {
-          const response = await connection.tx.broadcast(tx);
-          if (isTxError(response)) {
-            metrics[REBALANCE_FAILURE]++;
-            console.log(
-              `Rebalance broadcast failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
-            );
-          } else {
-            metrics[REBALANCE_SUCCESS]++;
-            console.log(
-              `Successfully initiated rebalance for position ${position_ids.join(
-                ","
-              )}.`
-            );
-          }
-        } catch (error) {
-          metrics[REBALANCE_BROADCAST_FAILURE]++;
+      console.log(
+        `Succeeded to createAndSignTx for position ids: ${position_ids.join(
+          ","
+        )}`
+      );
+
+      try {
+        const response = await connection.tx.broadcast(tx);
+        if (isTxError(response)) {
+          metrics[REBALANCE_FAILURE]++;
           console.log(
-            `Broadcast tx failed with error ${error} for position ids: ${position_ids.join(
-              ","
-            )}`
+            `Rebalance broadcast failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
           );
-        } finally {
-          // Clear states.
-          num_included_positions = 0;
-          memos = [];
-          msgs_acc = [];
-          position_ids = [];
+        } else {
+          metrics[REBALANCE_SUCCESS]++;
+          console.log(
+            `Successfully initiated rebalance for position ${position_ids.join(
+              ","
+            )}.`
+          );
         }
+      } catch (error) {
+        metrics[REBALANCE_BROADCAST_FAILURE]++;
+        console.log(
+          `Broadcast tx failed with error ${error} for position ids: ${position_ids.join(
+            ","
+          )}`
+        );
+      } finally {
+        // Clear states.
+        num_included_positions = 0;
+        memos = [];
+        msgs_acc = [];
+        position_ids = [];
       }
     }
   }
-  console.log(
-    `Total number of positions to rebalance: ${num_position_to_rebalance}`
-  );
 }
 
 async function maybeExecuteRebalance(
