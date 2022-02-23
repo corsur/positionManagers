@@ -64,8 +64,12 @@ const CONTROLLER_START = "CONTROLLER_START";
 const MIRROR_ORACLE_QUERY_FAILURE = "MIRROR_ORACLE_QUERY_FAILURE";
 const GET_NEXT_POSITION_ID_FAILURE = "GET_NEXT_POSITION_ID_FAILURE";
 const GET_POSITION_MANAGER_FAILURE = "GET_POSITION_MANAGER_FAILURE";
+const GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE =
+  "GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE";
 const NUM_PROCESSED_POSITION = "NUM_PROCESSED_POSITION";
 const GET_POSITION_CONTRACT_FAILURE = "GET_POSITION_CONTRACT_FAILURE";
+const QUERY_POSITION_CONTRACT_INFO_FAILURE =
+  "QUERY_POSITION_CONTRACT_INFO_FAILURE";
 const GET_POSITION_INFO_FAILURE = "GET_POSITION_INFO_FAILURE";
 const SHOULD_REBALANCE_POSITION = "SHOULD_REBALANCE_POSITION";
 const REBALANCE_FAILURE = "REBALANCE_FAILURE";
@@ -105,10 +109,22 @@ async function run_pipeline() {
     default: 10,
     type: "int",
   });
+  parser.add_argument("-bs", "--batch_size", {
+    help: "Number of positions to include per tx.",
+    required: false,
+    default: 5,
+    type: "int",
+  });
 
   // Parse and validate.
-  const { network, delta_tolerance, balance_tolerance, time_tolerance, qps } =
-    parser.parse_args();
+  const {
+    network,
+    delta_tolerance,
+    balance_tolerance,
+    time_tolerance,
+    qps,
+    batch_size,
+  } = parser.parse_args();
 
   var terra_manager = "";
   var connection = undefined;
@@ -133,8 +149,10 @@ async function run_pipeline() {
   metrics[MIRROR_ORACLE_QUERY_FAILURE] = 0;
   metrics[GET_NEXT_POSITION_ID_FAILURE] = 0;
   metrics[GET_POSITION_MANAGER_FAILURE] = 0;
+  metrics[GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE] = 0;
   metrics[NUM_PROCESSED_POSITION] = 0;
   metrics[GET_POSITION_CONTRACT_FAILURE] = 0;
+  metrics[QUERY_POSITION_CONTRACT_INFO_FAILURE] = 0;
   metrics[GET_POSITION_INFO_FAILURE] = 0;
   metrics[SHOULD_REBALANCE_POSITION] = 0;
   metrics[REBALANCE_FAILURE] = 0;
@@ -194,6 +212,26 @@ async function run_pipeline() {
   }
   const position_manager_addr = delta_neutral_pos_mgr_res.manager_addr;
 
+  var position_manager_admin_config_res = undefined;
+  try {
+    position_manager_admin_config_res = await connection.wasm.contractQuery(
+      position_manager_addr,
+      {
+        get_admin_config: {},
+      }
+    );
+  } catch (error) {
+    console.log(
+      `Failed to get position manager admin config with error: ${error}`
+    );
+    metrics[GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE]++;
+    metrics[CONTRACT_QUERY_ERROR]++;
+    return;
+  }
+
+  const delta_neutral_position_code_id =
+    position_manager_admin_config_res.delta_neutral_position_code_id;
+
   var promises = [];
   for (var i = 0; i < parseInt(next_position_res.next_position_id); i++) {
     // Trottle request.
@@ -203,6 +241,7 @@ async function run_pipeline() {
     let promise = maybeExecuteRebalance(
       connection,
       position_manager_addr,
+      delta_neutral_position_code_id,
       i,
       mirror_oracle_addr,
       delta_tolerance,
@@ -215,12 +254,96 @@ async function run_pipeline() {
   }
 
   console.log(`Waiting for ${promises.length} requests to complete.`);
-  await Promise.allSettled(promises);
+  const resolved_promises = await Promise.allSettled(promises);
+
+  var num_position_to_rebalance = 0;
+  var num_included_positions = 0;
+  var msgs_acc = [];
+  var memos = [];
+  var position_ids = [];
+  for (const [index, resolved_promise] of resolved_promises.entries()) {
+    if (
+      resolved_promise.status == "fulfilled" &&
+      resolved_promise.value != undefined
+    ) {
+      num_position_to_rebalance++;
+      const { msgs, asset_name, position_id, reason } = resolved_promise.value;
+      num_included_positions++;
+      msgs_acc.push(...msgs);
+      memos.push(`p:${position_id},a:${asset_name},r:${reason}`);
+      position_ids.push(position_id);
+      // Send out tx if:
+      //   1. We have accumulated enough positions.
+      //   2. Or, we are at the last batch.
+      if (
+        num_included_positions == batch_size ||
+        index == resolved_promises.length - 1
+      ) {
+        var tx = undefined;
+        try {
+          tx = await wallet.createAndSignTx({
+            msgs: msgs_acc,
+            memo: memos.join(";"),
+            sequence: getAndIncrementSequence(),
+          });
+        } catch (error) {
+          console.log(
+            `Failed to createAndSignTx with error ${error} for position ids: ${position_ids.join(
+              ","
+            )}`
+          );
+          metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
+          console.log("\n");
+          return;
+        }
+
+        console.log(
+          `Succeeded to createAndSignTx for position ids: ${position_ids.join(
+            ","
+          )}`
+        );
+
+        try {
+          const response = await connection.tx.broadcast(tx);
+          if (isTxError(response)) {
+            metrics[REBALANCE_FAILURE]++;
+            console.log(
+              `Rebalance broadcast failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+            );
+          } else {
+            metrics[REBALANCE_SUCCESS]++;
+            console.log(
+              `Successfully initiated rebalance for position ${position_ids.join(
+                ","
+              )}.`
+            );
+          }
+        } catch (error) {
+          metrics[REBALANCE_BROADCAST_FAILURE]++;
+          console.log(
+            `Broadcast tx failed with error ${error} for position ids: ${position_ids.join(
+              ","
+            )}`
+          );
+        } finally {
+          // Clear states.
+          num_included_positions = 0;
+          memos = [];
+          msgs_acc = [];
+          position_ids = [];
+        }
+      }
+    }
+  }
+  console.log(
+    `Total number of positions to rebalance: ${num_position_to_rebalance}`
+  );
 }
 
 async function maybeExecuteRebalance(
   connection,
   position_manager_addr,
+  delta_neutral_position_code_id,
   position_id,
   mirror_oracle_addr,
   delta_tolerance,
@@ -266,6 +389,43 @@ async function maybeExecuteRebalance(
     return;
   }
 
+  // Obtain current code id for the position contract.
+  var position_contract_info = undefined;
+  try {
+    position_contract_info = await connection.wasm.contractInfo(position_addr);
+  } catch (error) {
+    console.log(`Failed to query position contract info with error: ${error}`);
+    metrics[QUERY_POSITION_CONTRACT_INFO_FAILURE]++;
+    metrics[CONTRACT_QUERY_ERROR]++;
+    return;
+  }
+  const current_code_id = position_contract_info.code_id;
+
+  var msgs = [];
+  // Migrate contract as needed.
+  if (current_code_id !== delta_neutral_position_code_id) {
+    console.log(
+      `Potentially will migrate position ${position_id} from ${current_code_id} to ${delta_neutral_position_code_id}.`
+    );
+    msgs.push(
+      new MsgExecuteContract(
+        /*sender=*/ wallet.key.accAddress,
+        /*contract=*/ position_manager_addr,
+        {
+          migrate_position_contracts: {
+            positions: [
+              {
+                chain_id: TERRA_CHAIN_ID,
+                position_id: position_id.toString(),
+              },
+            ],
+            position_contracts: [],
+          },
+        }
+      )
+    );
+  }
+
   const mAssetName = mAssetMap[position_info.mirror_asset_cw20_addr];
 
   // Determine whether we should trigger rebalance.
@@ -289,53 +449,27 @@ async function maybeExecuteRebalance(
   }
 
   // Rebalance.
-  console.log(`Initiating rebalance for position ${position_id}.`);
   metrics[SHOULD_REBALANCE_POSITION]++;
-  var tx = undefined;
-  try {
-    tx = await wallet.createAndSignTx({
-      msgs: [
-        new MsgExecuteContract(
-          /*sender=*/ wallet.key.accAddress,
-          /*contract=*/ position_addr,
-          {
-            controller: {
-              rebalance_and_reinvest: {},
-            },
-          }
-        ),
-      ],
-      memo: `p: ${position_id}, a:${mAssetName}, r: ${reason}`,
-      sequence: getAndIncrementSequence(),
-    });
-  } catch (error) {
-    console.log(`Failed to createAndSignTx with error ${error}`);
-    metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
-    console.log("\n");
-    return;
-  }
+  msgs.push(
+    new MsgExecuteContract(
+      /*sender=*/ wallet.key.accAddress,
+      /*contract=*/ position_addr,
+      {
+        controller: {
+          rebalance_and_reinvest: {},
+        },
+      }
+    )
+  );
+  // Add new line for logging.
+  console.log("\n");
 
-  try {
-    const response = await connection.tx.broadcast(tx);
-    if (isTxError(response)) {
-      metrics[REBALANCE_FAILURE]++;
-      console.log(
-        `Rebalance broadcast failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
-      );
-    } else {
-      metrics[REBALANCE_SUCCESS]++;
-      console.log(
-        `Successfully initiated rebalance for position ${position_id}.`
-      );
-    }
-  } catch (error) {
-    metrics[REBALANCE_BROADCAST_FAILURE]++;
-    console.log(
-      `Broadcast tx failed with error ${error} for position id: ${position_id}`
-    );
-  } finally {
-    console.log("\n");
-  }
+  return {
+    msgs: msgs,
+    asset_name: mAssetName,
+    position_id: position_id,
+    reason: reason,
+  };
 }
 
 async function shouldRebalance(
@@ -425,9 +559,12 @@ async function shouldRebalance(
     .plus(detailed_info.claimable_spec_reward_uusd_value)
     .plus(detailed_info.state.uusd_balance);
   logging += `balance percentage: ${uusd_balance.div(uusd_value).toString()}\n`;
+  const has_locked_proceeds =
+    !new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(0) &&
+    new Big(detailed_info.claimable_short_proceeds_uusd_amount).eq(0);
   if (
     uusd_balance.div(uusd_value).gt(balance_tolerance) &&
-    new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(0)
+    !has_locked_proceeds
   ) {
     logging += "Should rebalance due to: Balance too big.\n";
     return { result: true, logging: logging, reason: "BAL" };
