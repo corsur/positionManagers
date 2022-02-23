@@ -284,6 +284,7 @@ async function run_pipeline() {
           tx = await wallet.createAndSignTx({
             msgs: msgs_acc,
             memo: memos.join(";"),
+            sequence: getAndIncrementSequence(),
           });
         } catch (error) {
           console.log(
@@ -293,7 +294,7 @@ async function run_pipeline() {
           );
           metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
           console.log("\n");
-          return;
+          continue;
         }
 
         console.log(
@@ -558,9 +559,12 @@ async function shouldRebalance(
     .plus(detailed_info.claimable_spec_reward_uusd_value)
     .plus(detailed_info.state.uusd_balance);
   logging += `balance percentage: ${uusd_balance.div(uusd_value).toString()}\n`;
+  const has_locked_proceeds =
+    !new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(0) &&
+    new Big(detailed_info.claimable_short_proceeds_uusd_amount).eq(0);
   if (
     uusd_balance.div(uusd_value).gt(balance_tolerance) &&
-    new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(0)
+    !has_locked_proceeds
   ) {
     logging += "Should rebalance due to: Balance too big.\n";
     return { result: true, logging: logging, reason: "BAL" };
