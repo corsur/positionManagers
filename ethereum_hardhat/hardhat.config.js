@@ -1,5 +1,6 @@
 require("@nomiclabs/hardhat-waffle");
 require("@openzeppelin/hardhat-upgrades");
+require("hardhat-abi-exporter");
 
 const {
   ETH_PRV_KEY_1,
@@ -45,5 +46,13 @@ module.exports = {
   },
   mocha: {
     timeout: 10000000,
+  },
+  abiExporter: {
+    path: "./data/abi",
+    runOnCompile: true,
+    clear: true,
+    flat: true,
+    spacing: 2,
+    pretty: true,
   },
 };

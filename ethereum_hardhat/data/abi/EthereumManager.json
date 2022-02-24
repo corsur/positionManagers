@@ -1,0 +1,21 @@
+[
+  "event AdminChanged(address,address)",
+  "event BeaconUpgraded(address indexed)",
+  "event OwnershipTransferred(address indexed,address indexed)",
+  "event Upgraded(address indexed)",
+  "function completedTokenTransfers(bytes32) view returns (bool)",
+  "function createPosition(uint64,uint16,tuple(address,uint256)[],uint32,bytes)",
+  "function executeStrategy(uint128,uint64,tuple(address,uint256)[],uint32,bytes)",
+  "function getConfig() view returns (tuple(uint32,address))",
+  "function getPositions(address) view returns (tuple(uint128,uint16)[])",
+  "function initialize(uint8,address,address,bytes32,uint32,address)",
+  "function owner() view returns (address)",
+  "function positionToOwnership(uint128) view returns (address, uint16)",
+  "function renounceOwnership()",
+  "function transferOwnership(address)",
+  "function updateCrossChainFeeBPS(uint32)",
+  "function updateFeeSink(address)",
+  "function upgradeTo(address)",
+  "function upgradeToAndCall(address,bytes) payable",
+  "function whitelistedStableTokens(address) view returns (bool)"
+]
