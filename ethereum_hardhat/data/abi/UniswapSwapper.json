@@ -1,0 +1,11 @@
+[
+  "event OwnershipTransferred(address indexed,address indexed)",
+  "function factory() view returns (address)",
+  "function owner() view returns (address)",
+  "function renounceOwnership()",
+  "function routes(address,address,uint256) view returns (address)",
+  "function setRoute(address,address,address[])",
+  "function setSwapFactory(address)",
+  "function swapToken(address,address,uint256,uint256,address)",
+  "function transferOwnership(address)"
+]

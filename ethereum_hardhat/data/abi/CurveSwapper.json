@@ -1,0 +1,9 @@
+[
+  "event OwnershipTransferred(address indexed,address indexed)",
+  "function getRoute(address,address) view returns (tuple(address[],int128[]))",
+  "function owner() view returns (address)",
+  "function renounceOwnership()",
+  "function setRoute(address,address,address[],address[],int128[])",
+  "function swapToken(address,address,uint256,uint256,address)",
+  "function transferOwnership(address)"
+]

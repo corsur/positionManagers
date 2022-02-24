@@ -1,0 +1,10 @@
+[
+  "function BASE_N_COINS() view returns (int128)",
+  "function N_COINS() view returns (int128)",
+  "function base_coins(uint256) view returns (address)",
+  "function coins(uint256) view returns (address)",
+  "function exchange(int128,int128,uint256,uint256) returns (uint256)",
+  "function exchange_underlying(int128,int128,uint256,uint256) returns (uint256)",
+  "function get_dy(int128,int128,uint256) view returns (uint256)",
+  "function get_dy_underlying(int128,int128,uint256) view returns (uint256)"
+]
