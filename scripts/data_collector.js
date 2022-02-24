@@ -166,57 +166,55 @@ async function run_pipeline() {
     promises.push(doWork(connection, position_manager_addr, mAssetToTVL, i));
   }
 
-  const resolved_promises = await Promise.allSettled(promises);
+  const resolved_promises = (await Promise.allSettled(promises)).filter(
+    (promise) => promise.status == "fulfilled" && promise.value != undefined
+  );
+  console.log(`Total position ticks to send: ${resolved_promises.length}`);
 
   // Construct position ticks batch write request.
   var position_ticks_items = [];
   // Iterating over resolved promises.
   for (const [index, resolved_promise] of resolved_promises.entries()) {
-    if (
-      resolved_promise.status == "fulfilled" &&
-      resolved_promise.value != undefined
-    ) {
-      const raw_item = resolved_promise.value;
-      position_ticks_items.push({
-        PutRequest: {
-          Item: {
-            position_id: { N: raw_item.position_id.toString() },
-            timestamp_sec: {
-              N: parseInt(new Date().getTime() / 1e3).toString(),
-            },
-            chain_id: { N: TERRA_CHAIN_ID.toString() },
-            uusd_value: { N: raw_item.uusd_value.toString() },
+    const raw_item = resolved_promise.value;
+    position_ticks_items.push({
+      PutRequest: {
+        Item: {
+          position_id: { N: raw_item.position_id.toString() },
+          timestamp_sec: {
+            N: parseInt(new Date().getTime() / 1e3).toString(),
           },
+          chain_id: { N: TERRA_CHAIN_ID.toString() },
+          uusd_value: { N: raw_item.uusd_value.toString() },
+        },
+      },
+    });
+    // Only send batch write if either of the followings is true:
+    //   1. We've reached DynamoDB batch size limit.
+    //   2. Or, this is the last batch.
+    if (
+      position_ticks_items.length == DYNAMODB_BATCH_WRITE_ITEM_LIMIT ||
+      index == resolved_promises.length - 1
+    ) {
+      // Construct batch request.
+      const position_ticks_batch = new BatchWriteItemCommand({
+        RequestItems: {
+          [position_ticks_table]: position_ticks_items,
         },
       });
-      // Only send batch write if either of the followings is true:
-      //   1. We've reached DynamoDB batch size limit.
-      //   2. Or, this is the last batch.
-      if (
-        position_ticks_items.length == DYNAMODB_BATCH_WRITE_ITEM_LIMIT ||
-        index == resolved_promises.length - 1
-      ) {
-        // Construct batch request.
-        const position_ticks_batch = new BatchWriteItemCommand({
-          RequestItems: {
-            [position_ticks_table]: position_ticks_items,
-          },
-        });
 
-        // Send request and send metrics as needed.
-        try {
-          await client.send(position_ticks_batch);
-          metrics[TOTAL_POSITION_COVERED] += position_ticks_items.length;
-          console.log("Position ticks batch write is successful.");
-          metrics[DB_POSITION_TICKS_WRITE_SUCCESS]++;
-        } catch (error) {
-          console.log(
-            `Failed to batch write for position ticks with error: ${error}`
-          );
-          metrics[DB_POSITION_TICKS_WRITE_FAILURE]++;
-        } finally {
-          position_ticks_items = [];
-        }
+      // Send request and send metrics as needed.
+      try {
+        await client.send(position_ticks_batch);
+        metrics[TOTAL_POSITION_COVERED] += position_ticks_items.length;
+        console.log("Position ticks batch write is successful.");
+        metrics[DB_POSITION_TICKS_WRITE_SUCCESS]++;
+      } catch (error) {
+        console.log(
+          `Failed to batch write for position ticks with error: ${error}`
+        );
+        metrics[DB_POSITION_TICKS_WRITE_FAILURE]++;
+      } finally {
+        position_ticks_items = [];
       }
     }
   }
