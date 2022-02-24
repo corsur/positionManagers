@@ -183,7 +183,7 @@ Initially, Aperture will launch on Terra first without the aforementioned cross-
 - Delta-neutral position manager
   - Is a full position manager
   - Handles bookkeeping and delegate requests to specific delta-neutral contract.
-  - See Aperture's [Medium article](https://medium.com/@aperturefinance/the-delta-neutral-strategy-on-synthetic-tokens-4b3e6428486d) for an overview.
+  - See Aperture's [GitBook](https://docs.aperture.finance/docs/aperture-invest+/delta-neutral-strategy-terra) for an overview; there are pages that go into detail about position opening, etc.
 - Delta-neutral contract
   - Contains actual logic to carry out the delta-neutral strategy.
 - Stable yield manager
