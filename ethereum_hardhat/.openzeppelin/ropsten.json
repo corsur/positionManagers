@@ -405,6 +405,36 @@
       "address": "0xC040a8472bc3714a1486F41aD1454b2C37879128",
       "txHash": "0x5644a85e64190687557b3d4f96caa755a589d3cc0feadb46323427189dbe782e",
       "kind": "uups"
+    },
+    {
+      "address": "0x8d9404E00BF4C94b535e1036Ad4E2a4dcf754610",
+      "txHash": "0xe4fefddaff06727b01453f13d7ca68b217c5c770758f1f6cce5b19aebd8112b9",
+      "kind": "uups"
+    },
+    {
+      "address": "0xace7cb2e35D580342A38C5d38C0A46047af2339b",
+      "txHash": "0xbdf22c555bca3309c82ce302d54152dd295c631f51e378e0921f6297a4931cd9",
+      "kind": "uups"
+    },
+    {
+      "address": "0x91e017e78B8F35F1892cb1F268e7e0BC092054d4",
+      "txHash": "0x0771212cd906df97c170b94bac17384ec36c5868e5178cc0fb9fc0670128e078",
+      "kind": "uups"
+    },
+    {
+      "address": "0x792261d4B9ebe41E9D44d54211FfBAbBe949C9EE",
+      "txHash": "0x15265d378ef3cee98400ceb5d549ca4e54447986fdf5a5dfd524c3a479c88e5c",
+      "kind": "uups"
+    },
+    {
+      "address": "0x2061ae482f404aCCe7C08C84E8B729ce31cF04dE",
+      "txHash": "0x386f5a186731d1ae0726a9ad36055d95e9a3379492005e2d872a82138cccd545",
+      "kind": "uups"
+    },
+    {
+      "address": "0xcd2fF4310FeA9304027423B0BB4c22479A896134",
+      "txHash": "0xb122fcecc3e2c046715d3c59d5df19f7930db13d2cb697ea584bac16ede62ba8",
+      "kind": "uups"
     }
   ],
   "impls": {
@@ -1599,6 +1629,203 @@
           },
           "t_uint16": {
             "label": "uint16"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_uint256": {
+            "label": "uint256"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          }
+        }
+      }
+    },
+    "0ee81771947fe3125f95e16f5b0d9a9b8a5bdb4b9a910c3267dc077fbaeee93c": {
+      "address": "0xa713B02Ce5ad8ecCe88bFC61a213F4D7d360e72e",
+      "txHash": "0x56ca116d9c0679b7ca35111a040592f9e1359055ce1c34d268b36b10d68f1295",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "_initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:39"
+          },
+          {
+            "contract": "Initializable",
+            "label": "_initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:44"
+          },
+          {
+            "contract": "ERC1967UpgradeUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:215"
+          },
+          {
+            "contract": "UUPSUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:81"
+          },
+          {
+            "contract": "ContextUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:31"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "contract": "OwnableUpgradeable",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:82"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "WORMHOLE_WRAPPED_UST",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:70"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "CONSISTENCY_LEVEL",
+            "type": "t_uint8",
+            "src": "contracts/EthereumManager.sol:73"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "WORMHOLE_TOKEN_BRIDGE",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:74"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "CROSS_CHAIN_FEE_BPS",
+            "type": "t_uint32",
+            "src": "contracts/EthereumManager.sol:76"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "FEE_SINK",
+            "type": "t_address",
+            "src": "contracts/EthereumManager.sol:78"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "nextPositionId",
+            "type": "t_uint128",
+            "src": "contracts/EthereumManager.sol:81"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "apertureManagers",
+            "type": "t_mapping(t_uint16,t_bytes32)",
+            "src": "contracts/EthereumManager.sol:84"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "curveSwapRoutes",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)1706_storage)dyn_storage))",
+            "src": "contracts/EthereumManager.sol:87"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "completedTokenTransfers",
+            "type": "t_mapping(t_bytes32,t_bool)",
+            "src": "contracts/EthereumManager.sol:91"
+          },
+          {
+            "contract": "EthereumManager",
+            "label": "positionToOwnership",
+            "type": "t_mapping(t_uint128,t_struct(OwnershipInfo)1682_storage)",
+            "src": "contracts/EthereumManager.sol:94"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address"
+          },
+          "t_uint8": {
+            "label": "uint8"
+          },
+          "t_uint32": {
+            "label": "uint32"
+          },
+          "t_uint128": {
+            "label": "uint128"
+          },
+          "t_mapping(t_uint16,t_bytes32)": {
+            "label": "mapping(uint16 => bytes32)"
+          },
+          "t_uint16": {
+            "label": "uint16"
+          },
+          "t_bytes32": {
+            "label": "bytes32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)1706_storage)dyn_storage))": {
+            "label": "mapping(address => mapping(address => struct CurveSwapOperation[]))"
+          },
+          "t_mapping(t_address,t_array(t_struct(CurveSwapOperation)1706_storage)dyn_storage)": {
+            "label": "mapping(address => struct CurveSwapOperation[])"
+          },
+          "t_array(t_struct(CurveSwapOperation)1706_storage)dyn_storage": {
+            "label": "struct CurveSwapOperation[]"
+          },
+          "t_struct(CurveSwapOperation)1706_storage": {
+            "label": "struct CurveSwapOperation",
+            "members": [
+              {
+                "label": "pool",
+                "type": "t_address"
+              },
+              {
+                "label": "from_index",
+                "type": "t_int128"
+              },
+              {
+                "label": "to_index",
+                "type": "t_int128"
+              },
+              {
+                "label": "underlying",
+                "type": "t_bool"
+              }
+            ]
+          },
+          "t_int128": {
+            "label": "int128"
+          },
+          "t_bool": {
+            "label": "bool"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)"
+          },
+          "t_mapping(t_uint128,t_struct(OwnershipInfo)1682_storage)": {
+            "label": "mapping(uint128 => struct OwnershipInfo)"
+          },
+          "t_struct(OwnershipInfo)1682_storage": {
+            "label": "struct OwnershipInfo",
+            "members": [
+              {
+                "label": "ownerAddr",
+                "type": "t_address"
+              },
+              {
+                "label": "chainId",
+                "type": "t_uint16"
+              }
+            ]
           },
           "t_array(t_uint256)49_storage": {
             "label": "uint256[49]"

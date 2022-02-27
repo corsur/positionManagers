@@ -50,7 +50,6 @@ describe("Stable yield integration test", function () {
       STABLE_YIELD,
       CHAIN_ID_TERRA,
       [{ assetAddr: ETH_UST_CONTRACT_ADDR, amount: amount }],
-      openActionRequest.length,
       openActionRequest,
       { gasLimit: 600000 }
     );
@@ -89,7 +88,6 @@ describe("Stable yield integration test", function () {
       positionId,
       STABLE_YIELD,
       [{ assetAddr: ETH_UST_CONTRACT_ADDR, amount: additionalAmount }],
-      increaseActionRequest.length,
       increaseActionRequest,
       { gasLimit: 600000 }
     );
@@ -111,7 +109,6 @@ describe("Stable yield integration test", function () {
       positionId,
       STABLE_YIELD,
       [],
-      closeActionRequest.length,
       closeActionRequest
     );
 

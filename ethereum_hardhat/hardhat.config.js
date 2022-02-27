@@ -1,11 +1,13 @@
 require("@nomiclabs/hardhat-waffle");
 require("@openzeppelin/hardhat-upgrades");
+require("hardhat-gas-reporter");
 require("hardhat-abi-exporter");
 
 const {
   ETH_PRV_KEY_1,
   INFURA_URL_RINKERBY,
   INFURA_URL_ROPSTEN,
+  ALCHEMY_URL_MAINNET,
 } = require("./constants");
 
 // This is a sample Hardhat task. To learn how to create your own go to
@@ -25,9 +27,23 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 module.exports = {
-  solidity: "0.8.4",
+  solidity: {
+    version: "0.8.12",
+    settings: {
+      optimizer: {
+        enabled: true,
+        // See https://docs.soliditylang.org/en/v0.8.12/internals/optimizer.html#optimizer-parameter-runs.
+        runs: 2**32-1,
+      },
+    },
+  },
   networks: {
-    hardhat: {},
+    hardhat: {
+      forking: {
+        url: ALCHEMY_URL_MAINNET,
+        blockNumber: 14247160,
+      }
+    },
     ropsten: {
       url: INFURA_URL_ROPSTEN,
       accounts: [ETH_PRV_KEY_1],

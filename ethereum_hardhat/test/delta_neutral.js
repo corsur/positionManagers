@@ -53,7 +53,6 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
     DELTA_NEUTRAL,
     CHAIN_ID_TERRA,
     [{ assetAddr: ETH_UST_CONTRACT_ADDR, amount: amount }],
-    encodedActionData.length,
     encodedActionData,
     { gasLimit: 600000 }
   );
@@ -69,7 +68,7 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
     Array.from(hexToUint8Array(getEmitterAddressEth(ethereumManager.address)))
   );
 
-  // Slef-claim token transfer on Terra side. This is to stress test Terra
+  // Self-claim token transfer on Terra side. This is to stress test Terra
   // Constract will still work if the token is already claimed.
   if (shouldSelfClaimTokenTransfer) {
     console.log("Redeem tokens on Terra.");

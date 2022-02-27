@@ -2,7 +2,7 @@ const { ethers } = require("hardhat");
 const { expect } = require("chai");
 const { deployEthereumManagerHardhat } = require("../../utils/helpers");
 
-describe.only("Ethereum Manager Unit Tests", function () {
+describe("Ethereum Manager Unit Tests", function () {
   var ethereumManager = undefined;
   beforeEach("some description", async function () {
     ethereumManager = await deployEthereumManagerHardhat();

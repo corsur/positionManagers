@@ -14,7 +14,7 @@ module.exports = {
   TERRA_LCD_CHAIN_ID: "bombay-12",
   TERRA_WALLET_MNEMONIC:
     "plastic evidence song forest fence daughter nuclear road angry knife wing punch sustain suit resist vapor thrive diesel collect easily minimum thing cost phone",
-  TERRA_MANAGER_ADDR: "terra1pw5jr2qz69kmhhlf3hwyxrxq6x5y3aqj0q52jx",
+  TERRA_MANAGER_ADDR: "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n",
   ETH_MANAGER_ADDR: "0x479250E286eEC0F39e007C67491DfE15A99Ab789",
   INFURA_URL_RINKERBY:
     "https://rinkeby.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
@@ -22,6 +22,8 @@ module.exports = {
     "https://ropsten.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
   INFURA_URL_GOERLI:
     "https://goerli.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
+  ALCHEMY_URL_MAINNET:
+    "https://eth-mainnet.alchemyapi.io/v2/1ZmO4kq4GOot3A-1bq747e1nKY-2zD0r",
   BSC_TESTNET: "https://data-seed-prebsc-1-s3.binance.org:8545",
   ETH_PRV_KEY_1:
     "0x53f446e52f3cb33084b0c31baee7542392844776ff593f444a480b29ed964ff8",
