@@ -7,14 +7,14 @@ use cosmwasm_std::{
 use cw_storage_plus::{Bound, PrimaryKey, U128Key};
 
 use crate::cross_chain::{
-    initiate_outgoing_token_transfer, process_cross_chain_instruction,
+    get_parsed_vaa, initiate_outgoing_token_transfer, process_cross_chain_instruction,
     register_external_chain_manager,
 };
 use crate::state::{
-    get_strategy_id_key, CrossChainOutgoingFeeConfig, ADMIN, CROSS_CHAIN_OUTGOING_FEE_CONFIG,
-    HOLDER_POSITION_ID_PAIR_SET, NEXT_POSITION_ID, NEXT_STRATEGY_ID, POSITION_ID_TO_HOLDER,
-    POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP, WORMHOLE_CORE_BRIDGE_ADDR,
-    WORMHOLE_TOKEN_BRIDGE_ADDR,
+    get_strategy_id_key, CrossChainOutgoingFeeConfig, ADMIN, COMPLETED_INSTRUCTIONS,
+    CROSS_CHAIN_OUTGOING_FEE_CONFIG, HOLDER_POSITION_ID_PAIR_SET, NEXT_POSITION_ID,
+    NEXT_STRATEGY_ID, POSITION_ID_TO_HOLDER, POSITION_TO_STRATEGY_LOCATION_MAP,
+    STRATEGY_ID_TO_METADATA_MAP, WORMHOLE_CORE_BRIDGE_ADDR, WORMHOLE_TOKEN_BRIDGE_ADDR,
 };
 use crate::terra_chain::{add_strategy, create_position, execute_strategy, remove_strategy};
 use aperture_common::terra_manager::{
@@ -86,7 +86,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetStrategyMetadata { strategy_id } => to_binary(
             &STRATEGY_ID_TO_METADATA_MAP.load(deps.storage, get_strategy_id_key(strategy_id))?,
@@ -146,6 +146,14 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetStrategyLocationByPosition { position } => to_binary(
             &POSITION_TO_STRATEGY_LOCATION_MAP.load(deps.storage, get_position_key(&position))?,
         ),
+        QueryMsg::HasInstructionVaaBeenProcessed { instruction_vaa } => {
+            let parsed_instruction_vaa = get_parsed_vaa(deps, &env, &instruction_vaa)?;
+            to_binary(
+                &COMPLETED_INSTRUCTIONS
+                    .load(deps.storage, parsed_instruction_vaa.hash.as_slice())
+                    .unwrap_or(false),
+            )
+        }
     }
 }
 

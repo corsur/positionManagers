@@ -99,6 +99,14 @@ pub enum QueryMsg {
     GetStrategyLocationByPosition {
         position: Position,
     },
+    // Returns an error if `instruction_vaa` cannot be parsed as a Wormhole VAA.
+    // Otherwise, return whether `instruction_vaa` has already been processed by Aperture Terra Manager.
+    // Note that this query does not check the validity of `instruction_vaa`.
+    // If this query returns true, then `instruction_vaa` is valid and has been processed;
+    // if false is returned, then `instruction_vaa` could be invalid, or valid but has not yet been processed.
+    HasInstructionVaaBeenProcessed {
+        instruction_vaa: Binary,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

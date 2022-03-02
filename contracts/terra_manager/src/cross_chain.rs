@@ -571,7 +571,7 @@ fn parse_token_transfer_asset(deps: Deps, transfer_info: TransferInfo) -> StdRes
     Ok(asset)
 }
 
-fn get_parsed_vaa(deps: Deps, env: &Env, vaa: &Binary) -> StdResult<ParsedVAA> {
+pub fn get_parsed_vaa(deps: Deps, env: &Env, vaa: &Binary) -> StdResult<ParsedVAA> {
     let wormhole_core_bridge_addr = WORMHOLE_CORE_BRIDGE_ADDR.load(deps.storage)?;
     deps.querier.query_wasm_smart(
         wormhole_core_bridge_addr.to_string(),
