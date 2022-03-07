@@ -9,7 +9,8 @@ use aperture_common::common::{
 use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info, MOCK_CONTRACT_ADDR};
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, CosmosMsg, Decimal, ReplyOn, SubMsg, Uint128, Uint64, WasmMsg,
+    from_binary, to_binary, Addr, CosmosMsg, Decimal, ReplyOn, StdError, SubMsg, Uint128, Uint64,
+    WasmMsg,
 };
 
 #[test]
@@ -200,6 +201,22 @@ fn test_create_position() {
             id: 0, // The reply id.
             reply_on: ReplyOn::Never,
         }]
+    );
+
+    // Test that execute strategy with an open-position action on an existing position is disallowed.
+    assert_eq!(
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info(MOCK_CONTRACT_ADDR, &[]),
+            ExecuteMsg::ExecuteStrategy {
+                position_id: Uint128::zero(),
+                action: Action::OpenPosition { data: None },
+                assets: vec![],
+            },
+        )
+        .unwrap_err(),
+        StdError::generic_err("open-position action on an existing position is disallowed")
     );
 
     // Test execute strategy on top of existing positions.

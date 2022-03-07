@@ -37,7 +37,7 @@ fn concat(a: &[u8], b: &[u8]) -> Vec<u8> {
     result
 }
 
-// Verify behavior of encode_length() in cosmwasm-storage.  
+// Verify behavior of encode_length() in cosmwasm-storage.
 // See https://docs.rs/cosmwasm-storage/0.16.4/src/cosmwasm_storage/length_prefixed.rs.html#32.
 #[test]
 fn verify_length_prefix() {

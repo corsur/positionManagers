@@ -135,6 +135,11 @@ pub fn execute_strategy(
     if holder != info.sender {
         return Err(StdError::generic_err("unauthorized"));
     }
+    if let Action::OpenPosition { .. } = action {
+        return Err(StdError::generic_err(
+            "open-position action on an existing position is disallowed",
+        ));
+    }
     Ok(
         Response::new().add_messages(create_execute_strategy_messages(
             deps,
