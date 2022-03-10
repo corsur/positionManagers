@@ -282,7 +282,7 @@ async function run_pipeline() {
     //   2. Or, we are at the last batch.
     if (
       num_included_positions == batch_size ||
-      index == (promises_with_result.length - 1)
+      index == promises_with_result.length - 1
     ) {
       var tx = undefined;
       try {
