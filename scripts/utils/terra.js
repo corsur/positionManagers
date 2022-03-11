@@ -56,7 +56,8 @@ export const mAssetMap = {
 export const DYNAMODB_BATCH_WRITE_ITEM_LIMIT = 25;
 
 export const mainnetTerraController = new LCDClient({
-  URL: "https://lcd.terra.dev",
+  // URL: "https://lcd.terra.dev",
+  URL: "https://broken-aged-feather.terra-mainnet.quiknode.pro/6536ded4ddea43ff5b4b4318ec4cdf90f2ce4aee/",
   chainID: "columbus-5",
   gasPrices: gasPrices,
   gasAdjustment: gasAdjustment,
