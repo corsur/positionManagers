@@ -57,7 +57,7 @@ export const DYNAMODB_BATCH_WRITE_ITEM_LIMIT = 25;
 
 export const mainnetTerraController = new LCDClient({
   // URL: "https://lcd.terra.dev",
-  URL: "https://broken-aged-feather.terra-mainnet.quiknode.pro/6536ded4ddea43ff5b4b4318ec4cdf90f2ce4aee/",
+  URL: "https://columbus-5--lcd--full.datahub.figment.io/apikey/df60f3698c291c5e528c2e603931c73e/",
   chainID: "columbus-5",
   gasPrices: gasPrices,
   gasAdjustment: gasAdjustment,
@@ -65,7 +65,7 @@ export const mainnetTerraController = new LCDClient({
 
 export const mainnetTerraData = new LCDClient({
   // URL: "https://lcd.terra.dev",
-  URL: "https://thrumming-wispy-snow.terra-mainnet.quiknode.pro/767455606a361ac0fdfba9d94fbc16f307f4096b/",
+  URL: "https://columbus-5--lcd--full.datahub.figment.io/apikey/df60f3698c291c5e528c2e603931c73e/",
   chainID: "columbus-5",
   gasPrices: gasPrices,
   gasAdjustment: gasAdjustment,
