@@ -2,7 +2,10 @@ use cosmwasm_std::{Addr, Decimal, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::common::{Action, Position};
+use crate::{
+    common::{Action, ChainId, Position, PositionId},
+    delta_neutral_position::PositionInfoResponse,
+};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -81,13 +84,39 @@ pub enum ExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub struct MigrateMsg {}
 
-/// Get basic information from this position manager.
+/// Represents position ids of the range [start, end) on the chain identified by `chain_id`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct PositionRange {
+    pub chain_id: ChainId,
+    pub start: PositionId,
+    pub end: PositionId,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    GetPositionContractAddr { position: Position },
+    GetPositionContractAddr {
+        position: Position,
+    },
+    BatchGetPositionInfo {
+        positions: Vec<Position>,
+        ranges: Vec<PositionRange>,
+    },
     GetContext {},
     GetAdminConfig {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct BatchGetPositionInfoResponseItem {
+    pub position: Position,
+    pub contract: Addr,
+    pub info: PositionInfoResponse,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct BatchGetPositionInfoResponse {
+    pub items: Vec<BatchGetPositionInfoResponseItem>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

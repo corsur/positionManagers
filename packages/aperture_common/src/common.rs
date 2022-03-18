@@ -30,6 +30,10 @@ pub fn get_position_key(position: &Position) -> PositionKey {
     )
 }
 
+pub fn get_position_key_from_tuple(position: &(ChainId, u128)) -> PositionKey {
+    (U16Key::from(position.0), U128Key::from(position.1))
+}
+
 /// The pair (chain id, position id) can uniquely identify a position across
 /// all chains.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

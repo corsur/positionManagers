@@ -1,8 +1,12 @@
-use aperture_common::common::{get_position_key, Action, Position, Recipient};
+use std::collections::HashSet;
+
+use aperture_common::common::{
+    get_position_key, get_position_key_from_tuple, Action, Position, Recipient,
+};
 use aperture_common::delta_neutral_position;
 use aperture_common::delta_neutral_position_manager::{
-    AdminConfig, Context, DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg,
-    MigrateMsg, QueryMsg,
+    AdminConfig, BatchGetPositionInfoResponse, BatchGetPositionInfoResponseItem, Context,
+    DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
 use cosmwasm_std::{
     entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
@@ -274,6 +278,34 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::GetContext {} => to_binary(&CONTEXT.load(deps.storage)?),
         QueryMsg::GetAdminConfig {} => to_binary(&(ADMIN_CONFIG.load(deps.storage)?)),
+        QueryMsg::BatchGetPositionInfo { positions, ranges } => {
+            let mut position_set = HashSet::new();
+            for position in positions {
+                position_set.insert((position.chain_id, position.position_id.u128()));
+            }
+            for range in ranges {
+                for position_id in range.start.u128()..range.end.u128() {
+                    position_set.insert((range.chain_id, position_id));
+                }
+            }
+            let position_info_query_msg = &delta_neutral_position::QueryMsg::GetPositionInfo {};
+            let mut response = BatchGetPositionInfoResponse { items: vec![] };
+            for position in position_set {
+                let contract_addr = POSITION_TO_CONTRACT_ADDR
+                    .load(deps.storage, get_position_key_from_tuple(&position))?;
+                response.items.push(BatchGetPositionInfoResponseItem {
+                    position: Position {
+                        chain_id: position.0,
+                        position_id: Uint128::from(position.1),
+                    },
+                    contract: contract_addr.clone(),
+                    info: deps
+                        .querier
+                        .query_wasm_smart(contract_addr, position_info_query_msg)?,
+                });
+            }
+            Ok(Binary::default())
+        }
     }
 }
 
