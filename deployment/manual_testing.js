@@ -281,7 +281,6 @@ async function migrate_existing_position(position_manager_contract, position_id)
 await initializeSequence(test_wallet);
 const delta_neutral_manager = "terra1qycrwtsmxnnklc42yzexveyhjls657qhuwhmlw";
 const stable_yield_manager = "terra1gkg2287wgg7q8cljseke0e0204tvuxevpcqcpq";
-// await store_new_position_code(delta_neutral_manager);
 
 const terra_manager_addr = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
 // await migrate_contract(terra_manager_addr, 36018);
@@ -291,4 +290,8 @@ const terra_manager_addr = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
 // await store_new_position_code(delta_neutral_manager);
 // await migrate_existing_position(delta_neutral_manager, 1075);
 // await open_delta_neutral_position(terra_manager_addr, 101);
-await rebalance_position("terra1kzy63zu9g34f4rlnmkx6n2djsf9fpgjjka0d6v");
+// await rebalance_position("terra1kzy63zu9g34f4rlnmkx6n2djsf9fpgjjka0d6v");
+
+// const code_id = await store_code("../artifacts/delta_neutral_position_manager-aarch64.wasm");
+// console.log("position manager code id: ", code_id);
+await migrate_contract(delta_neutral_manager, 54159);

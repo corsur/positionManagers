@@ -304,7 +304,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                         .query_wasm_smart(contract_addr, position_info_query_msg)?,
                 });
             }
-            Ok(Binary::default())
+            to_binary(&response)
         }
     }
 }
