@@ -292,6 +292,7 @@ const terra_manager_addr = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
 // await open_delta_neutral_position(terra_manager_addr, 101);
 // await rebalance_position("terra1kzy63zu9g34f4rlnmkx6n2djsf9fpgjjka0d6v");
 
-// const code_id = await store_code("../artifacts/delta_neutral_position_manager-aarch64.wasm");
-// console.log("position manager code id: ", code_id);
-await migrate_contract(delta_neutral_manager, 54159);
+const dn_manager_code_id = await store_code("../artifacts/delta_neutral_position_manager-aarch64.wasm");
+console.log("position manager code id: ", dn_manager_code_id);
+await migrate_contract(delta_neutral_manager, dn_manager_code_id);
+console.log("migrated DN position manager to code id: ", dn_manager_code_id);

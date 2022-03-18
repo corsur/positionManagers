@@ -280,12 +280,16 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetAdminConfig {} => to_binary(&(ADMIN_CONFIG.load(deps.storage)?)),
         QueryMsg::BatchGetPositionInfo { positions, ranges } => {
             let mut position_set = HashSet::new();
-            for position in positions {
-                position_set.insert((position.chain_id, position.position_id.u128()));
+            if let Some(positions) = positions {
+                for position in positions {
+                    position_set.insert((position.chain_id, position.position_id.u128()));
+                }
             }
-            for range in ranges {
-                for position_id in range.start.u128()..range.end.u128() {
-                    position_set.insert((range.chain_id, position_id));
+            if let Some(ranges) = ranges {
+                for range in ranges {
+                    for position_id in range.start.u128()..range.end.u128() {
+                        position_set.insert((range.chain_id, position_id));
+                    }
                 }
             }
             let position_info_query_msg = &delta_neutral_position::QueryMsg::GetPositionInfo {};

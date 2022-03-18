@@ -100,8 +100,8 @@ pub enum QueryMsg {
         position: Position,
     },
     BatchGetPositionInfo {
-        positions: Vec<Position>,
-        ranges: Vec<PositionRange>,
+        positions: Option<Vec<Position>>,
+        ranges: Option<Vec<PositionRange>>,
     },
     GetContext {},
     GetAdminConfig {},
