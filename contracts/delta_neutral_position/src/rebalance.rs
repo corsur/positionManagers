@@ -5,10 +5,11 @@ use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{to_binary, Coin, CosmosMsg, Decimal, Deps, Env, StdResult, Uint128, WasmMsg};
 
 use crate::dex_util::{simulate_terraswap_swap, swap_cw20_token_for_uusd};
+use crate::spectrum_util::unstake_lp_from_spectrum_and_withdraw_liquidity;
 use crate::state::{CDP_IDX, MIRROR_ASSET_CW20_ADDR};
 use crate::util::{
     find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
-    get_position_state, get_uusd_asset_from_amount, unstake_lp_and_withdraw_liquidity,
+    get_position_state, get_uusd_asset_from_amount,
 };
 
 // Claim all available reward and redeem for uusd:
@@ -158,9 +159,9 @@ pub fn achieve_delta_neutral_from_state(
             if a > Uint128::zero() {
                 // We determined that we need to withdraw `a` amount of LP tokens.
                 let withdraw_lp_token_amount = a;
-                messages.extend(unstake_lp_and_withdraw_liquidity(
-                    state,
-                    context,
+                messages.extend(unstake_lp_from_spectrum_and_withdraw_liquidity(
+                    &state.terraswap_pool_info,
+                    &context.spectrum_mirror_farms_addr,
                     &mirror_asset_cw20_addr,
                     withdraw_lp_token_amount,
                 ));
@@ -259,9 +260,9 @@ pub fn achieve_delta_neutral_from_state(
                 let offer_uusd_amount = info.terraswap_pool_uusd_amount
                     * Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply)
                     + state.uusd_balance;
-                messages.extend(unstake_lp_and_withdraw_liquidity(
-                    state,
-                    context,
+                messages.extend(unstake_lp_from_spectrum_and_withdraw_liquidity(
+                    &state.terraswap_pool_info,
+                    &context.spectrum_mirror_farms_addr,
                     &mirror_asset_cw20_addr,
                     withdraw_lp_token_amount,
                 ));

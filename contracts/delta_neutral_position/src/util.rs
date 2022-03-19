@@ -17,6 +17,7 @@ use crate::{
         compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info,
         get_terraswap_mirror_asset_uusd_liquidity_info,
     },
+    spectrum_util::unstake_lp_from_spectrum_and_withdraw_liquidity,
     state::{
         CDP_IDX, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
         TARGET_COLLATERAL_RATIO_RANGE,
@@ -153,38 +154,9 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
     Ok(state)
 }
 
-pub fn unstake_lp_and_withdraw_liquidity(
-    state: &PositionState,
-    context: &Context,
-    mirror_asset_cw20_addr: &Addr,
-    withdraw_lp_token_amount: Uint128,
-) -> Vec<CosmosMsg> {
-    vec![
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.spectrum_mirror_farms_addr.to_string(),
-            funds: vec![],
-            msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::unbond {
-                asset_token: mirror_asset_cw20_addr.to_string(),
-                amount: withdraw_lp_token_amount,
-            })
-            .unwrap(),
-        }),
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: state.terraswap_pool_info.lp_token_cw20_addr.to_string(),
-            funds: vec![],
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: state.terraswap_pool_info.terraswap_pair_addr.to_string(),
-                amount: withdraw_lp_token_amount,
-                msg: to_binary(&terraswap::pair::Cw20HookMsg::WithdrawLiquidity {}).unwrap(),
-            })
-            .unwrap(),
-        }),
-    ]
-}
-
 pub fn increase_mirror_asset_balance_from_long_farm(
     state: &PositionState,
-    context: &Context,
+    spectrum_mirror_farms_addr: &Addr,
     mirror_asset_cw20_addr: &Addr,
     target_mirror_asset_balance: Uint128,
 ) -> Vec<CosmosMsg> {
@@ -198,10 +170,19 @@ pub fn increase_mirror_asset_balance_from_long_farm(
         .multiply_ratio(withdraw_mirror_asset_amount, state.mirror_asset_long_farm);
 
     // Due to rounding, `withdraw_lp_token_amount` may not redeem for `withdraw_mirror_asset_amount` amount of mAsset, so we adjust it up if necessary.
-    while state
-        .terraswap_pool_info
-        .terraswap_pool_mirror_asset_amount
-        .multiply_ratio(
+    // Terraswap's withdraw_liquidity implementation: https://github.com/terraswap/terraswap/blob/f4d8a845bc4346db23cb559ce577bc59b41b23cb/contracts/terraswap_pair/src/contract.rs#L312.
+    // First, it calculates `share_ratio` as Decimal::from_ratio(redeemed_lp_token_amount, lp_token_total_supply).
+    // Then, each of the two tokens in the pair is released in the amount of pool_asset_amount * share_ratio.
+    // For example, mAsset released amount is pool_mAsset_amount * share_ratio.
+    // Given cosmwasm's implementation of Uint128 and Decimal, this is mathematically equivalent to
+    // floor(pool_mAsset_amount * floor(redeemed_lp_token_amount * 1e18 / lp_token_total_supply) / 1e18).
+    //
+    // Note that the expression `pool_mAsset_amount.multiply_ratio(redeemed_lp_token_amount, lp_token_total_supply)` is equivalent to
+    // floor(pool_mAsset_amount * redeemed_lp_token_amount / lp_token_total_supply). Thus, this is not equivalent to the Terraswap implementation described above.
+    //
+    // Hence, we have to do `pool_mAsset_amount * Decimal::from_ratio(redeemed_lp_token_amount, lp_token_total_supply)` in order to match Terraswap implementation.
+    while state.terraswap_pool_info.terraswap_pool_mirror_asset_amount
+        * Decimal::from_ratio(
             withdraw_lp_token_amount,
             state.terraswap_pool_info.lp_token_total_supply,
         )
@@ -210,11 +191,88 @@ pub fn increase_mirror_asset_balance_from_long_farm(
         withdraw_lp_token_amount += Uint128::from(1u128);
     }
 
-    unstake_lp_and_withdraw_liquidity(
-        state,
-        context,
+    unstake_lp_from_spectrum_and_withdraw_liquidity(
+        &state.terraswap_pool_info,
+        spectrum_mirror_farms_addr,
         mirror_asset_cw20_addr,
         withdraw_lp_token_amount,
+    )
+}
+
+#[test]
+fn test_increase_mirror_asset_balance_from_long_farm() {
+    let state = PositionState {
+        uusd_balance: Uint128::zero(),
+        uusd_long_farm: Uint128::from(151396812u128),
+        mirror_asset_short_amount: Uint128::from(10219520u128),
+        mirror_asset_balance: Uint128::from(640760u128),
+        mirror_asset_long_farm: Uint128::from(8924723u128),
+        mirror_asset_long_amount: Uint128::from(640760u128 + 8924723u128),
+        collateral_anchor_ust_amount: Uint128::from(294335732u128),
+        collateral_uusd_value: Uint128::from(353202878u128),
+        mirror_asset_oracle_price: Decimal::from_ratio(155149u128, 10000u128),
+        anchor_ust_oracle_price: Decimal::from_ratio(12u128, 10u128),
+        terraswap_pool_info: TerraswapPoolInfo {
+            lp_token_amount: Uint128::from(35195917u128),
+            lp_token_cw20_addr: String::from("lp_token_cw20"),
+            lp_token_total_supply: Uint128::from(215043294146u128),
+            terraswap_pair_addr: String::from("terraswap_pair"),
+            terraswap_pool_mirror_asset_amount: Uint128::from(54529109845u128),
+            terraswap_pool_uusd_amount: Uint128::from(924941217839u128),
+        },
+    };
+    let target_mirror_asset_balance = Uint128::from(1684481u128);
+
+    let withdraw_mirror_asset_amount = target_mirror_asset_balance - state.mirror_asset_balance;
+    let estimated_withdraw_lp_token_amount = state
+        .terraswap_pool_info
+        .lp_token_amount
+        .multiply_ratio(withdraw_mirror_asset_amount, state.mirror_asset_long_farm);
+    // Assert that due to rounding, the withdrawn mAsset amount plus the original balance is not enough to hit the target amount.
+    assert_eq!(
+        state.mirror_asset_balance
+            + state.terraswap_pool_info.terraswap_pool_mirror_asset_amount
+                * Decimal::from_ratio(
+                    estimated_withdraw_lp_token_amount,
+                    state.terraswap_pool_info.lp_token_total_supply,
+                ),
+        Uint128::from(1684480u128)
+    );
+    assert_eq!(
+        estimated_withdraw_lp_token_amount,
+        Uint128::from(4116062u128)
+    );
+
+    // increase_mirror_asset_balance_from_long_farm() is expected to account for the rounding error, and withdraw one more LP token than the estimate.
+    let expected_withdraw_lp_token_amount = Uint128::from(4116063u128);
+    assert_eq!(
+        increase_mirror_asset_balance_from_long_farm(
+            &state,
+            &Addr::unchecked("spectrum_mirror_farms"),
+            &Addr::unchecked("mirror_asset_cw20"),
+            target_mirror_asset_balance
+        ),
+        vec![
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("spectrum_mirror_farms"),
+                funds: vec![],
+                msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::unbond {
+                    asset_token: String::from("mirror_asset_cw20"),
+                    amount: expected_withdraw_lp_token_amount,
+                })
+                .unwrap(),
+            }),
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("lp_token_cw20"),
+                funds: vec![],
+                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                    contract: String::from("terraswap_pair"),
+                    amount: expected_withdraw_lp_token_amount,
+                    msg: to_binary(&terraswap::pair::Cw20HookMsg::WithdrawLiquidity {}).unwrap(),
+                })
+                .unwrap(),
+            })
+        ]
     )
 }
 

@@ -195,7 +195,7 @@ pub fn achieve_safe_collateral_ratios(
             state.mirror_asset_short_amount - target_short_mirror_asset_amount;
         response = response.add_messages(increase_mirror_asset_balance_from_long_farm(
             &state,
-            &context,
+            &context.spectrum_mirror_farms_addr,
             &MIRROR_ASSET_CW20_ADDR.load(deps.storage)?,
             burn_mirror_asset_amount,
         ));
@@ -408,7 +408,7 @@ pub fn withdraw_funds_in_uusd(
     response = response
         .add_messages(increase_mirror_asset_balance_from_long_farm(
             &state,
-            &context,
+            &context.spectrum_mirror_farms_addr,
             &mirror_asset_cw20_addr,
             mirror_asset_burn_amount,
         ))
