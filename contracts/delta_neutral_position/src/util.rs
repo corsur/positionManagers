@@ -203,7 +203,7 @@ pub fn increase_mirror_asset_balance_from_long_farm(
         .terraswap_pool_mirror_asset_amount
         .multiply_ratio(
             withdraw_lp_token_amount,
-            state.terraswap_pool_info.lp_token_amount,
+            state.terraswap_pool_info.lp_token_total_supply,
         )
         < withdraw_mirror_asset_amount
     {
