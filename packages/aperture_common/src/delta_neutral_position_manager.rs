@@ -111,6 +111,8 @@ pub enum QueryMsg {
 pub struct BatchGetPositionInfoResponseItem {
     pub position: Position,
     pub contract: Addr,
+    // If `position.chain_id` is TERRA_CHAIN, then this will be populated with `Some(position holder address)`; otherwise, None.
+    pub holder: Option<String>,
     pub info: PositionInfoResponse,
 }
 

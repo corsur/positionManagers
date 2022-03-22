@@ -3,11 +3,12 @@ use std::collections::HashSet;
 use aperture_common::common::{
     get_position_key, get_position_key_from_tuple, Action, Position, Recipient,
 };
-use aperture_common::delta_neutral_position;
 use aperture_common::delta_neutral_position_manager::{
     AdminConfig, BatchGetPositionInfoResponse, BatchGetPositionInfoResponseItem, Context,
     DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
+use aperture_common::terra_manager::TERRA_CHAIN_ID;
+use aperture_common::{delta_neutral_position, terra_manager};
 use cosmwasm_std::{
     entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
     Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
@@ -292,17 +293,31 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                     }
                 }
             }
+            let aperture_terra_manager = ADMIN_CONFIG.load(deps.storage)?.terra_manager;
             let position_info_query_msg = &delta_neutral_position::QueryMsg::GetPositionInfo {};
             let mut response = BatchGetPositionInfoResponse { items: vec![] };
             for position in position_set {
                 let contract_addr = POSITION_TO_CONTRACT_ADDR
                     .load(deps.storage, get_position_key_from_tuple(&position))?;
+                let holder = if position.0 == TERRA_CHAIN_ID {
+                    let terra_position_info: terra_manager::PositionInfoResponse =
+                        deps.querier.query_wasm_smart(
+                            aperture_terra_manager.to_string(),
+                            &terra_manager::QueryMsg::GetTerraPositionInfo {
+                                position_id: Uint128::from(position.1),
+                            },
+                        )?;
+                    Some(terra_position_info.holder)
+                } else {
+                    None
+                };
                 response.items.push(BatchGetPositionInfoResponseItem {
                     position: Position {
                         chain_id: position.0,
                         position_id: Uint128::from(position.1),
                     },
                     contract: contract_addr.clone(),
+                    holder,
                     info: deps
                         .querier
                         .query_wasm_smart(contract_addr, position_info_query_msg)?,
