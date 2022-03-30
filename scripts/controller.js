@@ -289,7 +289,7 @@ async function run_pipeline() {
         tx = await wallet.createAndSignTx({
           msgs: msgs_acc,
           memo: memos.join(";"),
-          sequence: getAndIncrementSequence(),
+          sequence: await wallet.sequence(),
         });
       } catch (error) {
         console.log(
@@ -299,7 +299,11 @@ async function run_pipeline() {
         );
         metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
         console.log("\n");
-        return;
+        num_included_positions = 0;
+        memos = [];
+        msgs_acc = [];
+        position_ids = [];
+        continue;
       }
 
       console.log(
