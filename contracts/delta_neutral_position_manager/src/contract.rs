@@ -5,7 +5,8 @@ use aperture_common::common::{
 };
 use aperture_common::delta_neutral_position_manager::{
     AdminConfig, BatchGetPositionInfoResponse, BatchGetPositionInfoResponseItem, Context,
-    DeltaNeutralParams, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
+    DeltaNeutralParams, ExecuteMsg, FeeCollectionConfig, InstantiateMsg, InternalExecuteMsg,
+    MigrateMsg, QueryMsg,
 };
 use aperture_common::terra_manager::TERRA_CHAIN_ID;
 use aperture_common::{delta_neutral_position, terra_manager};
@@ -102,6 +103,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             terra_manager_addr,
             delta_neutral_position_code_id,
         ),
+        ExecuteMsg::UpdateFeeCollectionConfig {
+            fee_collection_config,
+        } => update_fee_collection_config(deps, info, fee_collection_config),
         ExecuteMsg::Internal(internal_msg) => {
             if info.sender != env.contract.address {
                 return Err(StdError::generic_err("unauthorized"));
@@ -143,6 +147,19 @@ fn update_admin_config(
         config.delta_neutral_position_code_id = delta_neutral_position_code_id;
     }
     ADMIN_CONFIG.save(deps.storage, &config)?;
+    Ok(Response::default())
+}
+
+fn update_fee_collection_config(
+    deps: DepsMut,
+    info: MessageInfo,
+    fee_collection_config: FeeCollectionConfig,
+) -> StdResult<Response> {
+    let config = ADMIN_CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+    FEE_COLLECTION_CONFIG.save(deps.storage, &fee_collection_config)?;
     Ok(Response::default())
 }
 
@@ -433,7 +450,7 @@ fn test_contract() {
         FEE_COLLECTION_CONFIG.load(&deps.storage).unwrap(),
         FeeCollectionConfig {
             performance_rate: Decimal::from_ratio(1u128, 10u128),
-            collector_addr: String::from("collector")
+            collector_addr: String::from("collector"),
         }
     );
 

@@ -23,7 +23,9 @@ pub enum InternalExecuteMsg {
         recipient: Recipient,
     },
     PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
-    DeltaNeutralReinvest {},
+    DeltaNeutralReinvest {
+        mirror_asset_fresh_oracle_uusd_rate: Decimal,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

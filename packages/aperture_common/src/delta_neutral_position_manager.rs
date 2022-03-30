@@ -76,6 +76,10 @@ pub enum ExecuteMsg {
         terra_manager_addr: Option<String>,
         delta_neutral_position_code_id: Option<u64>,
     },
+    // Can only be called by admin.
+    UpdateFeeCollectionConfig {
+        fee_collection_config: FeeCollectionConfig,
+    },
     // Can only be called by this contract itself.
     Internal(InternalExecuteMsg),
 }

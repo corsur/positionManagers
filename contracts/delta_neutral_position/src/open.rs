@@ -14,7 +14,8 @@ use crate::{
         simulate_terraswap_swap,
     },
     math::{decimal_division, reverse_decimal},
-    util::{get_mirror_asset_oracle_uusd_price, get_uusd_asset_from_amount},
+    mirror_util::{get_mirror_asset_config_response, is_mirror_asset_delisted},
+    util::{get_uusd_asset_from_amount, get_uusd_coin_from_amount},
 };
 
 // Open a (or increase an existing) delta-neutral position with the following parameters:
@@ -37,6 +38,7 @@ pub fn delta_neutral_invest(
     uusd_amount: Uint128,
     target_collateral_ratio_range: &TargetCollateralRatioRange,
     mirror_asset_cw20_addr: &Addr,
+    mirror_asset_oracle_uusd_rate: Decimal,
     cdp_idx: Option<Uint128>,
 ) -> StdResult<Response> {
     let (pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
@@ -46,26 +48,12 @@ pub fn delta_neutral_invest(
             mirror_asset_cw20_addr,
         )?;
 
-    // Obtain mAsset information.
-    let mirror_asset_config_response: mirror_protocol::mint::AssetConfigResponse =
-        deps.querier.query_wasm_smart(
-            context.mirror_mint_addr.clone(),
-            &mirror_protocol::mint::QueryMsg::AssetConfig {
-                asset_token: mirror_asset_cw20_addr.to_string(),
-            },
-        )?;
-
     // Abort if mAsset is delisted.
-    if mirror_asset_config_response.end_price.is_some() {
+    let mirror_asset_config_response =
+        get_mirror_asset_config_response(&deps.querier, &context, mirror_asset_cw20_addr.as_str())?;
+    if is_mirror_asset_delisted(&mirror_asset_config_response) {
         return Err(StdError::generic_err("mAsset is delisted"));
     }
-
-    // Obtain mAsset oracle price.
-    let mirror_asset_oracle_price = get_mirror_asset_oracle_uusd_price(
-        &deps.querier,
-        &context,
-        mirror_asset_cw20_addr.as_str(),
-    )?;
 
     // Check that target_min_collateral_ratio meets the safety margin requirement, i.e. exceeds the minimum threshold by at least the configured safety margin.
     if target_collateral_ratio_range.min
@@ -105,7 +93,7 @@ pub fn delta_neutral_invest(
         // Second, we open a short position via Mirror Mint.
         // With `collateral_anchor_ust_amount` amount of aUST collateral and `collateral_ratio`, Mirror will mint `mirror_asset_mint_amount` amount of mAsset.
         let mirror_asset_mint_amount = collateral_anchor_ust_amount
-            * decimal_division(anchor_ust_exchange_rate, mirror_asset_oracle_price)
+            * decimal_division(anchor_ust_exchange_rate, mirror_asset_oracle_uusd_rate)
             * reverse_decimal(collateral_ratio);
 
         // Third, Mirror will swap `mirror_asset_mint_amount` amount of mAsset for uusd via Terraswap.
@@ -142,7 +130,7 @@ pub fn delta_neutral_invest(
         Uint256::from(uusd_collateral_amount) / anchor_market_epoch_state.exchange_rate,
     );
     let mirror_asset_mint_amount = collateral_anchor_ust_amount
-        * decimal_division(anchor_ust_exchange_rate, mirror_asset_oracle_price)
+        * decimal_division(anchor_ust_exchange_rate, mirror_asset_oracle_uusd_rate)
         * reverse_decimal(collateral_ratio);
     let (pool_mirror_asset_balance_after_short_swap, pool_uusd_balance_after_short_swap, _) =
         simulate_terraswap_swap(
@@ -181,10 +169,7 @@ pub fn delta_neutral_invest(
                 max_spread: None,
                 to: None,
             })?,
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount: uusd_long_swap_amount,
-            }],
+            funds: vec![get_uusd_coin_from_amount(uusd_long_swap_amount)],
         }))
         .add_attributes(vec![
             ("collateral_anchor_ust_amount", collateral_anchor_ust_amount),
@@ -309,6 +294,7 @@ fn test_delta_neutral_invest() {
         Uint128::from(600u128),
         target_collateral_ratio_range,
         &cw20_token_addr,
+        Decimal::from_ratio(10u128, 1u128),
         None,
     )
     .unwrap();
@@ -318,10 +304,7 @@ fn test_delta_neutral_invest() {
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: String::from("anchor_market"),
             msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {}).unwrap(),
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount: Uint128::from(420u128),
-            }],
+            funds: vec![get_uusd_coin_from_amount(Uint128::from(420u128))],
         })
     );
     assert_eq!(
@@ -363,10 +346,7 @@ fn test_delta_neutral_invest() {
                 to: None,
             })
             .unwrap(),
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount: Uint128::from(180u128),
-            }],
+            funds: vec![get_uusd_coin_from_amount(Uint128::from(180u128))],
         })
     );
 }

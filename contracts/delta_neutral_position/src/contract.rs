@@ -4,13 +4,14 @@ use aperture_common::common::Recipient;
 use aperture_common::delta_neutral_position_manager::{self, Context, FeeCollectionConfig};
 use aperture_common::terra_manager;
 use cosmwasm_std::{
-    entry_point, to_binary, BankMsg, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
-    MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
+    entry_point, to_binary, BankMsg, Binary, CosmosMsg, Decimal, Deps, DepsMut, Env, MessageInfo,
+    Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::Item;
 use terraswap::asset::{Asset, AssetInfo};
 
 use crate::math::{decimal_division, decimal_multiplication, reverse_decimal};
+use crate::mirror_util::get_mirror_asset_fresh_oracle_uusd_rate;
 use crate::open::delta_neutral_invest;
 use crate::rebalance::achieve_delta_neutral;
 use crate::spectrum_util::check_spectrum_mirror_farm_existence;
@@ -20,7 +21,7 @@ use crate::state::{
 };
 use crate::util::{
     get_cdp_uusd_lock_info_result, get_position_state, get_uusd_asset_from_amount,
-    get_uusd_balance, increase_mirror_asset_balance_from_long_farm,
+    get_uusd_balance, get_uusd_coin_from_amount, increase_mirror_asset_balance_from_long_farm,
     increase_uusd_balance_from_aust_collateral, query_position_info,
 };
 use aperture_common::delta_neutral_position::{
@@ -102,9 +103,11 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                     context,
                 )
             }
-            InternalExecuteMsg::DeltaNeutralReinvest {} => {
-                let cdp_idx = CDP_IDX.load(deps.storage)?;
+            InternalExecuteMsg::DeltaNeutralReinvest {
+                mirror_asset_fresh_oracle_uusd_rate,
+            } => {
                 let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
+                let cdp_idx = CDP_IDX.load(deps.storage)?;
                 let target_collateral_ratio_range =
                     TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
                 let uusd_amount = get_uusd_balance(&deps.querier, &env)?;
@@ -116,6 +119,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                         uusd_amount,
                         &target_collateral_ratio_range,
                         &mirror_asset_cw20_addr,
+                        mirror_asset_fresh_oracle_uusd_rate,
                         Some(cdp_idx),
                     )
                 } else {
@@ -134,7 +138,12 @@ pub fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Co
     })
 }
 
-pub fn get_reinvest_internal_messages(deps: Deps, env: &Env, context: &Context) -> Vec<CosmosMsg> {
+pub fn get_reinvest_internal_messages(
+    deps: Deps,
+    env: &Env,
+    context: &Context,
+    fresh_oracle_uusd_rate: Decimal,
+) -> Vec<CosmosMsg> {
     // If there is still short proceeds pending unlock, we don't reinvest as this could reset the locking period.
     if let Ok(lock_info_response) = get_cdp_uusd_lock_info_result(deps, context) {
         if !lock_info_response.locked_amount.is_zero()
@@ -148,18 +157,36 @@ pub fn get_reinvest_internal_messages(deps: Deps, env: &Env, context: &Context) 
             env,
             InternalExecuteMsg::PairUusdWithMirrorAssetToProvideLiquidityAndStake {},
         ),
-        create_internal_execute_message(env, InternalExecuteMsg::DeltaNeutralReinvest {}),
+        create_internal_execute_message(
+            env,
+            InternalExecuteMsg::DeltaNeutralReinvest {
+                mirror_asset_fresh_oracle_uusd_rate: fresh_oracle_uusd_rate,
+            },
+        ),
     ]
 }
 
 pub fn rebalance_and_reinvest(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
-    Ok(Response::new()
-        .add_messages(achieve_delta_neutral(deps, &env, &context)?)
-        .add_message(create_internal_execute_message(
-            &env,
-            InternalExecuteMsg::AchieveSafeCollateralRatio {},
-        ))
-        .add_messages(get_reinvest_internal_messages(deps, &env, &context)))
+    let response = Response::new().add_messages(achieve_delta_neutral(deps, &env, &context)?);
+
+    // Since AchieveSafeCollateralRatio and Reinvest require fresh oracle price in order to modify the CDP, we skip these steps if the current oracle price is not fresh.
+    let fresh_oracle_uusd_rate = get_mirror_asset_fresh_oracle_uusd_rate(
+        &deps.querier,
+        &context,
+        MIRROR_ASSET_CW20_ADDR.load(deps.storage)?.as_str(),
+        &env.block,
+    );
+    if let Some(rate) = fresh_oracle_uusd_rate {
+        Ok(response
+            .add_message(create_internal_execute_message(
+                &env,
+                InternalExecuteMsg::AchieveSafeCollateralRatio {},
+            ))
+            .add_messages(get_reinvest_internal_messages(deps, &env, &context, rate)))
+    } else {
+        // Log an attribute in the "wasm" event for skipping DN rebalance due to non-fresh oracle price.
+        Ok(response.add_attribute("dnr_skip", "old_price"))
+    }
 }
 
 pub fn rebalance_and_collect_fees(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
@@ -238,7 +265,7 @@ pub fn open_position(
     target_max_collateral_ratio: Decimal,
     mirror_asset_cw20_addr: String,
 ) -> StdResult<Response> {
-    if CDP_IDX.load(deps.storage).is_ok() {
+    if POSITION_OPEN_INFO.load(deps.storage).is_ok() {
         return Err(StdError::generic_err("position is already open"));
     }
 
@@ -262,27 +289,41 @@ pub fn open_position(
     let mirror_asset_cw20_addr = deps.api.addr_validate(&mirror_asset_cw20_addr)?;
     MIRROR_ASSET_CW20_ADDR.save(deps.storage, &mirror_asset_cw20_addr)?;
 
-    let cdp_idx_response: mirror_protocol::mint::NextPositionIdxResponse =
-        deps.querier.query_wasm_smart(
-            context.mirror_mint_addr.clone(),
-            &mirror_protocol::mint::QueryMsg::NextPositionIdx {},
-        )?;
-    CDP_IDX.save(deps.storage, &cdp_idx_response.next_position_idx)?;
-
     let target_collateral_ratio_range = TargetCollateralRatioRange {
         min: target_min_collateral_ratio,
         max: target_max_collateral_ratio,
     };
     TARGET_COLLATERAL_RATIO_RANGE.save(deps.storage, &target_collateral_ratio_range)?;
-    delta_neutral_invest(
-        deps,
-        env,
-        context,
-        uusd_balance,
-        &target_collateral_ratio_range,
-        &mirror_asset_cw20_addr,
-        None,
-    )
+
+    let fresh_oracle_uusd_rate = get_mirror_asset_fresh_oracle_uusd_rate(
+        &deps.querier,
+        &context,
+        mirror_asset_cw20_addr.as_str(),
+        &env.block,
+    );
+    if let Some(rate) = fresh_oracle_uusd_rate {
+        let cdp_idx_response: mirror_protocol::mint::NextPositionIdxResponse =
+            deps.querier.query_wasm_smart(
+                context.mirror_mint_addr.clone(),
+                &mirror_protocol::mint::QueryMsg::NextPositionIdx {},
+            )?;
+        CDP_IDX.save(deps.storage, &cdp_idx_response.next_position_idx)?;
+
+        delta_neutral_invest(
+            deps,
+            env,
+            context,
+            uusd_balance,
+            &target_collateral_ratio_range,
+            &mirror_asset_cw20_addr,
+            rate,
+            None,
+        )
+    } else {
+        Err(StdError::generic_err(
+            "oracle price too old; off-market hour position opening not yet supported",
+        ))
+    }
 }
 
 pub fn close_position(
@@ -338,10 +379,7 @@ pub fn send_uusd_to_recipient(
                 assets: vec![get_uusd_asset_from_amount(amount)],
                 recipient,
             })?,
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount,
-            }],
+            funds: vec![get_uusd_coin_from_amount(amount)],
         })),
     )
 }
@@ -434,10 +472,7 @@ pub fn withdraw_funds_in_uusd(
     if !fee_amount.is_zero() {
         response = response.add_message(CosmosMsg::Bank(BankMsg::Send {
             to_address: fee_collection_config.collector_addr,
-            amount: vec![Coin {
-                denom: String::from("uusd"),
-                amount: fee_amount,
-            }],
+            amount: vec![get_uusd_coin_from_amount(fee_amount)],
         }));
         LAST_FEE_COLLECTION_POSITION_UUSD_VALUE
             .save(deps.storage, &(position_value - fee_amount))?;
@@ -516,10 +551,7 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
             slippage_tolerance: None,
             receiver: None,
         })?,
-        funds: vec![Coin {
-            denom: String::from("uusd"),
-            amount: uusd_provide_amount,
-        }],
+        funds: vec![get_uusd_coin_from_amount(uusd_provide_amount)],
     }));
 
     // Stake Terraswap LP tokens at Spectrum Mirror Vault.

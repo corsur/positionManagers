@@ -7,7 +7,8 @@ use aperture_common::{
     delta_neutral_position_manager::Context,
 };
 use cosmwasm_std::{
-    to_binary, Addr, CosmosMsg, Decimal, Deps, Env, QuerierWrapper, StdResult, Uint128, WasmMsg,
+    to_binary, Addr, Coin, CosmosMsg, Decimal, Deps, Env, QuerierWrapper, StdResult, Uint128,
+    WasmMsg,
 };
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo};
@@ -17,6 +18,7 @@ use crate::{
         compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info,
         get_terraswap_mirror_asset_uusd_liquidity_info,
     },
+    mirror_util::get_mirror_asset_oracle_uusd_price_response,
     spectrum_util::unstake_lp_from_spectrum_and_withdraw_liquidity,
     state::{
         CDP_IDX, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
@@ -33,24 +35,15 @@ pub fn get_uusd_asset_from_amount(amount: Uint128) -> Asset {
     }
 }
 
-pub fn get_uusd_balance(querier: &QuerierWrapper, env: &Env) -> StdResult<Uint128> {
-    terraswap::querier::query_balance(querier, env.contract.address.clone(), "uusd".to_string())
+pub fn get_uusd_coin_from_amount(amount: Uint128) -> Coin {
+    Coin {
+        denom: "uusd".into(),
+        amount,
+    }
 }
 
-pub fn get_mirror_asset_oracle_uusd_price(
-    querier: &QuerierWrapper,
-    context: &Context,
-    mirror_asset_cw20_addr: &str,
-) -> StdResult<Decimal> {
-    let mirror_asset_price_response: mirror_protocol::oracle::PriceResponse = querier
-        .query_wasm_smart(
-            context.mirror_oracle_addr.clone(),
-            &mirror_protocol::oracle::QueryMsg::Price {
-                base_asset: mirror_asset_cw20_addr.to_string(),
-                quote_asset: "uusd".to_string(),
-            },
-        )?;
-    Ok(mirror_asset_price_response.rate)
+pub fn get_uusd_balance(querier: &QuerierWrapper, env: &Env) -> StdResult<Uint128> {
+    terraswap::querier::query_balance(querier, env.contract.address.clone(), "uusd".to_string())
 }
 
 pub fn get_cdp_uusd_lock_info_result(
@@ -136,11 +129,12 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         mirror_asset_long_amount: mirror_asset_balance.checked_add(mirror_asset_long_farm)?,
         collateral_anchor_ust_amount: position_response.collateral.amount,
         collateral_uusd_value: position_response.collateral.amount * collateral_price_response.rate,
-        mirror_asset_oracle_price: get_mirror_asset_oracle_uusd_price(
+        mirror_asset_oracle_price: get_mirror_asset_oracle_uusd_price_response(
             &deps.querier,
             context,
             mirror_asset_cw20_addr.as_str(),
-        )?,
+        )?
+        .rate,
         anchor_ust_oracle_price: collateral_price_response.rate,
         terraswap_pool_info: TerraswapPoolInfo {
             lp_token_amount,
