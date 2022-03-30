@@ -464,12 +464,13 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
 ) -> StdResult<Response> {
     let state = get_position_state(deps, &env, &context)?;
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
-    let mut response = Response::new();
+
+    // Stop if either UST or mAsset balance is zero, or if the Spectrum mAsset-UST vault doesn't exist.
     if state.mirror_asset_balance.is_zero()
         || state.uusd_balance.is_zero()
         || !check_spectrum_mirror_farm_existence(deps, &context, &mirror_asset_cw20_addr)
     {
-        return Ok(response);
+        return Ok(Response::default());
     }
 
     // Find amount of uusd and mAsset to pair together and provide liquidity.
@@ -483,8 +484,13 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
     let uusd_provide_amount = info.terraswap_pool_uusd_amount * ratio;
     let mirror_asset_provide_amount = info.terraswap_pool_mirror_asset_amount * ratio;
 
+    // Stop if either the calculated UST or mAsset provide amount is zero due to rounding.
+    if uusd_provide_amount.is_zero() || mirror_asset_provide_amount.is_zero() {
+        return Ok(Response::default());
+    }
+
     // Allow Terraswap mAsset-UST pair contract to transfer mAsset tokens from us.
-    response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+    let mut response = Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
         contract_addr: mirror_asset_cw20_addr.to_string(),
         msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
             spender: info.terraswap_pair_addr.clone(),
