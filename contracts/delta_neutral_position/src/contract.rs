@@ -10,6 +10,7 @@ use cosmwasm_std::{
 use cw_storage_plus::Item;
 use terraswap::asset::{Asset, AssetInfo};
 
+use crate::dex_util::compute_terraswap_liquidity_token_mint_amount;
 use crate::math::{decimal_division, decimal_multiplication, reverse_decimal};
 use crate::mirror_util::get_mirror_asset_fresh_oracle_uusd_rate;
 use crate::open::delta_neutral_invest;
@@ -524,60 +525,66 @@ pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(
         return Ok(Response::default());
     }
 
-    // Allow Terraswap mAsset-UST pair contract to transfer mAsset tokens from us.
-    let mut response = Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: mirror_asset_cw20_addr.to_string(),
-        msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
-            spender: info.terraswap_pair_addr.clone(),
-            amount: mirror_asset_provide_amount,
-            expires: None,
-        })?,
-        funds: vec![],
-    }));
-
-    // Provide liquidity to Terraswap mAsset-UST pool.
-    response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: info.terraswap_pair_addr.clone(),
-        msg: to_binary(&terraswap::pair::ExecuteMsg::ProvideLiquidity {
-            assets: [
-                Asset {
-                    info: AssetInfo::Token {
-                        contract_addr: mirror_asset_cw20_addr.to_string(),
-                    },
-                    amount: mirror_asset_provide_amount,
-                },
-                get_uusd_asset_from_amount(uusd_provide_amount),
-            ],
-            slippage_tolerance: None,
-            receiver: None,
-        })?,
-        funds: vec![get_uusd_coin_from_amount(uusd_provide_amount)],
-    }));
-
-    // Stake Terraswap LP tokens at Spectrum Mirror Vault.
-    let return_lp_token_amount = std::cmp::min(
-        uusd_provide_amount.multiply_ratio(
-            state.terraswap_pool_info.lp_token_total_supply,
-            info.terraswap_pool_uusd_amount,
-        ),
-        mirror_asset_provide_amount.multiply_ratio(
-            state.terraswap_pool_info.lp_token_total_supply,
-            info.terraswap_pool_mirror_asset_amount,
-        ),
+    // Find amount of Terraswap mAsset-UST LP tokens that will be minted and returned to us for providing liquidity.
+    let return_lp_token_amount = compute_terraswap_liquidity_token_mint_amount(
+        uusd_provide_amount,
+        mirror_asset_provide_amount,
+        info.terraswap_pool_uusd_amount,
+        info.terraswap_pool_mirror_asset_amount,
+        info.lp_token_total_supply,
     );
-    Ok(response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: info.lp_token_cw20_addr.clone(),
-        msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-            contract: context.spectrum_mirror_farms_addr.to_string(),
-            amount: return_lp_token_amount,
-            msg: to_binary(&spectrum_protocol::mirror_farm::Cw20HookMsg::bond {
-                asset_token: mirror_asset_cw20_addr.to_string(),
-                compound_rate: Some(Decimal::one()),
-                staker_addr: None,
+    if return_lp_token_amount.is_zero() {
+        // Stop if `return_lp_token_amount` is zero; otherwise terraswap::pair::ExecuteMsg::ProvideLiquidity would fail with InvalidZeroAmount error.
+        return Ok(Response::default());
+    }
+
+    Ok(Response::new().add_messages(vec![
+        // Allow Terraswap mAsset-UST pair contract to transfer mAsset tokens from us.
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: mirror_asset_cw20_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
+                spender: info.terraswap_pair_addr.clone(),
+                amount: mirror_asset_provide_amount,
+                expires: None,
             })?,
-        })?,
-        funds: vec![],
-    })))
+            funds: vec![],
+        }),
+        // Provide liquidity to Terraswap mAsset-UST pool.
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: info.terraswap_pair_addr.clone(),
+            msg: to_binary(&terraswap::pair::ExecuteMsg::ProvideLiquidity {
+                assets: [
+                    Asset {
+                        info: AssetInfo::Token {
+                            contract_addr: mirror_asset_cw20_addr.to_string(),
+                        },
+                        amount: mirror_asset_provide_amount,
+                    },
+                    get_uusd_asset_from_amount(uusd_provide_amount),
+                ],
+                slippage_tolerance: None,
+                receiver: None,
+            })?,
+            funds: vec![get_uusd_coin_from_amount(uusd_provide_amount)],
+        }),
+        // Stake Terraswap LP tokens at Spectrum Mirror Vault.
+        // Note that Spectrum contract will round the deposit fee down; at 0.1% fee rate, an LP deposit amount of <= 999 will result in no fees being deducted as the fee amount rounds down to zero.
+        // Thus, as long as `return_lp_token_amount` is positive, the after-fee amount is never zero.
+        // Reference: https://github.com/spectrumprotocol/contracts/blob/ddf4a90794ccba45d1781b96b49787eed3d43ff4/contracts/farms/spectrum_mirror_farm/src/bond.rs#L67
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: info.lp_token_cw20_addr.clone(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: context.spectrum_mirror_farms_addr.to_string(),
+                amount: return_lp_token_amount,
+                msg: to_binary(&spectrum_protocol::mirror_farm::Cw20HookMsg::bond {
+                    asset_token: mirror_asset_cw20_addr.to_string(),
+                    compound_rate: Some(Decimal::one()),
+                    staker_addr: None,
+                })?,
+            })?,
+            funds: vec![],
+        }),
+    ]))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

@@ -4,6 +4,7 @@ use cosmwasm_std::{
     to_binary, Addr, CosmosMsg, Decimal256, Deps, QuerierWrapper, StdError, StdResult, Uint128,
     Uint256, WasmMsg,
 };
+use integer_sqrt::IntegerSquareRoot;
 use terraswap::asset::PairInfo;
 
 /// Returns an array comprising two AssetInfo elements, representing a Terraswap token pair where the first token is a cw20 with contract address
@@ -395,6 +396,69 @@ fn test_compute_terraswap_offer_amount() {
             Uint128::from(101u128)
         ),
         Err(StdError::generic_err("insufficient liquidity"))
+    );
+}
+
+/// Computes the amount of Terraswap LP tokens that would be minted for the specified liquidity provide amounts.
+/// Reference: https://github.com/terraswap/terraswap/blob/f4d8a845bc4346db23cb559ce577bc59b41b23cb/contracts/terraswap_pair/src/contract.rs#L256
+///
+/// # Arguments
+///
+/// * `token_a_provide_amount` - providing liquidity with this amount of token A
+/// * `token_b_provide_amount` - providing liquidity with this amount of token B
+/// * `token_a_pool_amount` - current balance of token A in the liquidity pool
+/// * `token_b_pool_amount` - current balance of token B in the liquidity pool
+/// * `liquidity_token_supply` - current supply of the LP token
+pub fn compute_terraswap_liquidity_token_mint_amount(
+    token_a_provide_amount: Uint128,
+    token_b_provide_amount: Uint128,
+    token_a_pool_amount: Uint128,
+    token_b_pool_amount: Uint128,
+    liquidity_token_supply: Uint128,
+) -> Uint128 {
+    if liquidity_token_supply.is_zero() {
+        Uint128::from(
+            (token_a_provide_amount.u128() * token_b_provide_amount.u128()).integer_sqrt(),
+        )
+    } else {
+        std::cmp::min(
+            token_a_provide_amount.multiply_ratio(liquidity_token_supply, token_a_pool_amount),
+            token_b_provide_amount.multiply_ratio(liquidity_token_supply, token_b_pool_amount),
+        )
+    }
+}
+
+#[test]
+fn test_compute_terraswap_liquidity_token_mint_amount() {
+    assert_eq!(
+        compute_terraswap_liquidity_token_mint_amount(
+            Uint128::from(1u128),
+            Uint128::from(2u128),
+            Uint128::from(1000u128),
+            Uint128::from(2000u128),
+            Uint128::from(999u128)
+        ),
+        Uint128::from(0u128)
+    );
+    assert_eq!(
+        compute_terraswap_liquidity_token_mint_amount(
+            Uint128::from(1u128),
+            Uint128::from(2u128),
+            Uint128::from(1000u128),
+            Uint128::from(2000u128),
+            Uint128::from(1001u128)
+        ),
+        Uint128::from(1u128)
+    );
+    assert_eq!(
+        compute_terraswap_liquidity_token_mint_amount(
+            Uint128::from(1000u128),
+            Uint128::from(2000u128),
+            Uint128::zero(),
+            Uint128::zero(),
+            Uint128::zero()
+        ),
+        Uint128::from(1414u128)
     );
 }
 
