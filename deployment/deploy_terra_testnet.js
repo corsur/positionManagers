@@ -148,7 +148,7 @@ async function instantiate_delta_neutral_position_manager(
             "terra1q3ls6u2glsazdeu7dxggk8d04elnvmsg0ung6n",
           mirror_lock_addr: "terra1pcxghd4dyf950mcs0kmlp7lvnrjsnl6qlfldwj",
           mirror_mint_addr: "terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w",
-          mirror_oracle_addr: "terra1uvxhec74deupp47enh7z5pk55f3cvcz8nj4ww9",
+          mirror_oracle_addr: "terra1sdr3rya4h039f4htfm42q44x3dlaxra7hc7p8e",
           mirror_staking_addr: "terra1a06dgl27rhujjphsn4drl242ufws267qxypptx",
           spectrum_gov_addr: "terra1x3l2tkkwzzr0qsnrpy3lf2cm005zxv7pun26x4",
           spectrum_mirror_farms_addr:
