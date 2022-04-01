@@ -33,7 +33,7 @@ use crate::{
 // This function uses binary search to find the largest possible `uusd_collateral_amount` such that `uusd_collateral_amount + uusd_long_swap_amount <= uusd_amount`.
 pub fn delta_neutral_invest(
     deps: DepsMut,
-    env: Env,
+    env: &Env,
     context: Context,
     uusd_amount: Uint128,
     target_collateral_ratio_range: &TargetCollateralRatioRange,
@@ -289,7 +289,7 @@ fn test_delta_neutral_invest() {
     };
     let response = delta_neutral_invest(
         deps.as_mut(),
-        env,
+        &env,
         context,
         Uint128::from(600u128),
         target_collateral_ratio_range,

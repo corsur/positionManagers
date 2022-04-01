@@ -211,15 +211,14 @@ impl WasmMockQuerier {
                         _ => panic!(),
                     }
                 } else if contract_addr == &self.mirror_oracle {
-                    let msg: mirror_protocol::oracle::QueryMsg = from_binary(&msg).unwrap();
+                    let msg: tefi_oracle::hub::HubQueryMsg = from_binary(&msg).unwrap();
                     match msg {
-                        mirror_protocol::oracle::QueryMsg::Price { .. } => {
+                        tefi_oracle::hub::HubQueryMsg::Price { .. } => {
                             SystemResult::Ok(ContractResult::Ok(
                                 to_binary(
-                                    &(mirror_protocol::oracle::PriceResponse {
+                                    &(tefi_oracle::hub::PriceResponse {
                                         rate: Decimal::from_ratio(10u128, 1u128),
-                                        last_updated_base: 0,
-                                        last_updated_quote: 0,
+                                        last_updated: 0,
                                     }),
                                 )
                                 .unwrap(),
@@ -261,6 +260,7 @@ impl WasmMockQuerier {
                                                 bond_amount: Uint128::from(1u128),
                                                 pending_reward: Uint128::from(3u128),
                                                 is_short: true,
+                                                should_migrate: None,
                                             },
                                         ],
                                     }),

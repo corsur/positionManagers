@@ -26,6 +26,8 @@ pub enum InternalExecuteMsg {
     DeltaNeutralReinvest {
         mirror_asset_fresh_oracle_uusd_rate: Decimal,
     },
+    // Performs a sanity check at the end of ExecuteMsg::OpenPosition to make sure that the short and long positions hold an equal amount of the mAsset.
+    OpenPositionSanityCheck {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

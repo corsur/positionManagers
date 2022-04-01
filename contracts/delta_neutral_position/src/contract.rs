@@ -115,7 +115,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                 if uusd_amount >= context.min_reinvest_uusd_amount {
                     delta_neutral_invest(
                         deps,
-                        env,
+                        &env,
                         context,
                         uusd_amount,
                         &target_collateral_ratio_range,
@@ -127,6 +127,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
                     Ok(Response::default())
                 }
             }
+            InternalExecuteMsg::OpenPositionSanityCheck {} => {
+                open_position_sanity_check(deps.as_ref(), env, context)
+            }
         },
     }
 }
@@ -137,6 +140,29 @@ pub fn create_internal_execute_message(env: &Env, msg: InternalExecuteMsg) -> Co
         msg: to_binary(&ExecuteMsg::Internal(msg)).unwrap(),
         funds: vec![],
     })
+}
+
+pub fn open_position_sanity_check(deps: Deps, env: Env, context: Context) -> StdResult<Response> {
+    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
+    let mirror_asset_balance = terraswap::querier::query_token_balance(
+        &deps.querier,
+        mirror_asset_cw20_addr.clone(),
+        env.contract.address.clone(),
+    )?;
+    let cdp_response: mirror_protocol::mint::PositionResponse = deps.querier.query_wasm_smart(
+        &context.mirror_mint_addr,
+        &mirror_protocol::mint::QueryMsg::Position {
+            position_idx: CDP_IDX.load(deps.storage)?,
+        },
+    )?;
+    if cdp_response.is_short && mirror_asset_balance == cdp_response.asset.amount {
+        Ok(Response::default())
+    } else {
+        Err(StdError::generic_err(format!(
+            "unexpected non-neutral position opened: long amount {}, cdp response {:?}",
+            mirror_asset_balance, cdp_response
+        )))
+    }
 }
 
 pub fn get_reinvest_internal_messages(
@@ -174,8 +200,7 @@ pub fn rebalance_and_reinvest(deps: Deps, env: Env, context: Context) -> StdResu
     let fresh_oracle_uusd_rate = get_mirror_asset_fresh_oracle_uusd_rate(
         &deps.querier,
         &context,
-        MIRROR_ASSET_CW20_ADDR.load(deps.storage)?.as_str(),
-        &env.block,
+        &MIRROR_ASSET_CW20_ADDR.load(deps.storage)?,
     );
     if let Some(rate) = fresh_oracle_uusd_rate {
         Ok(response
@@ -296,12 +321,8 @@ pub fn open_position(
     };
     TARGET_COLLATERAL_RATIO_RANGE.save(deps.storage, &target_collateral_ratio_range)?;
 
-    let fresh_oracle_uusd_rate = get_mirror_asset_fresh_oracle_uusd_rate(
-        &deps.querier,
-        &context,
-        mirror_asset_cw20_addr.as_str(),
-        &env.block,
-    );
+    let fresh_oracle_uusd_rate =
+        get_mirror_asset_fresh_oracle_uusd_rate(&deps.querier, &context, &mirror_asset_cw20_addr);
     if let Some(rate) = fresh_oracle_uusd_rate {
         let cdp_idx_response: mirror_protocol::mint::NextPositionIdxResponse =
             deps.querier.query_wasm_smart(
@@ -310,16 +331,20 @@ pub fn open_position(
             )?;
         CDP_IDX.save(deps.storage, &cdp_idx_response.next_position_idx)?;
 
-        delta_neutral_invest(
+        let response = delta_neutral_invest(
             deps,
-            env,
+            &env,
             context,
             uusd_balance,
             &target_collateral_ratio_range,
             &mirror_asset_cw20_addr,
             rate,
             None,
-        )
+        )?;
+        Ok(response.add_message(create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::OpenPositionSanityCheck {},
+        )))
     } else {
         Err(StdError::generic_err(
             "oracle price too old; off-market hour position opening not yet supported",

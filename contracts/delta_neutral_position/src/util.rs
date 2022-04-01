@@ -70,7 +70,7 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         context.mirror_collateral_oracle_addr.clone(),
         &mirror_protocol::collateral_oracle::QueryMsg::CollateralPrice {
             asset: context.anchor_ust_cw20_addr.to_string(),
-            block_height: None,
+            timeframe: None,
         },
     )?;
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
@@ -132,7 +132,7 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         mirror_asset_oracle_price: get_mirror_asset_oracle_uusd_price_response(
             &deps.querier,
             context,
-            mirror_asset_cw20_addr.as_str(),
+            &mirror_asset_cw20_addr,
         )?
         .rate,
         anchor_ust_oracle_price: collateral_price_response.rate,

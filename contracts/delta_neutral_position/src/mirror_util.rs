@@ -1,17 +1,16 @@
 use aperture_common::delta_neutral_position_manager::Context;
-use cosmwasm_std::{BlockInfo, Decimal, QuerierWrapper, StdResult};
+use cosmwasm_std::{Addr, Decimal, QuerierWrapper, StdResult};
 
 pub fn get_mirror_asset_oracle_uusd_price_response(
     querier: &QuerierWrapper,
     context: &Context,
-    mirror_asset_cw20_addr: &str,
-) -> StdResult<mirror_protocol::oracle::PriceResponse> {
-    querier.query_wasm_smart(
-        context.mirror_oracle_addr.clone(),
-        &mirror_protocol::oracle::QueryMsg::Price {
-            base_asset: mirror_asset_cw20_addr.to_string(),
-            quote_asset: "uusd".to_string(),
-        },
+    mirror_asset_cw20_addr: &Addr,
+) -> StdResult<tefi_oracle::hub::PriceResponse> {
+    tefi_oracle::querier::query_asset_price(
+        querier,
+        &context.mirror_oracle_addr,
+        mirror_asset_cw20_addr,
+        None,
     )
 }
 
@@ -28,63 +27,21 @@ pub fn get_mirror_asset_config_response(
     )
 }
 
-fn is_mirror_asset_oracle_price_fresh(
-    price_response: &mirror_protocol::oracle::PriceResponse,
-    current_block_info: &BlockInfo,
-) -> bool {
-    // Reference: https://github.com/Mirror-Protocol/mirror-contracts/blob/97cabc2be29635422183c1fb8278f1d5f34d94fc/contracts/mirror_mint/src/querier.rs#L125.
-    const PRICE_EXPIRE_TIME: u64 = 60;
-    price_response.last_updated_base + PRICE_EXPIRE_TIME >= current_block_info.time.seconds()
-}
-
-#[test]
-fn test_is_mirror_asset_oracle_price_fresh() {
-    use cosmwasm_std::Decimal;
-    assert_eq!(
-        is_mirror_asset_oracle_price_fresh(
-            &mirror_protocol::oracle::PriceResponse {
-                rate: Decimal::from_ratio(10u128, 1u128),
-                last_updated_base: 12345,
-                last_updated_quote: u64::MAX,
-            },
-            &BlockInfo {
-                height: 1,
-                time: cosmwasm_std::Timestamp::from_seconds(24689),
-                chain_id: String::from("any_chain")
-            }
-        ),
-        false
-    );
-    assert_eq!(
-        is_mirror_asset_oracle_price_fresh(
-            &mirror_protocol::oracle::PriceResponse {
-                rate: Decimal::from_ratio(10u128, 1u128),
-                last_updated_base: 12345,
-                last_updated_quote: u64::MAX,
-            },
-            &BlockInfo {
-                height: 1,
-                time: cosmwasm_std::Timestamp::from_seconds(12349),
-                chain_id: String::from("any_chain")
-            }
-        ),
-        true
-    );
-}
-
 pub fn get_mirror_asset_fresh_oracle_uusd_rate(
     querier: &QuerierWrapper,
     context: &Context,
-    mirror_asset_cw20_addr: &str,
-    current_block_info: &BlockInfo,
+    mirror_asset_cw20_addr: &Addr,
 ) -> Option<Decimal> {
-    let response =
-        get_mirror_asset_oracle_uusd_price_response(querier, context, mirror_asset_cw20_addr)
-            .unwrap();
-    if is_mirror_asset_oracle_price_fresh(&response, current_block_info) {
-        Some(response.rate)
-    } else {
-        None
+    // Reference: https://github.com/Mirror-Protocol/mirror-contracts/blob/4d0b026a4505b806113b83f7253cf67b187ba292/contracts/mirror_mint/src/querier.rs#L89
+    const PRICE_EXPIRE_TIME: u64 = 60;
+    match tefi_oracle::querier::query_asset_price(
+        querier,
+        &context.mirror_oracle_addr,
+        mirror_asset_cw20_addr,
+        Some(PRICE_EXPIRE_TIME),
+    ) {
+        Ok(price_response) => Some(price_response.rate),
+        _ => None,
     }
 }
 

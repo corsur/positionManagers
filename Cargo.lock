@@ -298,6 +298,7 @@ dependencies = [
  "schemars",
  "serde",
  "spectrum-protocol",
+ "tefi-oracle",
  "terra-cosmwasm",
  "terraswap",
 ]
@@ -487,9 +488,7 @@ checksum = "8521a1b57e76b1ec69af7599e75e38e7b7fad6610f037db8c79b127201b5d119"
 
 [[package]]
 name = "mirror-protocol"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68b4a3ba65a8fd11cd24862cc49a2c4eebb98e8dfd38d43df72145cde19d9ca6"
+version = "2.2.0"
 dependencies = [
  "cosmwasm-std",
  "cosmwasm-storage",
@@ -497,6 +496,7 @@ dependencies = [
  "schemars",
  "serde",
  "terraswap",
+ "uint",
 ]
 
 [[package]]
@@ -746,6 +746,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "tefi-oracle"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f37a019347901398fcf1f41271c77e4c0897fcba1a1fba030e7f3477a6710e8"
+dependencies = [
+ "cosmwasm-bignumber",
+ "cosmwasm-std",
+ "schemars",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
