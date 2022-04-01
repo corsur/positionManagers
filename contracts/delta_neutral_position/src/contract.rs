@@ -146,8 +146,8 @@ pub fn open_position_sanity_check(deps: Deps, env: Env, context: Context) -> Std
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
     let mirror_asset_balance = terraswap::querier::query_token_balance(
         &deps.querier,
-        mirror_asset_cw20_addr.clone(),
-        env.contract.address.clone(),
+        mirror_asset_cw20_addr,
+        env.contract.address,
     )?;
     let cdp_response: mirror_protocol::mint::PositionResponse = deps.querier.query_wasm_smart(
         &context.mirror_mint_addr,

@@ -11,8 +11,8 @@ use aperture_common::delta_neutral_position_manager::{
 use aperture_common::terra_manager::TERRA_CHAIN_ID;
 use aperture_common::{delta_neutral_position, terra_manager};
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
+    entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
+    MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
 };
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
@@ -106,6 +106,23 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::UpdateFeeCollectionConfig {
             fee_collection_config,
         } => update_fee_collection_config(deps, info, fee_collection_config),
+        ExecuteMsg::UpdateContext {
+            controller,
+            mirror_collateral_oracle_addr,
+            mirror_oracle_addr,
+            collateral_ratio_safety_margin,
+            min_open_uusd_amount,
+            min_reinvest_uusd_amount,
+        } => update_context(
+            deps,
+            info,
+            controller,
+            mirror_collateral_oracle_addr,
+            mirror_oracle_addr,
+            collateral_ratio_safety_margin,
+            min_open_uusd_amount,
+            min_reinvest_uusd_amount,
+        ),
         ExecuteMsg::Internal(internal_msg) => {
             if info.sender != env.contract.address {
                 return Err(StdError::generic_err("unauthorized"));
@@ -160,6 +177,46 @@ fn update_fee_collection_config(
         return Err(StdError::generic_err("unauthorized"));
     }
     FEE_COLLECTION_CONFIG.save(deps.storage, &fee_collection_config)?;
+    Ok(Response::default())
+}
+
+fn update_context(
+    deps: DepsMut,
+    info: MessageInfo,
+    controller: Option<String>,
+    mirror_collateral_oracle_addr: Option<String>,
+    mirror_oracle_addr: Option<String>,
+    collateral_ratio_safety_margin: Option<Decimal>,
+    min_open_uusd_amount: Option<Uint128>,
+    min_reinvest_uusd_amount: Option<Uint128>,
+) -> StdResult<Response> {
+    let config = ADMIN_CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+
+    let mut context = CONTEXT.load(deps.storage)?;
+    if let Some(controller) = controller {
+        context.controller = deps.api.addr_validate(&controller)?;
+    }
+    if let Some(mirror_collateral_oracle_addr) = mirror_collateral_oracle_addr {
+        context.mirror_collateral_oracle_addr =
+            deps.api.addr_validate(&mirror_collateral_oracle_addr)?;
+    }
+    if let Some(mirror_oracle_addr) = mirror_oracle_addr {
+        context.mirror_oracle_addr = deps.api.addr_validate(&mirror_oracle_addr)?;
+    }
+    if let Some(collateral_ratio_safety_margin) = collateral_ratio_safety_margin {
+        context.collateral_ratio_safety_margin = collateral_ratio_safety_margin;
+    }
+    if let Some(min_open_uusd_amount) = min_open_uusd_amount {
+        context.min_open_uusd_amount = min_open_uusd_amount;
+    }
+    if let Some(min_reinvest_uusd_amount) = min_reinvest_uusd_amount {
+        context.min_reinvest_uusd_amount = min_reinvest_uusd_amount;
+    }
+    CONTEXT.save(deps.storage, &context)?;
+
     Ok(Response::default())
 }
 

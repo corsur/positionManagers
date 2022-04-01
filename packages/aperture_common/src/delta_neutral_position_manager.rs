@@ -80,6 +80,15 @@ pub enum ExecuteMsg {
     UpdateFeeCollectionConfig {
         fee_collection_config: FeeCollectionConfig,
     },
+    // Can only be called by admin.
+    UpdateContext {
+        controller: Option<String>,
+        mirror_collateral_oracle_addr: Option<String>,
+        mirror_oracle_addr: Option<String>,
+        collateral_ratio_safety_margin: Option<Decimal>,
+        min_open_uusd_amount: Option<Uint128>,
+        min_reinvest_uusd_amount: Option<Uint128>,
+    },
     // Can only be called by this contract itself.
     Internal(InternalExecuteMsg),
 }
