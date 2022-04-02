@@ -16,14 +16,14 @@ exclude = [
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cosmwasm-std = "0.16.3"
+cosmwasm-std = "0.16.6"
 cw20 = "0.9.1"
 cw-storage-plus = { version = "0.9.1" }
 schemars = "0.8.1"
-serde = { version = "1.0.103", default-features = false, features = ["derive"] }
+serde = { version = "1.0.136", default-features = false, features = ["derive"] }
 aperture-common = { version = "0.2.0", path = "../../packages/aperture_common" }
-protobuf = { version = "2.25.2", features = ["with-bytes"] }
+protobuf = { version = "2.27.1", features = ["with-bytes"] }
 terraswap = "2.4.0"
 
 [dev-dependencies]
-cosmwasm-schema = { version = "0.16.3" }
+cosmwasm-schema = { version = "0.16.6" }
