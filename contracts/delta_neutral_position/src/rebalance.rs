@@ -131,94 +131,96 @@ pub fn achieve_delta_neutral_from_state(
         Ordering::Greater => {
             // We are in a net long position.
             // First, we binary search for the least amount of lp tokens to withdraw such that swapping (mAsset balance + withdrawn mAsset) for uusd is sufficient to bring us back to neutral.
+            // Reference: https://en.wikipedia.org/wiki/Binary_search_algorithm#Procedure_for_finding_the_leftmost_element
+            // Theoretical array setup for the binary search algorithm:
+            // * Index: withdraw_lp_token_amount, the amount of LP tokens to withdraw.
+            // * Value: either 0 or 1. If swapping the entire existing mAsset balance plus the withdrawn mAsset amount still results in a net long state, then the value is 0; otherwise 1.
+            // The binary search finds the index of the leftmost 1-value element.
             let mut a = Uint128::zero();
             let mut b = info.lp_token_amount + one;
-            while b > a + one {
+            while a < b {
                 let withdraw_lp_token_amount = (a + b) >> 1;
-                let fraction =
-                    Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
-                let withdrawn_mirror_asset_amount =
-                    info.terraswap_pool_mirror_asset_amount * fraction;
-                let pool_mirror_asset_amount_after_withdrawal =
-                    info.terraswap_pool_mirror_asset_amount - withdrawn_mirror_asset_amount;
-                let pool_mirror_asset_amount_after_swap = pool_mirror_asset_amount_after_withdrawal
-                    + withdrawn_mirror_asset_amount
-                    + state.mirror_asset_balance;
+                let pool_mirror_asset_amount_after_swap =
+                    info.terraswap_pool_mirror_asset_amount + state.mirror_asset_balance;
                 let new_long_farm_mirror_asset_amount = pool_mirror_asset_amount_after_swap
                     * Decimal::from_ratio(
                         info.lp_token_amount - withdraw_lp_token_amount,
                         info.lp_token_total_supply - withdraw_lp_token_amount,
                     );
-                if new_long_farm_mirror_asset_amount >= state.mirror_asset_short_amount {
-                    a = withdraw_lp_token_amount;
+                if new_long_farm_mirror_asset_amount > state.mirror_asset_short_amount {
+                    a = withdraw_lp_token_amount + one;
                 } else {
                     b = withdraw_lp_token_amount;
                 }
             }
+            let withdraw_lp_token_amount = a;
 
-            if a > Uint128::zero() {
-                // We determined that we need to withdraw `a` amount of LP tokens.
-                let withdraw_lp_token_amount = a;
+            // We determined that we should redeem `withdraw_lp_token_amount` amount of LP tokens for liquid mAsset + UST.
+            // If this amount is zero, then we do nothing; otherwise, we generate the necessary ExecuteMsg items and the state after liquidity withdrawal.
+            let mut current_mirror_asset_balance = state.mirror_asset_balance;
+            let mut current_pool_mirror_asset_amount = info.terraswap_pool_mirror_asset_amount;
+            let mut current_lp_token_amount = info.lp_token_amount;
+            let mut current_lp_token_total_supply = info.lp_token_total_supply;
+            if withdraw_lp_token_amount > Uint128::zero() {
                 messages.extend(unstake_lp_from_spectrum_and_withdraw_liquidity(
                     &state.terraswap_pool_info,
                     &context.spectrum_mirror_farms_addr,
                     &mirror_asset_cw20_addr,
                     withdraw_lp_token_amount,
                 ));
-                messages.push(
-                    swap_cw20_token_for_uusd(
-                        &deps.querier,
-                        &context.terraswap_factory_addr,
-                        &context.astroport_factory_addr,
-                        &mirror_asset_cw20_addr,
-                        info.terraswap_pool_mirror_asset_amount
-                            * Decimal::from_ratio(
-                                withdraw_lp_token_amount,
-                                info.lp_token_total_supply,
-                            )
-                            + state.mirror_asset_balance,
-                    )?
-                    .0,
-                );
-            } else {
-                // We determined that we don't have to withdraw any LP tokens to achieve delta-neutral.
-                // Therefore, we perform a binary search for the least amount of mAsset (in contract balance) to swap for uusd.
-                let mut a = Uint128::zero();
-                let mut b = state.mirror_asset_balance + one;
-                while b > a + one {
-                    let offer_mirror_asset_amount = (a + b) >> 1;
-                    let pool_mirror_asset_amount_after_swap =
-                        info.terraswap_pool_mirror_asset_amount + offer_mirror_asset_amount;
-                    let new_mirror_asset_long_amount = state.mirror_asset_balance
-                        - offer_mirror_asset_amount
-                        + pool_mirror_asset_amount_after_swap
-                            * Decimal::from_ratio(info.lp_token_amount, info.lp_token_total_supply);
-                    if new_mirror_asset_long_amount >= state.mirror_asset_short_amount {
-                        a = offer_mirror_asset_amount;
-                    } else {
-                        b = offer_mirror_asset_amount;
-                    }
+                let withdrawn_mirror_asset_amount = info.terraswap_pool_mirror_asset_amount
+                    * Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
+                current_mirror_asset_balance += withdrawn_mirror_asset_amount;
+                current_pool_mirror_asset_amount -= withdrawn_mirror_asset_amount;
+                current_lp_token_amount -= withdraw_lp_token_amount;
+                current_lp_token_total_supply -= withdraw_lp_token_amount;
+            }
+
+            // Perform another binary search for the least amount of mAsset to swap in order to bring us to either the neutral state or a slightly net long state if exact neutral is not achievable.
+            // Reference: https://en.wikipedia.org/wiki/Binary_search_algorithm#Procedure_for_finding_the_rightmost_element
+            // Theoretical array setup for the binary search algorithm:
+            // * Index: offer_mirror_asset_amount, the amount of mAsset tokens to offer to the mAsset-UST pool in exchange for UST.
+            // * Value: either 0 or 1. If swapping the offering amount results in a net long or neutral state, then the value is 0; otherwise 1.
+            // The binary search finds the index of the rightmost 0-value element.
+            let mut a = Uint128::zero();
+            let mut b = current_mirror_asset_balance + one;
+            let lp_ratio =
+                Decimal::from_ratio(current_lp_token_amount, current_lp_token_total_supply);
+            while a < b {
+                let offer_mirror_asset_amount = (a + b) >> 1;
+                let pool_mirror_asset_amount_after_swap =
+                    current_pool_mirror_asset_amount + offer_mirror_asset_amount;
+                let new_mirror_asset_long_amount = current_mirror_asset_balance
+                    - offer_mirror_asset_amount
+                    + pool_mirror_asset_amount_after_swap * lp_ratio;
+                if new_mirror_asset_long_amount >= state.mirror_asset_short_amount {
+                    a = offer_mirror_asset_amount + one;
+                } else {
+                    b = offer_mirror_asset_amount;
                 }
+            }
+            if b > one {
+                let mirror_asset_offer_amount = b - one;
                 messages.push(
                     swap_cw20_token_for_uusd(
                         &deps.querier,
                         &context.terraswap_factory_addr,
                         &context.astroport_factory_addr,
                         &mirror_asset_cw20_addr,
-                        a,
+                        mirror_asset_offer_amount,
                     )?
                     .0,
                 );
             }
         }
         Ordering::Less => {
-            // Note that the following two binary searches are slightly different from the two above.
-            // Difference #1: terminating condition (`while a < b` below vs. `while b > a + one` above).
-            // Difference #2: range update (`if long < short then a = m + one` below vs. `if long >= short then a = m` above).
-            // The reason is that we want `a` to represent the least feasible value such that we can achieve exact neutral or slightly net long.
-
             // We are in a net short position.
             // First, we binary search for the least amount of lp tokens to withdraw such that swapping (uusd balance + withdrawn uusd) for mAsset is sufficient to bring us back to neutral.
+            // Reference: https://en.wikipedia.org/wiki/Binary_search_algorithm#Procedure_for_finding_the_leftmost_element
+            // Theoretical array setup for the binary search algorithm:
+            // * Index: withdraw_lp_token_amount, the amount of LP tokens to withdraw.
+            // * Value: either 0 or 1. If swapping the entire existing uusd balance plus the withdrawn uusd amount still results in a net short state, then the value is 0; otherwise 1.
+            // The binary search finds the index of the leftmost 1-value element.
             let mut a = Uint128::zero();
             let mut b = info.lp_token_amount + one;
             while a < b {
@@ -253,69 +255,76 @@ pub fn achieve_delta_neutral_from_state(
                     b = withdraw_lp_token_amount;
                 }
             }
+            let withdraw_lp_token_amount = a;
 
-            if a > Uint128::zero() {
-                // We determined that we need to withdraw `a` amount of LP tokens.
-                let withdraw_lp_token_amount = a;
-                let offer_uusd_amount = info.terraswap_pool_uusd_amount
-                    * Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply)
-                    + state.uusd_balance;
+            // We determined that we should redeem `withdraw_lp_token_amount` amount of LP tokens for liquid mAsset + UST.
+            // If this amount is zero, then we do nothing; otherwise, we generate the necessary ExecuteMsg items and the state after liquidity withdrawal.
+            let mut current_mirror_asset_balance = state.mirror_asset_balance;
+            let mut current_uusd_balance = state.uusd_balance;
+            let mut current_pool_mirror_asset_amount = info.terraswap_pool_mirror_asset_amount;
+            let mut current_pool_uusd_amount = info.terraswap_pool_uusd_amount;
+            let mut current_lp_token_amount = info.lp_token_amount;
+            let mut current_lp_token_total_supply = info.lp_token_total_supply;
+            if withdraw_lp_token_amount > Uint128::zero() {
                 messages.extend(unstake_lp_from_spectrum_and_withdraw_liquidity(
                     &state.terraswap_pool_info,
                     &context.spectrum_mirror_farms_addr,
                     &mirror_asset_cw20_addr,
                     withdraw_lp_token_amount,
                 ));
-                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: info.terraswap_pair_addr.clone(),
-                    msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                        offer_asset: get_uusd_asset_from_amount(offer_uusd_amount),
-                        max_spread: None,
-                        belief_price: None,
-                        to: None,
-                    })?,
-                    funds: vec![Coin {
-                        denom: String::from("uusd"),
-                        amount: offer_uusd_amount,
-                    }],
-                }));
-            } else {
-                // We determined that we don't have to withdraw any LP tokens to achieve delta-neutral.
-                // Therefore, we perform a binary search for the least amount of uusd (in contract balance) to swap for mAsset.
-                let mut a = Uint128::zero();
-                let mut b = state.uusd_balance + one;
-                while a < b {
-                    let offer_uusd_amount = (a + b) >> 1;
-                    let (_, pool_mirror_asset_amount_after_swap, return_mirror_asset_amount) =
-                        simulate_terraswap_swap(
-                            info.terraswap_pool_uusd_amount,
-                            info.terraswap_pool_mirror_asset_amount,
-                            offer_uusd_amount,
-                        );
-                    let mirror_asset_long_amount = pool_mirror_asset_amount_after_swap
-                        * Decimal::from_ratio(info.lp_token_amount, info.lp_token_total_supply)
-                        + return_mirror_asset_amount
-                        + state.mirror_asset_balance;
-                    if mirror_asset_long_amount < state.mirror_asset_short_amount {
-                        a = offer_uusd_amount + one;
-                    } else {
-                        b = offer_uusd_amount;
-                    }
-                }
-                messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: info.terraswap_pair_addr.clone(),
-                    msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                        offer_asset: get_uusd_asset_from_amount(a),
-                        max_spread: None,
-                        belief_price: None,
-                        to: None,
-                    })?,
-                    funds: vec![Coin {
-                        denom: String::from("uusd"),
-                        amount: a,
-                    }],
-                }));
+                let withdraw_lp_ratio =
+                    Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
+                let withdrawn_mirror_asset_amount =
+                    info.terraswap_pool_mirror_asset_amount * withdraw_lp_ratio;
+                let withdrawn_uusd_amount = info.terraswap_pool_uusd_amount * withdraw_lp_ratio;
+                current_mirror_asset_balance += withdrawn_mirror_asset_amount;
+                current_uusd_balance += withdrawn_uusd_amount;
+                current_pool_mirror_asset_amount -= withdrawn_mirror_asset_amount;
+                current_pool_uusd_amount -= withdrawn_uusd_amount;
+                current_lp_token_amount -= withdraw_lp_token_amount;
+                current_lp_token_total_supply -= withdraw_lp_token_amount;
             }
+
+            // Perform another binary search for the least amount of uusd to swap in order to bring us to either the neutral state or a slightly net long state if exact neutral is not achievable.
+            // Reference: https://en.wikipedia.org/wiki/Binary_search_algorithm#Procedure_for_finding_the_leftmost_element
+            // Theoretical array setup for the binary search algorithm:
+            // * Index: offer_uusd_amount, the amount of uusd to offer to the mAsset-UST pool in exchange for the mAsset.
+            // * Value: either 0 or 1. If swapping the offering amount results in a net short state, then the value is 0; otherwise 1.
+            // The binary search finds the index of the leftmost 1-value element.
+            let mut a = Uint128::zero();
+            let mut b = current_uusd_balance + one;
+            let lp_ratio =
+                Decimal::from_ratio(current_lp_token_amount, current_lp_token_total_supply);
+            while a < b {
+                let offer_uusd_amount = (a + b) >> 1;
+                let (_, pool_mirror_asset_amount_after_swap, return_mirror_asset_amount) =
+                    simulate_terraswap_swap(
+                        current_pool_uusd_amount,
+                        current_pool_mirror_asset_amount,
+                        offer_uusd_amount,
+                    );
+                let mirror_asset_long_amount = pool_mirror_asset_amount_after_swap * lp_ratio
+                    + return_mirror_asset_amount
+                    + current_mirror_asset_balance;
+                if mirror_asset_long_amount < state.mirror_asset_short_amount {
+                    a = offer_uusd_amount + one;
+                } else {
+                    b = offer_uusd_amount;
+                }
+            }
+            messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: info.terraswap_pair_addr.clone(),
+                msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+                    offer_asset: get_uusd_asset_from_amount(a),
+                    max_spread: None,
+                    belief_price: None,
+                    to: None,
+                })?,
+                funds: vec![Coin {
+                    denom: String::from("uusd"),
+                    amount: a,
+                }],
+            }));
         }
         Ordering::Equal => {}
     }
@@ -323,7 +332,7 @@ pub fn achieve_delta_neutral_from_state(
 }
 
 #[test]
-fn test_achieve_delta_neutral_from_net_long_simple_swap() {
+fn test_achieve_delta_neutral() {
     use cosmwasm_std::testing::mock_env;
     use cosmwasm_std::{Addr, Timestamp};
 
@@ -372,8 +381,8 @@ fn test_achieve_delta_neutral_from_net_long_simple_swap() {
         spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
         spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
         spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
-        terraswap_factory_addr: terraswap_factory_addr,
-        astroport_factory_addr: astroport_factory_addr,
+        terraswap_factory_addr,
+        astroport_factory_addr,
         collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
         min_open_uusd_amount: Uint128::from(500u128),
         min_reinvest_uusd_amount: Uint128::from(10u128),
@@ -477,8 +486,10 @@ fn test_achieve_delta_neutral_from_net_long_simple_swap() {
     );
 }
 
-#[test]
-fn test_achieve_delta_neutral_from_net_short_simple_swap() {
+#[cfg(test)]
+fn run_achieve_delta_neutral_from_position_state_test(
+    position_state: PositionState,
+) -> Vec<CosmosMsg> {
     use cosmwasm_std::testing::mock_env;
     use cosmwasm_std::{Addr, Timestamp};
 
@@ -527,40 +538,143 @@ fn test_achieve_delta_neutral_from_net_short_simple_swap() {
         spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
         spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
         spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
-        terraswap_factory_addr: terraswap_factory_addr,
-        astroport_factory_addr: astroport_factory_addr,
+        terraswap_factory_addr,
+        astroport_factory_addr,
         collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
         min_open_uusd_amount: Uint128::from(500u128),
         min_reinvest_uusd_amount: Uint128::from(10u128),
     };
+    achieve_delta_neutral_from_state(deps.as_ref(), &context, &position_state).unwrap()
+}
 
-    let state = PositionState {
-        uusd_balance: Uint128::from(100000u128),
-        uusd_long_farm: Uint128::from(9000u128),
-        mirror_asset_short_amount: Uint128::from(2000u128),
-        mirror_asset_balance: Uint128::from(10u128),
-        mirror_asset_long_farm: Uint128::from(1000u128),
-        mirror_asset_long_amount: Uint128::from(1010u128),
-        collateral_anchor_ust_amount: Uint128::from(9000u128),
-        collateral_uusd_value: Uint128::from(9900u128),
-        mirror_asset_oracle_price: Decimal::from_ratio(10u128, 1u128),
-        anchor_ust_oracle_price: Decimal::from_ratio(11u128, 10u128),
-        terraswap_pool_info: aperture_common::delta_neutral_position::TerraswapPoolInfo {
-            lp_token_amount: Uint128::from(1u128),
-            lp_token_cw20_addr: String::from("lp_token"),
-            lp_token_total_supply: Uint128::from(1000u128),
-            terraswap_pair_addr: String::from("mock_terraswap_pair"),
-            terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
-            terraswap_pool_uusd_amount: Uint128::from(9000000u128),
-        },
-    };
+#[test]
+fn test_achieve_delta_neutral_from_net_long() {
+    use aperture_common::delta_neutral_position::TerraswapPoolInfo;
+    use std::str::FromStr;
 
-    let messages = achieve_delta_neutral_from_state(deps.as_ref(), &context, &state).unwrap();
-    assert_eq!(messages.len(), 1);
     assert_eq!(
-        messages[0],
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: terraswap_pair_addr.to_string(),
+        run_achieve_delta_neutral_from_position_state_test(PositionState {
+            uusd_balance: Uint128::from(783745u128),
+            uusd_long_farm: Uint128::from(143776156u128),
+            mirror_asset_short_amount: Uint128::from(2873u128),
+            mirror_asset_balance: Uint128::from(31u128),
+            mirror_asset_long_farm: Uint128::from(2873u128),
+            mirror_asset_long_amount: Uint128::from(2904u128),
+            collateral_anchor_ust_amount: Uint128::from(293574270u128),
+            collateral_uusd_value: Uint128::from(359454826u128),
+            mirror_asset_oracle_price: Decimal::from_ratio(4627292u128, 100u128),
+            anchor_ust_oracle_price: Decimal::from_str("1.224408483533399161").unwrap(),
+            terraswap_pool_info: TerraswapPoolInfo {
+                lp_token_amount: Uint128::from(549523u128),
+                lp_token_cw20_addr: String::from("terra1d34edutzwcz6jgecgk26mpyynqh74j3emdsnq5"),
+                lp_token_total_supply: Uint128::from(5344082180u128),
+                terraswap_pair_addr: String::from("terra1prfcyujt9nsn5kfj5n925sfd737r2n8tk5lmpv"),
+                terraswap_pool_mirror_asset_amount: Uint128::from(27948214u128),
+                terraswap_pool_uusd_amount: Uint128::from(1398215539717u128),
+            },
+        }),
+        [CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("mock_cw20_addr"),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: String::from("mock_terraswap_pair"),
+                amount: Uint128::from(31u128),
+                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
+                    belief_price: None,
+                    max_spread: None,
+                    to: None
+                })
+                .unwrap(),
+            })
+            .unwrap(),
+            funds: vec![],
+        })]
+    );
+
+    assert_eq!(
+        run_achieve_delta_neutral_from_position_state_test(PositionState {
+            uusd_balance: Uint128::from(1u128),
+            uusd_long_farm: Uint128::from(18000u128),
+            mirror_asset_short_amount: Uint128::from(1000u128),
+            mirror_asset_balance: Uint128::from(10u128),
+            mirror_asset_long_farm: Uint128::from(2000u128),
+            mirror_asset_long_amount: Uint128::from(2010u128),
+            collateral_anchor_ust_amount: Uint128::from(9000u128),
+            collateral_uusd_value: Uint128::from(9900u128),
+            mirror_asset_oracle_price: Decimal::from_ratio(10u128, 1u128),
+            anchor_ust_oracle_price: Decimal::from_ratio(11u128, 10u128),
+            terraswap_pool_info: aperture_common::delta_neutral_position::TerraswapPoolInfo {
+                lp_token_amount: Uint128::from(6000u128),
+                lp_token_cw20_addr: String::from("lp_token"),
+                lp_token_total_supply: Uint128::from(3000000u128),
+                terraswap_pair_addr: String::from("mock_terraswap_pair"),
+                terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
+                terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+            },
+        }),
+        [
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("spectrum_mirror_farms"),
+                msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::unbond {
+                    asset_token: String::from("mock_cw20_addr"),
+                    amount: Uint128::from(3001u128)
+                })
+                .unwrap(),
+                funds: vec![],
+            }),
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("lp_token"),
+                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                    contract: String::from("mock_terraswap_pair"),
+                    amount: Uint128::from(3001u128),
+                    msg: to_binary(&terraswap::pair::Cw20HookMsg::WithdrawLiquidity {}).unwrap()
+                })
+                .unwrap(),
+                funds: vec![],
+            }),
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("mock_cw20_addr"),
+                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                    contract: String::from("mock_terraswap_pair"),
+                    amount: Uint128::from(1010u128),
+                    msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
+                        belief_price: None,
+                        max_spread: None,
+                        to: None
+                    })
+                    .unwrap(),
+                })
+                .unwrap(),
+                funds: vec![],
+            })
+        ]
+    );
+}
+
+#[test]
+fn test_achieve_delta_neutral_from_net_short() {
+    assert_eq!(
+        run_achieve_delta_neutral_from_position_state_test(PositionState {
+            uusd_balance: Uint128::from(100000u128),
+            uusd_long_farm: Uint128::from(9000u128),
+            mirror_asset_short_amount: Uint128::from(2000u128),
+            mirror_asset_balance: Uint128::from(10u128),
+            mirror_asset_long_farm: Uint128::from(1000u128),
+            mirror_asset_long_amount: Uint128::from(1010u128),
+            collateral_anchor_ust_amount: Uint128::from(9000u128),
+            collateral_uusd_value: Uint128::from(9900u128),
+            mirror_asset_oracle_price: Decimal::from_ratio(10u128, 1u128),
+            anchor_ust_oracle_price: Decimal::from_ratio(11u128, 10u128),
+            terraswap_pool_info: aperture_common::delta_neutral_position::TerraswapPoolInfo {
+                lp_token_amount: Uint128::from(1u128),
+                lp_token_cw20_addr: String::from("lp_token"),
+                lp_token_total_supply: Uint128::from(1000u128),
+                terraswap_pair_addr: String::from("mock_terraswap_pair"),
+                terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
+                terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+            },
+        }),
+        [CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("mock_terraswap_pair"),
             msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
                 offer_asset: terraswap::asset::Asset {
                     info: terraswap::asset::AssetInfo::NativeToken {
@@ -577,260 +691,96 @@ fn test_achieve_delta_neutral_from_net_short_simple_swap() {
                 denom: String::from("uusd"),
                 amount: Uint128::from(8946u128),
             }],
-        })
+        })]
     );
-}
 
-#[test]
-fn test_achieve_delta_neutral_from_net_short_withdraw_lp_and_swap() {
-    use cosmwasm_std::testing::mock_env;
-    use cosmwasm_std::{Addr, Timestamp};
-
-    let terraswap_factory_addr = Addr::unchecked("mock_terraswap_factory");
-    let astroport_factory_addr = Addr::unchecked("mock_astroport_factory");
-    let cw20_token_addr = Addr::unchecked("mock_cw20_addr");
-    let terraswap_pair_addr = Addr::unchecked("mock_terraswap_pair");
-    let astroport_pair_addr = Addr::unchecked("mock_astroport_pair");
-    let querier = crate::mock_querier::WasmMockQuerier::new(
-        terraswap_factory_addr.to_string(),
-        astroport_factory_addr.to_string(),
-        terraswap_pair_addr.to_string(),
-        astroport_pair_addr.to_string(),
-        Uint128::from(10u128),
-        Uint128::from(9u128),
-        cw20_token_addr.to_string(),
-        Uint128::from(1000000u128),
-        Uint128::from(9000000u128),
-    );
-    let mut deps = cosmwasm_std::OwnedDeps {
-        storage: cosmwasm_std::testing::MockStorage::default(),
-        api: cosmwasm_std::testing::MockApi::default(),
-        querier,
-    };
-    MIRROR_ASSET_CW20_ADDR
-        .save(deps.as_mut().storage, &cw20_token_addr)
-        .unwrap();
-    CDP_IDX
-        .save(deps.as_mut().storage, &Uint128::from(1u128))
-        .unwrap();
-
-    let mut env = mock_env();
-    env.contract.address = Addr::unchecked("this");
-    env.block.time = Timestamp::from_seconds(12345);
-    let context = Context {
-        controller: Addr::unchecked("controller"),
-        anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
-        mirror_cw20_addr: Addr::unchecked("mirror_cw20"),
-        spectrum_cw20_addr: Addr::unchecked("spectrum_cw20"),
-        anchor_market_addr: Addr::unchecked("anchor_market"),
-        mirror_collateral_oracle_addr: Addr::unchecked("mirror_collateral_oracle"),
-        mirror_lock_addr: Addr::unchecked("mirror_lock"),
-        mirror_mint_addr: Addr::unchecked("mirror_mint"),
-        mirror_oracle_addr: Addr::unchecked("mirror_oracle"),
-        mirror_staking_addr: Addr::unchecked("mirror_staking"),
-        spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
-        spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
-        spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
-        terraswap_factory_addr: terraswap_factory_addr,
-        astroport_factory_addr: astroport_factory_addr,
-        collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
-        min_open_uusd_amount: Uint128::from(500u128),
-        min_reinvest_uusd_amount: Uint128::from(10u128),
-    };
-
-    let state = PositionState {
-        uusd_balance: Uint128::from(1u128),
-        uusd_long_farm: Uint128::from(9000u128),
-        mirror_asset_short_amount: Uint128::from(2000u128),
-        mirror_asset_balance: Uint128::from(10u128),
-        mirror_asset_long_farm: Uint128::from(1000u128),
-        mirror_asset_long_amount: Uint128::from(1010u128),
-        collateral_anchor_ust_amount: Uint128::from(9000u128),
-        collateral_uusd_value: Uint128::from(9900u128),
-        mirror_asset_oracle_price: Decimal::from_ratio(10u128, 1u128),
-        anchor_ust_oracle_price: Decimal::from_ratio(11u128, 10u128),
-        terraswap_pool_info: aperture_common::delta_neutral_position::TerraswapPoolInfo {
-            lp_token_amount: Uint128::from(1u128),
-            lp_token_cw20_addr: String::from("lp_token"),
-            lp_token_total_supply: Uint128::from(1000u128),
-            terraswap_pair_addr: String::from("mock_terraswap_pair"),
-            terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
-            terraswap_pool_uusd_amount: Uint128::from(9000000u128),
-        },
-    };
-
-    let messages = achieve_delta_neutral_from_state(deps.as_ref(), &context, &state).unwrap();
-    assert_eq!(messages.len(), 3);
     assert_eq!(
-        messages[0],
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: String::from("spectrum_mirror_farms"),
-            msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::unbond {
-                asset_token: cw20_token_addr.to_string(),
-                amount: Uint128::from(1u128)
-            })
-            .unwrap(),
-            funds: vec![],
-        })
-    );
-    assert_eq!(
-        messages[1],
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: String::from("lp_token"),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: terraswap_pair_addr.to_string(),
-                amount: Uint128::from(1u128),
-                msg: to_binary(&terraswap::pair::Cw20HookMsg::WithdrawLiquidity {}).unwrap()
-            })
-            .unwrap(),
-            funds: vec![],
-        })
-    );
-    assert_eq!(
-        messages[2],
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: terraswap_pair_addr.to_string(),
-            msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                offer_asset: terraswap::asset::Asset {
-                    info: terraswap::asset::AssetInfo::NativeToken {
-                        denom: String::from("uusd")
-                    },
-                    amount: Uint128::from(9001u128)
-                },
-                belief_price: None,
-                max_spread: None,
-                to: None,
-            })
-            .unwrap(),
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount: Uint128::from(9001u128),
-            }],
-        })
-    );
-}
-
-#[test]
-fn test_achieve_delta_neutral_from_net_long_withdraw_lp_and_swap() {
-    use cosmwasm_std::testing::mock_env;
-    use cosmwasm_std::{Addr, Timestamp};
-
-    let terraswap_factory_addr = Addr::unchecked("mock_terraswap_factory");
-    let astroport_factory_addr = Addr::unchecked("mock_astroport_factory");
-    let cw20_token_addr = Addr::unchecked("mock_cw20_addr");
-    let terraswap_pair_addr = Addr::unchecked("mock_terraswap_pair");
-    let astroport_pair_addr = Addr::unchecked("mock_astroport_pair");
-    let querier = crate::mock_querier::WasmMockQuerier::new(
-        terraswap_factory_addr.to_string(),
-        astroport_factory_addr.to_string(),
-        terraswap_pair_addr.to_string(),
-        astroport_pair_addr.to_string(),
-        Uint128::from(10u128),
-        Uint128::from(9u128),
-        cw20_token_addr.to_string(),
-        Uint128::from(1000000u128),
-        Uint128::from(9000000u128),
-    );
-    let mut deps = cosmwasm_std::OwnedDeps {
-        storage: cosmwasm_std::testing::MockStorage::default(),
-        api: cosmwasm_std::testing::MockApi::default(),
-        querier,
-    };
-    MIRROR_ASSET_CW20_ADDR
-        .save(deps.as_mut().storage, &cw20_token_addr)
-        .unwrap();
-    CDP_IDX
-        .save(deps.as_mut().storage, &Uint128::from(1u128))
-        .unwrap();
-
-    let mut env = mock_env();
-    env.contract.address = Addr::unchecked("this");
-    env.block.time = Timestamp::from_seconds(12345);
-    let context = Context {
-        controller: Addr::unchecked("controller"),
-        anchor_ust_cw20_addr: Addr::unchecked("anchor_ust_cw20"),
-        mirror_cw20_addr: Addr::unchecked("mirror_cw20"),
-        spectrum_cw20_addr: Addr::unchecked("spectrum_cw20"),
-        anchor_market_addr: Addr::unchecked("anchor_market"),
-        mirror_collateral_oracle_addr: Addr::unchecked("mirror_collateral_oracle"),
-        mirror_lock_addr: Addr::unchecked("mirror_lock"),
-        mirror_mint_addr: Addr::unchecked("mirror_mint"),
-        mirror_oracle_addr: Addr::unchecked("mirror_oracle"),
-        mirror_staking_addr: Addr::unchecked("mirror_staking"),
-        spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
-        spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
-        spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
-        terraswap_factory_addr: terraswap_factory_addr,
-        astroport_factory_addr: astroport_factory_addr,
-        collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
-        min_open_uusd_amount: Uint128::from(500u128),
-        min_reinvest_uusd_amount: Uint128::from(10u128),
-    };
-
-    let state = PositionState {
-        uusd_balance: Uint128::from(1u128),
-        uusd_long_farm: Uint128::from(18000u128),
-        mirror_asset_short_amount: Uint128::from(1000u128),
-        mirror_asset_balance: Uint128::from(10u128),
-        mirror_asset_long_farm: Uint128::from(2000u128),
-        mirror_asset_long_amount: Uint128::from(1010u128),
-        collateral_anchor_ust_amount: Uint128::from(9000u128),
-        collateral_uusd_value: Uint128::from(9900u128),
-        mirror_asset_oracle_price: Decimal::from_ratio(10u128, 1u128),
-        anchor_ust_oracle_price: Decimal::from_ratio(11u128, 10u128),
-        terraswap_pool_info: aperture_common::delta_neutral_position::TerraswapPoolInfo {
-            lp_token_amount: Uint128::from(2u128),
-            lp_token_cw20_addr: String::from("lp_token"),
-            lp_token_total_supply: Uint128::from(1000u128),
-            terraswap_pair_addr: String::from("mock_terraswap_pair"),
-            terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
-            terraswap_pool_uusd_amount: Uint128::from(9000000u128),
-        },
-    };
-
-    let messages = achieve_delta_neutral_from_state(deps.as_ref(), &context, &state).unwrap();
-    assert_eq!(messages.len(), 3);
-    assert_eq!(
-        messages[0],
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: String::from("spectrum_mirror_farms"),
-            msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::unbond {
-                asset_token: cw20_token_addr.to_string(),
-                amount: Uint128::from(1u128)
-            })
-            .unwrap(),
-            funds: vec![],
-        })
-    );
-    assert_eq!(
-        messages[1],
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: String::from("lp_token"),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: terraswap_pair_addr.to_string(),
-                amount: Uint128::from(1u128),
-                msg: to_binary(&terraswap::pair::Cw20HookMsg::WithdrawLiquidity {}).unwrap()
-            })
-            .unwrap(),
-            funds: vec![],
-        })
-    );
-    assert_eq!(
-        messages[2],
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: cw20_token_addr.to_string(),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: terraswap_pair_addr.to_string(),
-                amount: Uint128::from(1010u128),
-                msg: to_binary(&terraswap::pair::Cw20HookMsg::Swap {
-                    belief_price: None,
-                    max_spread: None,
-                    to: None
+        run_achieve_delta_neutral_from_position_state_test(PositionState {
+            uusd_balance: Uint128::from(1u128),
+            uusd_long_farm: Uint128::from(9000u128),
+            mirror_asset_short_amount: Uint128::from(2000u128),
+            mirror_asset_balance: Uint128::from(10u128),
+            mirror_asset_long_farm: Uint128::from(1000u128),
+            mirror_asset_long_amount: Uint128::from(1010u128),
+            collateral_anchor_ust_amount: Uint128::from(9000u128),
+            collateral_uusd_value: Uint128::from(9900u128),
+            mirror_asset_oracle_price: Decimal::from_ratio(10u128, 1u128),
+            anchor_ust_oracle_price: Decimal::from_ratio(11u128, 10u128),
+            terraswap_pool_info: aperture_common::delta_neutral_position::TerraswapPoolInfo {
+                lp_token_amount: Uint128::from(3000u128),
+                lp_token_cw20_addr: String::from("lp_token"),
+                lp_token_total_supply: Uint128::from(3000000u128),
+                terraswap_pair_addr: String::from("mock_terraswap_pair"),
+                terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
+                terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+            },
+        }),
+        [
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("spectrum_mirror_farms"),
+                msg: to_binary(&spectrum_protocol::mirror_farm::ExecuteMsg::unbond {
+                    asset_token: String::from("mock_cw20_addr"),
+                    amount: Uint128::from(2982u128)
                 })
                 .unwrap(),
+                funds: vec![],
+            }),
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("lp_token"),
+                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                    contract: String::from("mock_terraswap_pair"),
+                    amount: Uint128::from(2982u128),
+                    msg: to_binary(&terraswap::pair::Cw20HookMsg::WithdrawLiquidity {}).unwrap()
+                })
+                .unwrap(),
+                funds: vec![],
+            }),
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("mock_terraswap_pair"),
+                msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+                    offer_asset: terraswap::asset::Asset {
+                        info: terraswap::asset::AssetInfo::NativeToken {
+                            denom: String::from("uusd")
+                        },
+                        amount: Uint128::from(8946u128)
+                    },
+                    belief_price: None,
+                    max_spread: None,
+                    to: None,
+                })
+                .unwrap(),
+                funds: vec![Coin {
+                    denom: String::from("uusd"),
+                    amount: Uint128::from(8946u128),
+                }],
             })
-            .unwrap(),
-            funds: vec![],
+        ]
+    );
+}
+
+#[test]
+fn test_achieve_delta_neutral_from_neutral() {
+    assert!(
+        run_achieve_delta_neutral_from_position_state_test(PositionState {
+            uusd_balance: Uint128::from(100000u128),
+            uusd_long_farm: Uint128::from(9000u128),
+            mirror_asset_short_amount: Uint128::from(1010u128),
+            mirror_asset_balance: Uint128::from(10u128),
+            mirror_asset_long_farm: Uint128::from(1000u128),
+            mirror_asset_long_amount: Uint128::from(1010u128),
+            collateral_anchor_ust_amount: Uint128::from(9000u128),
+            collateral_uusd_value: Uint128::from(9900u128),
+            mirror_asset_oracle_price: Decimal::from_ratio(10u128, 1u128),
+            anchor_ust_oracle_price: Decimal::from_ratio(11u128, 10u128),
+            terraswap_pool_info: aperture_common::delta_neutral_position::TerraswapPoolInfo {
+                lp_token_amount: Uint128::from(1u128),
+                lp_token_cw20_addr: String::from("lp_token"),
+                lp_token_total_supply: Uint128::from(1000u128),
+                terraswap_pair_addr: String::from("mock_terraswap_pair"),
+                terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
+                terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+            },
         })
+        .is_empty()
     );
 }
