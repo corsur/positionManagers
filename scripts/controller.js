@@ -22,16 +22,7 @@ import {
   MnemonicKey,
   MsgExecuteContract,
 } from "@terra-money/terra.js";
-
-var sequence = -1;
-async function initializeSequence(wallet) {
-  const account_and_sequence = await wallet.accountNumberAndSequence();
-  sequence = account_and_sequence.sequence;
-}
-
-function getAndIncrementSequence() {
-  return sequence++;
-}
+import pool from "@ricokahler/pool";
 
 async function publishMetrics(metrics_and_count) {
   var metrics_data = [];
@@ -67,7 +58,7 @@ const GET_POSITION_MANAGER_FAILURE = "GET_POSITION_MANAGER_FAILURE";
 const GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE =
   "GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE";
 const NUM_PROCESSED_POSITION = "NUM_PROCESSED_POSITION";
-const GET_POSITION_CONTRACT_FAILURE = "GET_POSITION_CONTRACT_FAILURE";
+const BATCH_GET_POSITION_INFO_FAILURE = "BATCH_GET_POSITION_INFO_FAILURE";
 const QUERY_POSITION_CONTRACT_INFO_FAILURE =
   "QUERY_POSITION_CONTRACT_INFO_FAILURE";
 const GET_POSITION_INFO_FAILURE = "GET_POSITION_INFO_FAILURE";
@@ -151,7 +142,7 @@ async function run_pipeline() {
   metrics[GET_POSITION_MANAGER_FAILURE] = 0;
   metrics[GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE] = 0;
   metrics[NUM_PROCESSED_POSITION] = 0;
-  metrics[GET_POSITION_CONTRACT_FAILURE] = 0;
+  metrics[BATCH_GET_POSITION_INFO_FAILURE] = 0;
   metrics[QUERY_POSITION_CONTRACT_INFO_FAILURE] = 0;
   metrics[GET_POSITION_INFO_FAILURE] = 0;
   metrics[SHOULD_REBALANCE_POSITION] = 0;
@@ -169,7 +160,6 @@ async function run_pipeline() {
         "witness produce visit clock feature chicken rural trend sock play weird barrel excess edge correct weird toilet buffalo vocal sock early similar unhappy gospel",
     })
   );
-  initializeSequence(wallet);
 
   console.log(
     `Controller operating on ${
@@ -212,67 +202,67 @@ async function run_pipeline() {
   }
   const position_manager_addr = delta_neutral_pos_mgr_res.manager_addr;
 
-  var position_manager_admin_config_res = undefined;
-  try {
-    position_manager_admin_config_res = await connection.wasm.contractQuery(
-      position_manager_addr,
-      {
-        get_admin_config: {},
-      }
-    );
-  } catch (error) {
-    console.log(
-      `Failed to get position manager admin config with error: ${error}`
-    );
-    metrics[GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE]++;
-    metrics[CONTRACT_QUERY_ERROR]++;
-    return;
-  }
+  const asset_timestamps_promise = getAssetTimestamp(
+    connection,
+    qps,
+    mirror_oracle_addr
+  );
 
-  const delta_neutral_position_code_id =
-    position_manager_admin_config_res.delta_neutral_position_code_id;
+  // Fetch position infos.
+  const next_id = parseInt(next_position_res.next_position_id);
+  var position_infos_promise = getPositionInfos(
+    next_id,
+    qps,
+    connection,
+    position_manager_addr
+  );
 
-  var promises = [];
-  for (var i = 0; i < parseInt(next_position_res.next_position_id); i++) {
-    // Trottle request.
-    if (i % qps == 0) {
-      await delay(1000);
+  var [asset_timestamps, position_infos] = await Promise.all([
+    asset_timestamps_promise,
+    position_infos_promise,
+  ]);
+
+  asset_timestamps = asset_timestamps.reduce((acc, cur) => {
+    if (cur && cur.token_addr) {
+      acc[cur.token_addr] = cur;
     }
-    let promise = maybeExecuteRebalance(
-      connection,
+    return acc;
+  }, {});
+
+  // An undefined position info indicates fetching errors.
+  position_infos = position_infos.filter((ele) => ele != undefined);
+
+  // Make rebalance decisions.
+  var rebalance_infos = [];
+  position_infos = position_infos.map((batch_position_info) => {
+    const rebalance_info = handleRebalance(
       position_manager_addr,
-      delta_neutral_position_code_id,
-      i,
-      mirror_oracle_addr,
+      batch_position_info,
+      asset_timestamps,
       delta_tolerance,
       balance_tolerance,
       time_tolerance,
       wallet
     );
-    promise.catch((err) => console.log("Caught unexpected error: ", err));
-    promises.push(promise);
-  }
-
-  console.log(`Waiting for ${promises.length} requests to complete.`);
-  const resolved_promises = await Promise.allSettled(promises);
-
-  // Extract out promises with msgs to execute.
-  var promises_with_result = [];
-  for (const promise of resolved_promises) {
-    if (promise.status == "fulfilled" && promise.value != undefined) {
-      promises_with_result.push(promise);
+    // If a position doesn't need rebalance, `handleRebalance` will return
+    // undefined.
+    if (rebalance_info) {
+      rebalance_infos.push(rebalance_info);
     }
-  }
+  });
+
   console.log(
-    `Total number of positions to rebalance: ${promises_with_result.length}`
+    `Total number of positions to rebalance: ${rebalance_infos.length}`
   );
+
+  console.dir(rebalance_infos, { depth: null });
 
   var num_included_positions = 0;
   var msgs_acc = [];
   var memos = [];
   var position_ids = [];
-  for (const [index, resolved_promise] of promises_with_result.entries()) {
-    const { msgs, asset_name, position_id, reason } = resolved_promise.value;
+  for (const [index, rebalance_info] of rebalance_infos.entries()) {
+    const { msgs, asset_name, position_id, reason } = rebalance_info;
     num_included_positions++;
     msgs_acc.push(...msgs);
     memos.push(`p:${position_id},a:${asset_name},r:${reason}`);
@@ -345,12 +335,54 @@ async function run_pipeline() {
   }
 }
 
-async function maybeExecuteRebalance(
+// Generates array [begin, begin + 1, begin + 2, ..., end - 1].
+function generateRangeArray(begin, end) {
+  if (begin >= end) return [];
+  return [...Array(end - begin).keys()].map((num) => num + begin);
+}
+
+async function getPositionInfos(
+  next_id,
+  qps,
   connection,
+  position_manager_addr
+) {
+  return await pool({
+    collection: generateRangeArray(0, next_id),
+    maxConcurrency: qps,
+    task: async (position_id) => {
+      metrics[NUM_PROCESSED_POSITION]++;
+      var position_info = undefined;
+      try {
+        position_info = await connection.wasm.contractQuery(
+          position_manager_addr,
+          {
+            batch_get_position_info: {
+              positions: [
+                {
+                  position_id: position_id.toString(),
+                  chain_id: TERRA_CHAIN_ID,
+                },
+              ],
+            },
+          }
+        );
+      } catch (error) {
+        console.log(
+          `Failed to batch get for position id ${position_id} with error: ${error}`
+        );
+        metrics[BATCH_GET_POSITION_INFO_FAILURE]++;
+        metrics[CONTRACT_QUERY_ERROR]++;
+      }
+      return position_info;
+    },
+  });
+}
+
+function handleRebalance(
   position_manager_addr,
-  delta_neutral_position_code_id,
-  position_id,
-  mirror_oracle_addr,
+  batch_position_info,
+  asset_timestamps,
   delta_tolerance,
   balance_tolerance,
   time_tolerance,
@@ -358,86 +390,43 @@ async function maybeExecuteRebalance(
 ) {
   metrics[NUM_PROCESSED_POSITION]++;
 
-  // Query position metadata.
-  var position_addr = undefined;
-  try {
-    position_addr = await connection.wasm.contractQuery(position_manager_addr, {
-      get_position_contract_addr: {
-        position: {
-          chain_id: TERRA_CHAIN_ID,
-          position_id: position_id.toString(),
-        },
-      },
-    });
-  } catch (error) {
-    console.log(`Failed to get position contract address with error: ${error}`);
-    metrics[GET_POSITION_CONTRACT_FAILURE]++;
-    metrics[CONTRACT_QUERY_ERROR]++;
-    return;
-  }
-
-  // Get position info.
-  var position_info = undefined;
-  try {
-    position_info = await connection.wasm.contractQuery(position_addr, {
-      get_position_info: {},
-    });
-  } catch (error) {
-    console.log(`Failed to get position info with error: ${error}`);
-    metrics[GET_POSITION_INFO_FAILURE]++;
-    metrics[CONTRACT_QUERY_ERROR]++;
-    return;
-  }
+  // We always query batch API with batch size of one.
+  const current_position = batch_position_info.items[0];
+  const position_info = current_position.info;
+  const position_id = current_position.position.position_id;
+  const position_addr = current_position.contract;
 
   if (position_info.detailed_info == null) {
     console.log("Position id ", position_id, " is closed.");
-    return;
+    return undefined;
   }
-
-  // Obtain current code id for the position contract.
-  var position_contract_info = undefined;
-  try {
-    position_contract_info = await connection.wasm.contractInfo(position_addr);
-  } catch (error) {
-    console.log(`Failed to query position contract info with error: ${error}`);
-    metrics[QUERY_POSITION_CONTRACT_INFO_FAILURE]++;
-    metrics[CONTRACT_QUERY_ERROR]++;
-    return;
-  }
-  const current_code_id = position_contract_info.code_id;
 
   var msgs = [];
-  // Migrate contract as needed.
-  if (current_code_id !== delta_neutral_position_code_id) {
-    console.log(
-      `Potentially will migrate position ${position_id} from ${current_code_id} to ${delta_neutral_position_code_id}.`
-    );
-    msgs.push(
-      new MsgExecuteContract(
-        /*sender=*/ wallet.key.accAddress,
-        /*contract=*/ position_manager_addr,
-        {
-          migrate_position_contracts: {
-            positions: [
-              {
-                chain_id: TERRA_CHAIN_ID,
-                position_id: position_id.toString(),
-              },
-            ],
-            position_contracts: [],
-          },
-        }
-      )
-    );
-  }
+  // Always migrate contract before rebalance and reinvest.
+  msgs.push(
+    new MsgExecuteContract(
+      /*sender=*/ wallet.key.accAddress,
+      /*contract=*/ position_manager_addr,
+      {
+        migrate_position_contracts: {
+          positions: [
+            {
+              chain_id: TERRA_CHAIN_ID,
+              position_id: position_id.toString(),
+            },
+          ],
+          position_contracts: [],
+        },
+      }
+    )
+  );
 
   const mAssetName = mAssetMap[position_info.mirror_asset_cw20_addr];
 
   // Determine whether we should trigger rebalance.
-  const { result, logging, reason } = await shouldRebalance(
-    connection,
+  const { result, logging, reason } = shouldRebalance(
     position_info,
-    mirror_oracle_addr,
+    asset_timestamps,
     delta_tolerance,
     balance_tolerance,
     time_tolerance
@@ -450,7 +439,7 @@ async function maybeExecuteRebalance(
 
   if (!result) {
     console.log(`Skipping rebalance for position ${position_id}.\n`);
-    return;
+    return undefined;
   }
 
   // Rebalance.
@@ -477,10 +466,9 @@ async function maybeExecuteRebalance(
   };
 }
 
-async function shouldRebalance(
-  connection,
+function shouldRebalance(
   position_info,
-  mirror_orcale_addr,
+  asset_timestamps,
   delta_tolerance,
   balance_tolerance,
   time_tolerance
@@ -489,21 +477,15 @@ async function shouldRebalance(
   const detailed_info = position_info.detailed_info;
   // Check market hours.
   var mirror_res = undefined;
-  try {
-    mirror_res = await connection.wasm.contractQuery(mirror_orcale_addr, {
-      price: {
-        quote_asset: "uusd",
-        base_asset: position_info.mirror_asset_cw20_addr,
-      },
-    });
-  } catch (error) {
-    logging += `Failed to query Mirror Orcale with error: ${error}\n`;
-    metrics[MIRROR_ORACLE_QUERY_FAILURE]++;
-    metrics[CONTRACT_QUERY_ERROR]++;
+  if (asset_timestamps[position_info.mirror_asset_cw20_addr]) {
+    mirror_res =
+      asset_timestamps[position_info.mirror_asset_cw20_addr].mirror_res;
+  } else {
+    logging += `Error: missing Mirror Oracle for ${position_info.mirror_asset_cw20_addr}.\n`;
     return { result: false, logging: logging, reason: "NA" };
   }
 
-  const last_updated_base_sec = mirror_res.last_updated_base;
+  const last_updated_base_sec = mirror_res.last_updated;
 
   // Do not rebalance if oracle price timestamp is too old.
   const current_time = new Date();
@@ -580,12 +562,43 @@ async function shouldRebalance(
   return { result: false, logging: logging, reason: "NA" };
 }
 
+async function getAssetTimestamp(connection, qps, mirror_orcale_addr) {
+  return await pool({
+    collection: Object.entries(mAssetMap),
+    maxConcurrency: qps,
+    task: async (entry) => {
+      var mirror_res = undefined;
+      const [token_addr, name] = entry;
+      const mirror_max_retry = 3;
+      var retry_count = 0;
+      while (retry_count < mirror_max_retry) {
+        try {
+          mirror_res = await connection.wasm.contractQuery(mirror_orcale_addr, {
+            price: {
+              asset_token: token_addr,
+            },
+          });
+          break;
+        } catch (error) {
+          console.log(`Failed to query Mirror Orcale with error: ${error}\n`);
+          metrics[MIRROR_ORACLE_QUERY_FAILURE]++;
+          metrics[CONTRACT_QUERY_ERROR]++;
+          // Delay briefly to avoid throttling.
+          delay(1000);
+          retry_count++;
+        }
+      }
+      return { token_addr: token_addr, mirror_res: mirror_res, name: name };
+    },
+  });
+}
+
 // Start.
 try {
   await run_pipeline();
 } catch (error) {
   console.log(`Some part of the operations failed with error: ${error}`);
 } finally {
-  await publishMetrics(metrics);
+  // await publishMetrics(metrics);
   console.log("Rebalance script execution completed.");
 }

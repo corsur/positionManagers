@@ -12,9 +12,9 @@ export const TERRA_MANAGER_MAINNET =
 export const TERRA_MANAGER_TESTNET =
   "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
 export const MIRROR_ORACLE_MAINNET =
-  "terra1t6xe0txzywdg85n6k8c960cuwgh6l8esw6lau9";
+  "terra1t5k2c2p2kf5as247egz53rj8g8g2x4jw9qte9a";
 export const MIRROR_ORACLE_TESTNET =
-  "terra1uvxhec74deupp47enh7z5pk55f3cvcz8nj4ww9";
+  "terra1sdr3rya4h039f4htfm42q44x3dlaxra7hc7p8e";
 export const TERRA_CHAIN_ID = 3;
 export const DELTA_NEUTRAL_STRATEGY_ID = "0";
 export const mAssetMap = {
