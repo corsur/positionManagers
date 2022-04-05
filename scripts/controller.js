@@ -599,6 +599,6 @@ try {
 } catch (error) {
   console.log(`Some part of the operations failed with error: ${error}`);
 } finally {
-  // await publishMetrics(metrics);
+  await publishMetrics(metrics);
   console.log("Rebalance script execution completed.");
 }
