@@ -236,7 +236,6 @@ async function run_pipeline() {
   var rebalance_infos = [];
   position_infos = position_infos.map((batch_position_info) => {
     const rebalance_info = handleRebalance(
-      position_manager_addr,
       batch_position_info,
       asset_timestamps,
       delta_tolerance,
@@ -261,19 +260,36 @@ async function run_pipeline() {
   var msgs_acc = [];
   var memos = [];
   var position_ids = [];
+  var position_addrs = [];
   for (const [index, rebalance_info] of rebalance_infos.entries()) {
-    const { msgs, asset_name, position_id, reason } = rebalance_info;
+    const { msg, asset_name, position_id, position_addr, reason } =
+      rebalance_info;
     num_included_positions++;
-    msgs_acc.push(...msgs);
+    msgs_acc.push(msg);
     memos.push(`p:${position_id},a:${asset_name},r:${reason}`);
     position_ids.push(position_id);
+    position_addrs.push(position_addr);
+
     // Send out tx if:
     //   1. We have accumulated enough positions.
     //   2. Or, we are at the last batch.
     if (
       num_included_positions == batch_size ||
-      index == promises_with_result.length - 1
+      index == rebalance_infos.length - 1
     ) {
+      // Prepend migration msg for the current batch.
+      const migrate_msg = new MsgExecuteContract(
+        /*sender=*/ wallet.key.accAddress,
+        /*contract=*/ position_manager_addr,
+        {
+          migrate_position_contracts: {
+            positions: [],
+            position_contracts: position_addrs,
+          },
+        }
+      );
+      msgs_acc = [migrate_msg, ...msgs_acc];
+
       var tx = undefined;
       try {
         tx = await wallet.createAndSignTx({
@@ -289,10 +305,12 @@ async function run_pipeline() {
         );
         metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
         console.log("\n");
+        // Clear states.
         num_included_positions = 0;
         memos = [];
         msgs_acc = [];
         position_ids = [];
+        position_addrs = [];
         continue;
       }
 
@@ -330,6 +348,7 @@ async function run_pipeline() {
         memos = [];
         msgs_acc = [];
         position_ids = [];
+        position_addrs = [];
       }
     }
   }
@@ -380,7 +399,6 @@ async function getPositionInfos(
 }
 
 function handleRebalance(
-  position_manager_addr,
   batch_position_info,
   asset_timestamps,
   delta_tolerance,
@@ -400,26 +418,6 @@ function handleRebalance(
     console.log("Position id ", position_id, " is closed.");
     return undefined;
   }
-
-  var msgs = [];
-  // Always migrate contract before rebalance and reinvest.
-  msgs.push(
-    new MsgExecuteContract(
-      /*sender=*/ wallet.key.accAddress,
-      /*contract=*/ position_manager_addr,
-      {
-        migrate_position_contracts: {
-          positions: [
-            {
-              chain_id: TERRA_CHAIN_ID,
-              position_id: position_id.toString(),
-            },
-          ],
-          position_contracts: [],
-        },
-      }
-    )
-  );
 
   const mAssetName = mAssetMap[position_info.mirror_asset_cw20_addr];
 
@@ -444,24 +442,23 @@ function handleRebalance(
 
   // Rebalance.
   metrics[SHOULD_REBALANCE_POSITION]++;
-  msgs.push(
-    new MsgExecuteContract(
-      /*sender=*/ wallet.key.accAddress,
-      /*contract=*/ position_addr,
-      {
-        controller: {
-          rebalance_and_reinvest: {},
-        },
-      }
-    )
+  const msg = new MsgExecuteContract(
+    /*sender=*/ wallet.key.accAddress,
+    /*contract=*/ position_addr,
+    {
+      controller: {
+        rebalance_and_reinvest: {},
+      },
+    }
   );
   // Add new line for logging.
   console.log("\n");
 
   return {
-    msgs: msgs,
+    msg: msg,
     asset_name: mAssetName,
     position_id: position_id,
+    position_addr: position_addr,
     reason: reason,
   };
 }
