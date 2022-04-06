@@ -23,6 +23,8 @@ import {
   MsgExecuteContract,
 } from "@terra-money/terra.js";
 import pool from "@ricokahler/pool";
+import { getPositionInfoQueries } from "./utils/graphql_queries.js";
+import axios from "axios";
 
 async function publishMetrics(metrics_and_count) {
   var metrics_data = [];
@@ -51,6 +53,7 @@ async function publishMetrics(metrics_and_count) {
 const client = new CloudWatchClient({ region: "us-west-2" });
 var metrics = {};
 const CONTRACT_QUERY_ERROR = "CONTRACT_QUERY_ERROR";
+const HIVE_QUERY_ERROR = "HIVE_QUERY_ERROR";
 const CONTROLLER_START = "CONTROLLER_START";
 const MIRROR_ORACLE_QUERY_FAILURE = "MIRROR_ORACLE_QUERY_FAILURE";
 const GET_NEXT_POSITION_ID_FAILURE = "GET_NEXT_POSITION_ID_FAILURE";
@@ -106,6 +109,12 @@ async function run_pipeline() {
     default: 5,
     type: "int",
   });
+  parser.add_argument("-hbs", "--hive_batch_size", {
+    help: "Number of positions to query against Terra Hive.",
+    required: false,
+    default: 200,
+    type: "int",
+  });
 
   // Parse and validate.
   const {
@@ -115,6 +124,7 @@ async function run_pipeline() {
     time_tolerance,
     qps,
     batch_size,
+    hive_batch_size,
   } = parser.parse_args();
 
   var terra_manager = "";
@@ -136,6 +146,7 @@ async function run_pipeline() {
 
   // Initialize metric counters.
   metrics[CONTRACT_QUERY_ERROR] = 0;
+  metrics[HIVE_QUERY_ERROR] = 0;
   metrics[CONTROLLER_START] = 0;
   metrics[MIRROR_ORACLE_QUERY_FAILURE] = 0;
   metrics[GET_NEXT_POSITION_ID_FAILURE] = 0;
@@ -214,7 +225,8 @@ async function run_pipeline() {
     next_id,
     qps,
     connection,
-    position_manager_addr
+    position_manager_addr,
+    hive_batch_size
   );
 
   var [asset_timestamps, position_infos] = await Promise.all([
@@ -364,38 +376,79 @@ async function getPositionInfos(
   next_id,
   qps,
   connection,
-  position_manager_addr
+  position_manager_addr,
+  hive_batch_size
 ) {
-  return await pool({
-    collection: generateRangeArray(0, next_id),
-    maxConcurrency: qps,
-    task: async (position_id) => {
-      metrics[NUM_PROCESSED_POSITION]++;
-      var position_info = undefined;
-      try {
-        position_info = await connection.wasm.contractQuery(
-          position_manager_addr,
-          {
-            batch_get_position_info: {
-              positions: [
-                {
-                  position_id: position_id.toString(),
-                  chain_id: TERRA_CHAIN_ID,
-                },
-              ],
+  var all_position_infos = undefined;
+  let hive_query_num_batches = Math.ceil(parseFloat(next_id) / hive_batch_size);
+  try {
+    all_position_infos = (
+      await pool({
+        collection: generateRangeArray(0, hive_query_num_batches),
+        maxConcurrency: qps,
+        task: async (batch_id) => {
+          let start_position_id = batch_id * hive_batch_size;
+          let end_position_id = Math.min(
+            start_position_id + hive_batch_size,
+            next_id
+          );
+          let hive_query = getPositionInfoQueries(
+            generateRangeArray(start_position_id, end_position_id),
+            position_manager_addr
+          );
+
+          let hive_response = await axios({
+            method: "post",
+            url: "https://hive.terra.dev/graphql",
+            data: {
+              query: hive_query,
             },
-          }
-        );
-      } catch (error) {
-        console.log(
-          `Failed to batch get for position id ${position_id} with error: ${error}`
-        );
-        metrics[BATCH_GET_POSITION_INFO_FAILURE]++;
-        metrics[CONTRACT_QUERY_ERROR]++;
-      }
-      return position_info;
-    },
-  });
+          });
+          return Object.values(hive_response.data.data).map(
+            (element) => element.contractQuery
+          );
+        },
+      })
+    ).flat();
+  } catch (error) {
+    console.log(
+      `Failed to query Terra Hive with error: ${error}. Falling back to Terra node.`
+    );
+    metrics[BATCH_GET_POSITION_INFO_FAILURE]++;
+    metrics[HIVE_QUERY_ERROR]++;
+
+    all_position_infos = await pool({
+      collection: generateRangeArray(0, next_id),
+      maxConcurrency: qps,
+      task: async (position_id) => {
+        metrics[NUM_PROCESSED_POSITION]++;
+        var position_info = undefined;
+        try {
+          position_info = await connection.wasm.contractQuery(
+            position_manager_addr,
+            {
+              batch_get_position_info: {
+                positions: [
+                  {
+                    position_id: position_id.toString(),
+                    chain_id: TERRA_CHAIN_ID,
+                  },
+                ],
+              },
+            }
+          );
+        } catch (error) {
+          console.log(
+            `Failed to batch get for position id ${position_id} with error: ${error}`
+          );
+          metrics[BATCH_GET_POSITION_INFO_FAILURE]++;
+          metrics[CONTRACT_QUERY_ERROR]++;
+        }
+        return position_info;
+      },
+    });
+  }
+  return all_position_infos;
 }
 
 function handleRebalance(

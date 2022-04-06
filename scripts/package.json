@@ -15,6 +15,7 @@
     "@terra-money/terra.js": "^3.0.1",
     "argparse": "^2.0.1",
     "axios": "^0.25.0",
-    "big.js": "^6.1.1"
+    "big.js": "^6.1.1",
+    "json5": "^2.2.1"
   }
 }
