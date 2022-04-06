@@ -31,3 +31,19 @@ export function getPositionInfoQueries(position_ids, addr) {
     "}"
   );
 }
+
+export function getMAssetQuoteQueries(mirror_oracle_addr, addrs) {
+  return (
+    "{" +
+    addrs
+      .map((addr) =>
+        wasmQuery(`${addr}`, mirror_oracle_addr, {
+          price: {
+            asset_token: addr,
+          },
+        })
+      )
+      .join(",") +
+    "}"
+  );
+}

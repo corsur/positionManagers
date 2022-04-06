@@ -23,8 +23,15 @@ import {
   MsgExecuteContract,
 } from "@terra-money/terra.js";
 import pool from "@ricokahler/pool";
-import { getPositionInfoQueries } from "./utils/graphql_queries.js";
+import {
+  getMAssetQuoteQueries,
+  getPositionInfoQueries,
+} from "./utils/graphql_queries.js";
 import axios from "axios";
+import axiosRetry from "axios-retry";
+
+// Configure retry mechanism global Axios instance.
+axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
 
 async function publishMetrics(metrics_and_count) {
   var metrics_data = [];
@@ -410,6 +417,7 @@ async function getPositionInfos(
         },
       })
     ).flat();
+    console.log("Using Terra Hive for position info queries.");
   } catch (error) {
     console.log(
       `Failed to query Terra Hive with error: ${error}. Falling back to Terra node.`
@@ -447,6 +455,7 @@ async function getPositionInfos(
         return position_info;
       },
     });
+    console.log("Using Terra node for position info queries.");
   }
   return all_position_infos;
 }
@@ -612,35 +621,73 @@ function shouldRebalance(
   return { result: false, logging: logging, reason: "NA" };
 }
 
-async function getAssetTimestamp(connection, qps, mirror_orcale_addr) {
-  return await pool({
-    collection: Object.entries(mAssetMap),
-    maxConcurrency: qps,
-    task: async (entry) => {
-      var mirror_res = undefined;
-      const [token_addr, name] = entry;
-      const mirror_max_retry = 3;
-      var retry_count = 0;
-      while (retry_count < mirror_max_retry) {
-        try {
-          mirror_res = await connection.wasm.contractQuery(mirror_orcale_addr, {
-            price: {
-              asset_token: token_addr,
-            },
-          });
-          break;
-        } catch (error) {
-          console.log(`Failed to query Mirror Orcale with error: ${error}\n`);
-          metrics[MIRROR_ORACLE_QUERY_FAILURE]++;
-          metrics[CONTRACT_QUERY_ERROR]++;
-          // Delay briefly to avoid throttling.
-          delay(1000);
-          retry_count++;
-        }
+async function getAssetTimestamp(connection, qps, mirror_oracle_addr) {
+  var mAsset_timestamps = undefined;
+  try {
+    const hive_query = getMAssetQuoteQueries(
+      mirror_oracle_addr,
+      Object.keys(mAssetMap)
+    );
+    let hive_response = await axios({
+      method: "post",
+      url: "https://hive.terra.dev/graphql",
+      data: {
+        query: hive_query,
+      },
+    });
+
+    mAsset_timestamps = Object.entries(hive_response.data.data).map(
+      (element) => {
+        const [token_addr, res] = element;
+        return {
+          token_addr: token_addr,
+          mirror_res: res.contractQuery,
+          name: mAssetMap[token_addr],
+        };
       }
-      return { token_addr: token_addr, mirror_res: mirror_res, name: name };
-    },
-  });
+    );
+    console.log("Using Terra Hive for mAsset quote queries.");
+  } catch (error) {
+    console.log(
+      `Failed to Hive for Mirror Oracle with error ${error}. Fallback to Terra node.`
+    );
+    metrics[MIRROR_ORACLE_QUERY_FAILURE]++;
+    metrics[HIVE_QUERY_ERROR]++;
+
+    mAsset_timestamps = await pool({
+      collection: Object.entries(mAssetMap),
+      maxConcurrency: qps,
+      task: async (entry) => {
+        var mirror_res = undefined;
+        const [token_addr, name] = entry;
+        const mirror_max_retry = 3;
+        var retry_count = 0;
+        while (retry_count < mirror_max_retry) {
+          try {
+            mirror_res = await connection.wasm.contractQuery(
+              mirror_oracle_addr,
+              {
+                price: {
+                  asset_token: token_addr,
+                },
+              }
+            );
+            break;
+          } catch (error) {
+            console.log(`Failed to query Mirror Orcale with error: ${error}\n`);
+            metrics[MIRROR_ORACLE_QUERY_FAILURE]++;
+            metrics[CONTRACT_QUERY_ERROR]++;
+            // Delay briefly to avoid throttling.
+            delay(1000);
+            retry_count++;
+          }
+        }
+        return { token_addr: token_addr, mirror_res: mirror_res, name: name };
+      },
+    });
+    console.log("Using Terra node for mAsset quote queries.");
+  }
+  return mAsset_timestamps;
 }
 
 // Start.
