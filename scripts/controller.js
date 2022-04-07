@@ -318,9 +318,9 @@ async function run_pipeline() {
         });
       } catch (error) {
         console.log(
-          `Failed to createAndSignTx with error ${error} for position ids: ${position_ids.join(
-            ","
-          )}`
+          `Failed to createAndSignTx with error: ${
+            error.response.data.message
+          } for position ids: ${position_ids.join(",")}`
         );
         metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
         console.log("\n");
@@ -357,9 +357,9 @@ async function run_pipeline() {
       } catch (error) {
         metrics[REBALANCE_BROADCAST_FAILURE]++;
         console.log(
-          `Broadcast tx failed with error ${error} for position ids: ${position_ids.join(
-            ","
-          )}`
+          `Broadcast tx failed with error: ${
+            error.response.data.message
+          } for position ids: ${position_ids.join(",")}`
         );
       } finally {
         // Clear states.
