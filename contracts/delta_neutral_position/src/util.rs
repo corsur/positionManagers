@@ -84,9 +84,11 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         )?;
 
     let mut lp_token_amount = Uint128::zero();
+    let mut spectrum_auto_compound_share_amount = Uint128::zero();
     for info in spectrum_info.reward_infos.iter() {
         if info.asset_token == mirror_asset_cw20_addr {
             lp_token_amount = info.bond_amount;
+            spectrum_auto_compound_share_amount = info.auto_bond_share;
         }
     }
     let asset_infos = create_terraswap_cw20_uusd_pair_asset_info(&mirror_asset_cw20_addr);
@@ -143,6 +145,7 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
             terraswap_pair_addr,
             terraswap_pool_mirror_asset_amount,
             terraswap_pool_uusd_amount,
+            spectrum_auto_compound_share_amount,
         },
     };
     Ok(state)
@@ -213,6 +216,7 @@ fn test_increase_mirror_asset_balance_from_long_farm() {
             terraswap_pair_addr: String::from("terraswap_pair"),
             terraswap_pool_mirror_asset_amount: Uint128::from(54529109845u128),
             terraswap_pool_uusd_amount: Uint128::from(924941217839u128),
+            spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
         },
     };
     let target_mirror_asset_balance = Uint128::from(1684481u128);

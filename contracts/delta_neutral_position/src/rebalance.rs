@@ -5,7 +5,10 @@ use aperture_common::delta_neutral_position_manager::Context;
 use cosmwasm_std::{to_binary, Coin, CosmosMsg, Decimal, Deps, Env, StdResult, Uint128, WasmMsg};
 
 use crate::dex_util::{simulate_terraswap_swap, swap_cw20_token_for_uusd};
-use crate::spectrum_util::unstake_lp_from_spectrum_and_withdraw_liquidity;
+use crate::spectrum_util::{
+    get_spectrum_mirror_lp_balance, get_spectrum_mirror_pool_info,
+    simulate_spectrum_mirror_farm_unbond, unstake_lp_from_spectrum_and_withdraw_liquidity,
+};
 use crate::state::{CDP_IDX, MIRROR_ASSET_CW20_ADDR};
 use crate::util::{
     find_unclaimed_mir_amount, find_unclaimed_spec_amount, get_cdp_uusd_lock_info_result,
@@ -124,6 +127,24 @@ pub fn achieve_delta_neutral_from_state(
     let info = &state.terraswap_pool_info;
     let mut messages = vec![];
     let one = Uint128::from(1u128);
+
+    // If there are LP tokens staked in Spectrum, obtain Spectrum Mirror Farm pool information which is used by simulate_spectrum_mirror_farm_unbond().
+    let mut spectrum_pool_info = None;
+    let mut spectrum_mirror_pool_lp_balance = Uint128::zero();
+    if !info.lp_token_amount.is_zero() {
+        spectrum_pool_info = Some(get_spectrum_mirror_pool_info(
+            deps,
+            &context.spectrum_mirror_farms_addr,
+            &mirror_asset_cw20_addr,
+        )?);
+        spectrum_mirror_pool_lp_balance = get_spectrum_mirror_lp_balance(
+            deps,
+            &context.mirror_staking_addr,
+            &context.spectrum_mirror_farms_addr,
+            &mirror_asset_cw20_addr,
+        )?;
+    }
+
     match state
         .mirror_asset_long_amount
         .cmp(&state.mirror_asset_short_amount)
@@ -142,9 +163,19 @@ pub fn achieve_delta_neutral_from_state(
                 let withdraw_lp_token_amount = (a + b) >> 1;
                 let pool_mirror_asset_amount_after_swap =
                     info.terraswap_pool_mirror_asset_amount + state.mirror_asset_balance;
+                let lp_token_amount_after_withdrawal = if withdraw_lp_token_amount.is_zero() {
+                    info.lp_token_amount
+                } else {
+                    simulate_spectrum_mirror_farm_unbond(
+                        spectrum_mirror_pool_lp_balance,
+                        spectrum_pool_info.clone().unwrap(),
+                        info.spectrum_auto_compound_share_amount,
+                        withdraw_lp_token_amount,
+                    )?
+                };
                 let new_long_farm_mirror_asset_amount = pool_mirror_asset_amount_after_swap
                     * Decimal::from_ratio(
-                        info.lp_token_amount - withdraw_lp_token_amount,
+                        lp_token_amount_after_withdrawal,
                         info.lp_token_total_supply - withdraw_lp_token_amount,
                     );
                 if new_long_farm_mirror_asset_amount > state.mirror_asset_short_amount {
@@ -172,7 +203,12 @@ pub fn achieve_delta_neutral_from_state(
                     * Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
                 current_mirror_asset_balance += withdrawn_mirror_asset_amount;
                 current_pool_mirror_asset_amount -= withdrawn_mirror_asset_amount;
-                current_lp_token_amount -= withdraw_lp_token_amount;
+                current_lp_token_amount = simulate_spectrum_mirror_farm_unbond(
+                    spectrum_mirror_pool_lp_balance,
+                    spectrum_pool_info.unwrap(),
+                    info.spectrum_auto_compound_share_amount,
+                    withdraw_lp_token_amount,
+                )?;
                 current_lp_token_total_supply -= withdraw_lp_token_amount;
             }
 
@@ -234,6 +270,16 @@ pub fn achieve_delta_neutral_from_state(
                     info.terraswap_pool_mirror_asset_amount - withdrawn_mirror_asset_amount;
                 let pool_uusd_amount_after_withdrawal =
                     info.terraswap_pool_uusd_amount - withdrawn_uusd_amount;
+                let lp_token_amount_after_withdrawal = if withdraw_lp_token_amount.is_zero() {
+                    info.lp_token_amount
+                } else {
+                    simulate_spectrum_mirror_farm_unbond(
+                        spectrum_mirror_pool_lp_balance,
+                        spectrum_pool_info.clone().unwrap(),
+                        info.spectrum_auto_compound_share_amount,
+                        withdraw_lp_token_amount,
+                    )?
+                };
                 let (_, pool_mirror_asset_amount_after_swap, return_mirror_asset_amount) =
                     simulate_terraswap_swap(
                         pool_uusd_amount_after_withdrawal,
@@ -242,7 +288,7 @@ pub fn achieve_delta_neutral_from_state(
                     );
                 let mirror_asset_long_farm_amount = pool_mirror_asset_amount_after_swap
                     * Decimal::from_ratio(
-                        info.lp_token_amount - withdraw_lp_token_amount,
+                        lp_token_amount_after_withdrawal,
                         info.lp_token_total_supply - withdraw_lp_token_amount,
                     );
                 let mirror_asset_long_amount = state.mirror_asset_balance
@@ -281,7 +327,12 @@ pub fn achieve_delta_neutral_from_state(
                 current_uusd_balance += withdrawn_uusd_amount;
                 current_pool_mirror_asset_amount -= withdrawn_mirror_asset_amount;
                 current_pool_uusd_amount -= withdrawn_uusd_amount;
-                current_lp_token_amount -= withdraw_lp_token_amount;
+                current_lp_token_amount = simulate_spectrum_mirror_farm_unbond(
+                    spectrum_mirror_pool_lp_balance,
+                    spectrum_pool_info.unwrap(),
+                    info.spectrum_auto_compound_share_amount,
+                    withdraw_lp_token_amount,
+                )?;
                 current_lp_token_total_supply -= withdraw_lp_token_amount;
             }
 
@@ -571,6 +622,7 @@ fn test_achieve_delta_neutral_from_net_long() {
                 terraswap_pair_addr: String::from("terra1prfcyujt9nsn5kfj5n925sfd737r2n8tk5lmpv"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(27948214u128),
                 terraswap_pool_uusd_amount: Uint128::from(1398215539717u128),
+                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
             },
         }),
         [CosmosMsg::Wasm(WasmMsg::Execute {
@@ -609,6 +661,7 @@ fn test_achieve_delta_neutral_from_net_long() {
                 terraswap_pair_addr: String::from("mock_terraswap_pair"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
                 terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
             },
         }),
         [
@@ -671,6 +724,7 @@ fn test_achieve_delta_neutral_from_net_short() {
                 terraswap_pair_addr: String::from("mock_terraswap_pair"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
                 terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
             },
         }),
         [CosmosMsg::Wasm(WasmMsg::Execute {
@@ -713,6 +767,7 @@ fn test_achieve_delta_neutral_from_net_short() {
                 terraswap_pair_addr: String::from("mock_terraswap_pair"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
                 terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
             },
         }),
         [
@@ -779,6 +834,7 @@ fn test_achieve_delta_neutral_from_neutral() {
                 terraswap_pair_addr: String::from("mock_terraswap_pair"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
                 terraswap_pool_uusd_amount: Uint128::from(9000000u128),
+                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
             },
         })
         .is_empty()

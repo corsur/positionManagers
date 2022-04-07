@@ -17,4 +17,5 @@ cw-storage-plus = { version = "0.9.1" }
 cw20 = "0.9.1"
 schemars = "0.8.1"
 serde = { version = "1.0.136", default-features = false, features = ["derive"] }
+spectrum-protocol = { version = "0.2.0", path = "../spectrum_protocol" }
 terraswap = "2.4.0"

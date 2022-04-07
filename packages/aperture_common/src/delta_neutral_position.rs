@@ -74,6 +74,10 @@ pub struct TerraswapPoolInfo {
     pub terraswap_pool_mirror_asset_amount: Uint128,
     // Balance of uusd in the mAsset-UST Terraswap pool.
     pub terraswap_pool_uusd_amount: Uint128,
+    // The number of auto-compound shares in the Spectrum Mirror Farm.
+    // These shares can currently be redeemed for `lp_token_amount` amount of LP tokens.
+    // This value is represented as `auto_bond_share` in Spectrum Mirror Farm reward info.
+    pub spectrum_auto_compound_share_amount: Uint128,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
