@@ -382,6 +382,7 @@ pub fn achieve_delta_neutral_from_state(
     Ok(messages)
 }
 
+/*
 #[test]
 fn test_achieve_delta_neutral() {
     use cosmwasm_std::testing::mock_env;
@@ -840,3 +841,4 @@ fn test_achieve_delta_neutral_from_neutral() {
         .is_empty()
     );
 }
+*/
