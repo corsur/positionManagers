@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use aperture_common::{
     delta_neutral_position::TargetCollateralRatioRange, delta_neutral_position_manager::Context,
 };
@@ -15,7 +17,7 @@ use crate::{
     },
     math::{decimal_division, reverse_decimal},
     mirror_util::{get_mirror_asset_config_response, is_mirror_asset_delisted},
-    util::{get_uusd_asset_from_amount, get_uusd_coin_from_amount},
+    util::{get_uusd_asset_from_amount, get_uusd_coin_from_amount, MIN_TARGET_CR_RANGE_WIDTH},
 };
 
 // Open a (or increase an existing) delta-neutral position with the following parameters:
@@ -55,12 +57,22 @@ pub fn delta_neutral_invest(
         return Err(StdError::generic_err("mAsset is delisted"));
     }
 
-    // Check that target_min_collateral_ratio meets the safety margin requirement, i.e. exceeds the minimum threshold by at least the configured safety margin.
+    // Check that target_min_collateral_ratio.min meets the safety margin requirement, i.e. exceeds the minimum threshold by at least the configured safety margin.
     if target_collateral_ratio_range.min
         < mirror_asset_config_response.min_collateral_ratio + context.collateral_ratio_safety_margin
     {
         return Err(StdError::generic_err(
             "target_min_collateral_ratio too small",
+        ));
+    }
+
+    // Check that target_min_collateral_ratio.max meets the width requirement, i.e. exceeds .min by at least MIN_TARGET_CR_RANGE_WIDTH.
+    // This also reject invalid values where .max <= .min.
+    if target_collateral_ratio_range.max
+        < target_collateral_ratio_range.min + Decimal::from_str(MIN_TARGET_CR_RANGE_WIDTH)?
+    {
+        return Err(StdError::generic_err(
+            "target_max_collateral_ratio too small",
         ));
     }
 
@@ -277,8 +289,8 @@ fn test_delta_neutral_invest() {
         spectrum_gov_addr: Addr::unchecked("spectrum_gov"),
         spectrum_mirror_farms_addr: Addr::unchecked("spectrum_mirror_farms"),
         spectrum_staker_addr: Addr::unchecked("spectrum_staker"),
-        terraswap_factory_addr: terraswap_factory_addr,
-        astroport_factory_addr: astroport_factory_addr,
+        terraswap_factory_addr,
+        astroport_factory_addr,
         collateral_ratio_safety_margin: Decimal::from_ratio(3u128, 10u128),
         min_open_uusd_amount: Uint128::from(500u128),
         min_reinvest_uusd_amount: Uint128::from(10u128),
@@ -290,7 +302,7 @@ fn test_delta_neutral_invest() {
     let response = delta_neutral_invest(
         deps.as_mut(),
         &env,
-        context,
+        context.clone(),
         Uint128::from(600u128),
         target_collateral_ratio_range,
         &cw20_token_addr,
@@ -348,5 +360,59 @@ fn test_delta_neutral_invest() {
             .unwrap(),
             funds: vec![get_uusd_coin_from_amount(Uint128::from(180u128))],
         })
+    );
+
+    assert_eq!(
+        delta_neutral_invest(
+            deps.as_mut(),
+            &env,
+            context.clone(),
+            Uint128::from(600u128),
+            &TargetCollateralRatioRange {
+                min: Decimal::from_ratio(16u128, 10u128),
+                max: Decimal::from_ratio(22u128, 10u128),
+            },
+            &cw20_token_addr,
+            Decimal::from_ratio(10u128, 1u128),
+            None,
+        )
+        .unwrap_err(),
+        StdError::generic_err("target_min_collateral_ratio too small")
+    );
+
+    assert_eq!(
+        delta_neutral_invest(
+            deps.as_mut(),
+            &env,
+            context.clone(),
+            Uint128::from(600u128),
+            &TargetCollateralRatioRange {
+                min: Decimal::from_ratio(18u128, 10u128),
+                max: Decimal::from_ratio(17u128, 10u128),
+            },
+            &cw20_token_addr,
+            Decimal::from_ratio(10u128, 1u128),
+            None,
+        )
+        .unwrap_err(),
+        StdError::generic_err("target_max_collateral_ratio too small")
+    );
+
+    assert_eq!(
+        delta_neutral_invest(
+            deps.as_mut(),
+            &env,
+            context,
+            Uint128::from(600u128),
+            &TargetCollateralRatioRange {
+                min: Decimal::from_ratio(18u128, 10u128),
+                max: Decimal::from_ratio(21u128, 10u128),
+            },
+            &cw20_token_addr,
+            Decimal::from_ratio(10u128, 1u128),
+            None,
+        )
+        .unwrap_err(),
+        StdError::generic_err("target_max_collateral_ratio too small")
     );
 }

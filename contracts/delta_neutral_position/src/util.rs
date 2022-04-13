@@ -26,6 +26,9 @@ use crate::{
     },
 };
 
+// TODO(gnarlycow): Consider making this configurable through delta_neutral_position_manager::Context or AdminConfig.
+pub const MIN_TARGET_CR_RANGE_WIDTH: &str = "0.4";
+
 pub fn get_uusd_asset_from_amount(amount: Uint128) -> Asset {
     Asset {
         info: AssetInfo::NativeToken {

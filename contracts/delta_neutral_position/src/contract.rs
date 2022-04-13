@@ -1,4 +1,5 @@
 use std::cmp::min;
+use std::str::FromStr;
 
 use aperture_common::common::Recipient;
 use aperture_common::delta_neutral_position_manager::{self, Context, FeeCollectionConfig};
@@ -12,7 +13,9 @@ use terraswap::asset::{Asset, AssetInfo};
 
 use crate::dex_util::compute_terraswap_liquidity_token_mint_amount;
 use crate::math::{decimal_division, decimal_multiplication, reverse_decimal};
-use crate::mirror_util::get_mirror_asset_fresh_oracle_uusd_rate;
+use crate::mirror_util::{
+    get_mirror_asset_config_response, get_mirror_asset_fresh_oracle_uusd_rate,
+};
 use crate::open::delta_neutral_invest;
 use crate::rebalance::achieve_delta_neutral;
 use crate::spectrum_util::check_spectrum_mirror_farm_existence;
@@ -23,7 +26,7 @@ use crate::state::{
 use crate::util::{
     get_cdp_uusd_lock_info_result, get_position_state, get_uusd_asset_from_amount,
     get_uusd_balance, get_uusd_coin_from_amount, increase_mirror_asset_balance_from_long_farm,
-    increase_uusd_balance_from_aust_collateral, query_position_info,
+    increase_uusd_balance_from_aust_collateral, query_position_info, MIN_TARGET_CR_RANGE_WIDTH,
 };
 use aperture_common::delta_neutral_position::{
     ControllerExecuteMsg, ExecuteMsg, InstantiateMsg, InternalExecuteMsg, MigrateMsg,
@@ -85,7 +88,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         },
         ExecuteMsg::Internal(internal_msg) => match internal_msg {
             InternalExecuteMsg::AchieveSafeCollateralRatio {} => {
-                achieve_safe_collateral_ratios(deps.as_ref(), env, context)
+                achieve_safe_collateral_ratios(deps, env, context)
             }
             InternalExecuteMsg::WithdrawFundsInUusd { recipient } => {
                 withdraw_funds_in_uusd(deps, env, context, recipient)
@@ -225,16 +228,39 @@ pub fn rebalance_and_collect_fees(deps: Deps, env: Env, context: Context) -> Std
 }
 
 pub fn achieve_safe_collateral_ratios(
-    deps: Deps,
+    deps: DepsMut,
     env: Env,
     context: Context,
 ) -> StdResult<Response> {
-    let state = get_position_state(deps, &env, &context)?;
+    let state = get_position_state(deps.as_ref(), &env, &context)?;
     let collateral_ratio = Decimal::from_ratio(
         state.collateral_uusd_value,
         state.mirror_asset_oracle_price * state.mirror_asset_short_amount,
     );
-    let target_collateral_ratio_range = TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
+    let mut target_collateral_ratio_range = TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
+
+    // Increase target CR range if the current minimum required has been raised by Mirror governance.
+    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
+    let mirror_asset_config_response =
+        get_mirror_asset_config_response(&deps.querier, &context, mirror_asset_cw20_addr.as_str())?;
+    if target_collateral_ratio_range.min
+        < mirror_asset_config_response.min_collateral_ratio + context.collateral_ratio_safety_margin
+    {
+        // Update `target_collateral_ratio_range.min` to the new, higher value.
+        target_collateral_ratio_range.min = mirror_asset_config_response.min_collateral_ratio
+            + context.collateral_ratio_safety_margin;
+
+        // Update `target_collateral_ratio_range.max` if the new minimum plus the required width is higher.
+        let min_target_collater_ratio_range_width = Decimal::from_str(MIN_TARGET_CR_RANGE_WIDTH)?;
+        target_collateral_ratio_range.max = std::cmp::max(
+            target_collateral_ratio_range.max,
+            target_collateral_ratio_range.min + min_target_collater_ratio_range_width,
+        );
+
+        // Save updated target CR range.
+        TARGET_COLLATERAL_RATIO_RANGE.save(deps.storage, &target_collateral_ratio_range)?;
+    }
+
     let mut response = Response::new();
     if collateral_ratio < target_collateral_ratio_range.min {
         let target_short_mirror_asset_amount = state.collateral_uusd_value
@@ -249,11 +275,11 @@ pub fn achieve_safe_collateral_ratios(
         response = response.add_messages(increase_mirror_asset_balance_from_long_farm(
             &state,
             &context.spectrum_mirror_farms_addr,
-            &MIRROR_ASSET_CW20_ADDR.load(deps.storage)?,
+            &mirror_asset_cw20_addr,
             burn_mirror_asset_amount,
         ));
         response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: MIRROR_ASSET_CW20_ADDR.load(deps.storage)?.to_string(),
+            contract_addr: mirror_asset_cw20_addr.to_string(),
             funds: vec![],
             msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
                 contract: context.mirror_mint_addr.to_string(),
