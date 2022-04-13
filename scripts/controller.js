@@ -10,6 +10,9 @@ import {
   DELTA_NEUTRAL_STRATEGY_ID,
   mainnetTerraController,
   mAssetMap,
+  CR_SAFETY_MARGIN,
+  MIRROR_MINT_MAINNET,
+  MIRROR_MINT_TESTNET,
   MIRROR_ORACLE_MAINNET,
   MIRROR_ORACLE_TESTNET,
   TERRA_CHAIN_ID,
@@ -18,13 +21,13 @@ import {
   testnetTerra,
 } from "./utils/terra.js";
 import {
-  isTxError,
   MnemonicKey,
   MsgExecuteContract,
 } from "@terra-money/terra.js";
 import pool from "@ricokahler/pool";
 import {
   getMAssetQuoteQueries,
+  getMAssetRequiredCRQueries,
   getPositionInfoQueries,
 } from "./utils/graphql_queries.js";
 import axios from "axios";
@@ -63,6 +66,7 @@ const CONTRACT_QUERY_ERROR = "CONTRACT_QUERY_ERROR";
 const HIVE_QUERY_ERROR = "HIVE_QUERY_ERROR";
 const CONTROLLER_START = "CONTROLLER_START";
 const MIRROR_ORACLE_QUERY_FAILURE = "MIRROR_ORACLE_QUERY_FAILURE";
+const MIRROR_MINT_QUERY_FAILURE = "MIRROR_MINT_QUERY_FAILURE";
 const GET_NEXT_POSITION_ID_FAILURE = "GET_NEXT_POSITION_ID_FAILURE";
 const GET_POSITION_MANAGER_FAILURE = "GET_POSITION_MANAGER_FAILURE";
 const GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE =
@@ -137,15 +141,18 @@ async function run_pipeline() {
   var terra_manager = "";
   var connection = undefined;
   var mirror_oracle_addr = "";
+  var mirror_mint_addr = "";
 
   if (network == "testnet") {
     terra_manager = TERRA_MANAGER_TESTNET;
     connection = testnetTerra;
     mirror_oracle_addr = MIRROR_ORACLE_TESTNET;
+    mirror_mint_addr = MIRROR_MINT_TESTNET;
   } else if (network == "mainnet") {
     terra_manager = TERRA_MANAGER_MAINNET;
     connection = mainnetTerraController;
     mirror_oracle_addr = MIRROR_ORACLE_MAINNET;
+    mirror_mint_addr = MIRROR_MINT_MAINNET;
   } else {
     console.log(`Invalid network argument ${parser.parse_args().network}`);
     return;
@@ -156,6 +163,7 @@ async function run_pipeline() {
   metrics[HIVE_QUERY_ERROR] = 0;
   metrics[CONTROLLER_START] = 0;
   metrics[MIRROR_ORACLE_QUERY_FAILURE] = 0;
+  metrics[MIRROR_MINT_QUERY_FAILURE] = 0;
   metrics[GET_NEXT_POSITION_ID_FAILURE] = 0;
   metrics[GET_POSITION_MANAGER_FAILURE] = 0;
   metrics[GET_POSITION_MANAGER_ADMIN_CONFIG_FAILURE] = 0;
@@ -226,6 +234,12 @@ async function run_pipeline() {
     mirror_oracle_addr
   );
 
+  const asset_required_cr_promise = getAssetRequiredCR(
+    connection,
+    qps,
+    mirror_mint_addr
+  );
+
   // Fetch position infos.
   const next_id = parseInt(next_position_res.next_position_id);
   var position_infos_promise = getPositionInfos(
@@ -236,14 +250,22 @@ async function run_pipeline() {
     hive_batch_size
   );
 
-  var [asset_timestamps, position_infos] = await Promise.all([
+  var [asset_timestamps, asset_required_crs, position_infos] = await Promise.all([
     asset_timestamps_promise,
+    asset_required_cr_promise,
     position_infos_promise,
   ]);
 
   asset_timestamps = asset_timestamps.reduce((acc, cur) => {
     if (cur && cur.token_addr) {
       acc[cur.token_addr] = cur;
+    }
+    return acc;
+  }, {});
+
+  asset_required_crs = asset_required_crs.reduce((acc, cur) => {
+    if (cur && cur.token_addr) {
+      acc[cur.token_addr] = cur.required_cr;
     }
     return acc;
   }, {});
@@ -257,6 +279,7 @@ async function run_pipeline() {
     const rebalance_info = handleRebalance(
       batch_position_info,
       asset_timestamps,
+      asset_required_crs,
       delta_tolerance,
       balance_tolerance,
       time_tolerance,
@@ -463,6 +486,7 @@ async function getPositionInfos(
 function handleRebalance(
   batch_position_info,
   asset_timestamps,
+  asset_required_crs,
   delta_tolerance,
   balance_tolerance,
   time_tolerance,
@@ -487,6 +511,7 @@ function handleRebalance(
   const { result, logging, reason } = shouldRebalance(
     position_info,
     asset_timestamps,
+    asset_required_crs,
     delta_tolerance,
     balance_tolerance,
     time_tolerance
@@ -528,6 +553,7 @@ function handleRebalance(
 function shouldRebalance(
   position_info,
   asset_timestamps,
+  asset_required_crs,
   delta_tolerance,
   balance_tolerance,
   time_tolerance
@@ -553,6 +579,12 @@ function shouldRebalance(
       last_updated_base_sec * 1e3
     ).toString()}. Time tolerance is ${time_tolerance} seconds.\n`;
     return { result: false, logging: logging, reason: "NA" };
+  }
+
+  // Check if the current target CR range satisfies the current required CR for the mAsset.
+  if (new Big(asset_required_crs[position_info.mirror_asset_cw20_addr]).plus(CR_SAFETY_MARGIN).gt(detailed_info.target_collateral_ratio_range.min)) {
+    logging += "Should rebalance due to: TCR.min needs to be raised.\n";
+    return { result: true, logging: logging, reason: "TCRL" };
   }
 
   // Check if current CR is within range.
@@ -688,6 +720,75 @@ async function getAssetTimestamp(connection, qps, mirror_oracle_addr) {
     console.log("Using Terra node for mAsset quote queries.");
   }
   return mAsset_timestamps;
+}
+
+async function getAssetRequiredCR(connection, qps, mirror_mint_addr) {
+  var mAsset_required_CRs = undefined;
+  try {
+    const hive_query = getMAssetRequiredCRQueries(
+      mirror_mint_addr,
+      Object.keys(mAssetMap)
+    );
+    let hive_response = await axios({
+      method: "post",
+      url: "https://hive.terra.dev/graphql",
+      data: {
+        query: hive_query,
+      },
+    });
+
+    mAsset_required_CRs = Object.entries(hive_response.data.data).map(
+      (element) => {
+        const [token_addr, res] = element;
+        return {
+          token_addr: token_addr,
+          required_cr: res.contractQuery.min_collateral_ratio,
+          name: mAssetMap[token_addr],
+        };
+      }
+    );
+    console.log("Using Terra Hive for mAsset required CR queries.");
+  } catch (error) {
+    console.log(
+      `Failed to Hive for Mirror Mint with error ${error}. Fallback to Terra node.`
+    );
+    metrics[MIRROR_MINT_QUERY_FAILURE]++;
+    metrics[HIVE_QUERY_ERROR]++;
+
+    mAsset_required_CRs = await pool({
+      collection: Object.entries(mAssetMap),
+      maxConcurrency: qps,
+      task: async (entry) => {
+        var mirror_res = undefined;
+        const [token_addr, name] = entry;
+        const mirror_max_retry = 3;
+        var retry_count = 0;
+        while (retry_count < mirror_max_retry) {
+          try {
+            mirror_res = await connection.wasm.contractQuery(
+              mirror_mint_addr,
+              {
+                asset_config: {
+                  asset_token: token_addr,
+                },
+              }
+            );
+            break;
+          } catch (error) {
+            console.log(`Failed to query Mirror Orcale with error: ${error}\n`);
+            metrics[MIRROR_MINT_QUERY_FAILURE]++;
+            metrics[CONTRACT_QUERY_ERROR]++;
+            // Delay briefly to avoid throttling.
+            delay(1000);
+            retry_count++;
+          }
+        }
+        return { token_addr: token_addr, required_cr: mirror_res.min_collateral_ratio, name: name };
+      },
+    });
+    console.log("Using Terra node for mAsset required CR queries.");
+  }
+  return mAsset_required_CRs;
 }
 
 // Start.

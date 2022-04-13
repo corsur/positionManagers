@@ -15,7 +15,12 @@ export const MIRROR_ORACLE_MAINNET =
   "terra1t5k2c2p2kf5as247egz53rj8g8g2x4jw9qte9a";
 export const MIRROR_ORACLE_TESTNET =
   "terra1sdr3rya4h039f4htfm42q44x3dlaxra7hc7p8e";
+export const MIRROR_MINT_MAINNET =
+  "terra1wfz7h3aqf4cjmjcvc6s8lxdhh7k30nkczyf0mj";
+  export const MIRROR_MINT_TESTNET =
+  "terra1s9ehcjv0dqj2gsl72xrpp0ga5fql7fj7y3kq3w";
 export const TERRA_CHAIN_ID = 3;
+export const CR_SAFETY_MARGIN = 0.3;
 export const DELTA_NEUTRAL_STRATEGY_ID = "0";
 export const mAssetMap = {
   terra1vxtwu4ehgzz77mnfwrntyrmgl64qjs75mpwqaz: "mAAPL",

@@ -47,3 +47,19 @@ export function getMAssetQuoteQueries(mirror_oracle_addr, addrs) {
     "}"
   );
 }
+
+export function getMAssetRequiredCRQueries(mirror_mint_addr, addrs) {
+  return (
+    "{" +
+    addrs
+      .map((addr) =>
+        wasmQuery(`${addr}`, mirror_mint_addr, {
+          asset_config: {
+            asset_token: addr,
+          },
+        })
+      )
+      .join(",") +
+    "}"
+  );
+}
