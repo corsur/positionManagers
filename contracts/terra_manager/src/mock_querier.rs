@@ -1,9 +1,13 @@
+use aperture_common::common::Action;
+use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
+use aperture_common::instruction::{ApertureInstruction, StrategyInstructionInfo};
+use aperture_common::terra_manager::TERRA_CHAIN_ID;
 use aperture_common::wormhole::{ParsedVAA, WormholeCoreBridgeQueryMsg};
 use cosmwasm_std::testing::MockStorage;
 use cosmwasm_std::{
-    from_binary, from_slice, to_binary, Addr, Api, Binary, CanonicalAddr, ContractResult, Empty,
-    OwnedDeps, Querier, QuerierResult, QueryRequest, RecoverPubkeyError, StdResult, SystemError,
-    SystemResult, VerificationError, WasmQuery,
+    from_binary, from_slice, to_binary, Addr, Api, Binary, CanonicalAddr, ContractResult, Decimal,
+    Empty, OwnedDeps, Querier, QuerierResult, QueryRequest, RecoverPubkeyError, StdResult,
+    SystemError, SystemResult, Uint128, Uint64, VerificationError, WasmQuery,
 };
 
 pub fn custom_mock_dependencies(
@@ -27,8 +31,8 @@ impl Default for MockApi {
 pub struct MockApi {}
 
 impl Api for MockApi {
-    fn addr_validate(&self, _human: &str) -> StdResult<Addr> {
-        unimplemented!()
+    fn addr_validate(&self, human: &str) -> StdResult<Addr> {
+        Ok(Addr::unchecked(human))
     }
 
     fn addr_canonicalize(&self, _human: &str) -> StdResult<CanonicalAddr> {
@@ -124,22 +128,20 @@ impl WasmMockQuerier {
                             ],
                             sequence: 1,
                             consistency_level: 1,
-                            payload: vec![
-                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0,
-                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 184, 101, 121, 74, 106, 98, 71,
-                                57, 122, 90, 86, 57, 119, 98, 51, 78, 112, 100, 71, 108, 118, 98,
-                                105, 73, 54, 101, 121, 74, 121, 90, 87, 78, 112, 99, 71, 108, 108,
-                                98, 110, 81, 105, 79, 110, 115, 105, 90, 88, 104, 48, 90, 88, 74,
-                                117, 89, 87, 120, 102, 89, 50, 104, 104, 97, 87, 52, 105, 79, 110,
-                                115, 105, 99, 109, 86, 106, 97, 88, 66, 112, 90, 87, 53, 48, 88,
-                                50, 78, 111, 89, 87, 108, 117, 73, 106, 111, 120, 77, 68, 65, 119,
-                                77, 83, 119, 105, 99, 109, 86, 106, 97, 88, 66, 112, 90, 87, 53,
-                                48, 73, 106, 111, 105, 81, 85, 70, 66, 81, 85, 70, 66, 81, 85, 70,
-                                66, 81, 85, 70, 66, 81, 85, 70, 66, 81, 87, 70, 75, 98, 71, 104,
-                                90, 83, 84, 66, 48, 89, 48, 86, 109, 77, 86, 70, 83, 75, 50, 82,
-                                114, 81, 86, 82, 86, 85, 85, 86, 84, 89, 51, 90, 84, 89, 122, 48,
-                                105, 102, 88, 49, 57, 102, 81, 61, 61,
-                            ],
+                            payload: ApertureInstruction::ExecuteStrategyInstruction {
+                                strategy_info: StrategyInstructionInfo {
+                                    position_id: Uint128::zero(),
+                                    strategy_chain_id: TERRA_CHAIN_ID,
+                                    token_transfer_sequences: vec![],
+                                },
+                                action: Action::ClosePosition {
+                                    recipient: aperture_common::common::Recipient::ExternalChain {
+                                        recipient_chain_id: 10001u16,
+                                        recipient_addr: Binary::from([3u8; 32]),
+                                        swap_info: None
+                                    }
+                                }
+                            }.serialize().unwrap(),
                             hash: vec![
                                 42, 238, 135, 196, 222, 30, 20, 186, 72, 16, 245, 12, 214, 47, 37,
                                 245, 236, 60, 233, 11, 15, 225, 64, 177, 37, 142, 162, 31, 192,
@@ -160,27 +162,19 @@ impl WasmMockQuerier {
                             ],
                             sequence: 0,
                             consistency_level: 1,
-                            payload: vec![
-                                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                1, 0, 0, 0, 0, 0, 0, 1, 22, 0, 0, 1, 92, 101, 119, 111, 74, 73, 109, 57, 119, 90, 87,
-                                53, 102, 99, 71, 57, 122, 97, 88, 82, 112, 98, 50, 52, 105, 79, 105, 66, 55, 67, 103,
-                                107, 74, 73, 109, 82, 104, 100, 71, 69, 105, 79, 105, 65, 105, 90, 88, 100, 118, 90,
-                                48, 108, 68, 81, 87, 100, 74, 98, 108, 74, 111, 89, 50, 49, 107, 98, 71, 82, 71, 79,
-                                88, 82, 104, 86, 122, 86, 109, 87, 84, 73, 53, 99, 50, 74, 72, 82, 106, 66, 97, 87, 69,
-                                112, 111, 89, 107, 89, 53, 101, 86, 108, 89, 85, 110, 66, 105, 101, 85, 107, 50, 83,
-                                85, 78, 74, 101, 85, 120, 113, 84, 87, 108, 77, 81, 87, 57, 110, 83, 85, 78, 66, 90,
-                                48, 108, 117, 85, 109, 104, 106, 98, 87, 82, 115, 90, 69, 89, 53, 100, 70, 108, 89, 97,
-                                71, 90, 90, 77, 106, 108, 122, 89, 107, 100, 71, 77, 70, 112, 89, 83, 109, 104, 105,
-                                82, 106, 108, 53, 87, 86, 104, 83, 99, 71, 74, 53, 83, 84, 90, 74, 81, 48, 108, 53, 84,
-                                71, 112, 106, 97, 85, 120, 66, 98, 50, 100, 74, 81, 48, 70, 110, 83, 87, 48, 120, 99,
-                                71, 78, 117, 83, 110, 90, 106, 98, 68, 108, 111, 89, 122, 78, 79, 98, 71, 82, 71, 79,
-                                87, 112, 107, 101, 107, 108, 51, 87, 68, 74, 71, 97, 49, 112, 73, 83, 87, 108, 80, 97,
-                                85, 70, 112, 90, 69, 100, 87, 101, 87, 78, 116, 82, 88, 104, 108, 87, 69, 48, 119, 87,
-                                107, 104, 107, 77, 50, 86, 116, 82, 109, 120, 105, 98, 88, 66, 117, 84, 87, 49, 107,
-                                78, 85, 49, 69, 83, 110, 82, 106, 77, 110, 104, 48, 87, 88, 112, 114, 77, 108, 112,
-                                113, 83, 84, 74, 79, 77, 50, 103, 121, 89, 48, 104, 79, 99, 86, 108, 89, 85, 84, 78,
-                                97, 77, 50, 100, 112, 81, 50, 52, 119, 80, 83, 73, 75, 67, 88, 48, 75, 102, 81, 61, 61,
-                            ],
+                            payload: ApertureInstruction::PositionOpenInstruction {
+                                strategy_info: StrategyInstructionInfo {
+                                    position_id: Uint128::zero(),
+                                    strategy_chain_id: TERRA_CHAIN_ID,
+                                    token_transfer_sequences: vec![278u64],
+                                },
+                                strategy_id: Uint64::zero(),
+                                open_position_action_data: Some(to_binary(&DeltaNeutralParams {
+                                    target_min_collateral_ratio: Decimal::from_ratio(23u128, 10u128),
+                                    target_max_collateral_ratio: Decimal::from_ratio(27u128, 10u128),
+                                    mirror_asset_cw20_addr: String::from("terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"),
+                                }).unwrap()),
+                            }.serialize().unwrap(),
                             hash: vec![
                                 84, 182, 22, 10, 172, 171, 230, 223, 139, 109, 213, 137, 217, 43, 56, 7, 63, 111, 93,
                                 70, 193, 137, 68, 30, 179, 116, 2, 244, 197, 228, 214, 137,
@@ -221,7 +215,20 @@ impl WasmMockQuerier {
                     panic!()
                 }
             }
-            _ => panic!(),
+            QueryRequest::Wasm(WasmQuery::Raw {
+                contract_addr,
+                key: _,
+            }) => {
+                // Returning a mock sequence number of 10u64.
+                if contract_addr == &self.wormhole_core_bridge {
+                    SystemResult::Ok(ContractResult::Ok(to_binary(&10u64).unwrap()))
+                } else {
+                    panic!();
+                }
+            }
+            _ => {
+                panic!("unknown request: {:?}", request)
+            }
         }
     }
 

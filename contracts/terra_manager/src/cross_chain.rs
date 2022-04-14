@@ -1,16 +1,18 @@
 use aperture_common::{
     byte_util::{extend_terra_address_to_32, ByteUtils},
-    common::{Action, ChainId, Position, Recipient, StrategyId},
+    common::{ChainId, Position, Recipient},
+    constants::WORMHOLE_NONCE,
+    instruction::ApertureInstruction,
     terra_manager::TERRA_CHAIN_ID,
     token_util::{forward_assets_direct, validate_and_accept_incoming_asset_transfer},
     wormhole::{
-        ParsedVAA, TokenBridgeMessage, TransferInfo, WormholeCoreBridgeQueryMsg,
-        WormholeTokenBridgeExecuteMsg,
+        ParsedVAA, TokenBridgeMessage, TransferInfo, WormholeCoreBridgeExecuteMsg,
+        WormholeCoreBridgeQueryMsg, WormholeTokenBridgeExecuteMsg,
     },
 };
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Deps,
-    DepsMut, Env, MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
+    entry_point, to_binary, BankMsg, Binary, Coin, ContractResult, CosmosMsg, Deps, DepsMut, Env,
+    MessageInfo, Reply, Response, StdError, StdResult, SubMsg, Uint128, WasmMsg,
 };
 use cw_storage_plus::U16Key;
 use terraswap::asset::{Asset, AssetInfo};
@@ -21,6 +23,7 @@ use crate::{
         CROSS_CHAIN_OUTGOING_FEE_CONFIG, WORMHOLE_CORE_BRIDGE_ADDR, WORMHOLE_TOKEN_BRIDGE_ADDR,
     },
     terra_chain::{create_execute_strategy_messages, save_new_position_info_and_open_it},
+    util::get_next_sequence,
 };
 
 static TOKEN_TRANSFER_SUBMIT_VAA_MSG_ID: u64 = 0;
@@ -48,8 +51,9 @@ pub fn initiate_outgoing_token_transfer(
             }
         }
         Recipient::ExternalChain {
-            recipient_chain,
-            recipient,
+            recipient_chain_id,
+            recipient_addr,
+            swap_info,
         } => {
             let cross_chain_outgoing_fee_config =
                 CROSS_CHAIN_OUTGOING_FEE_CONFIG.load(deps.storage)?;
@@ -90,43 +94,67 @@ pub fn initiate_outgoing_token_transfer(
                 }))
             }
 
-            // Initiate cross-chain transfer.
-            for asset in cross_chain_assets {
-                match &asset.info {
-                    AssetInfo::NativeToken { denom } => {
-                        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: wormhole_token_bridge_addr.to_string(),
-                            msg: to_binary(&WormholeTokenBridgeExecuteMsg::DepositTokens {})?,
-                            funds: vec![Coin {
-                                amount: asset.amount,
-                                denom: denom.clone(),
-                            }],
-                        }));
-                    }
-                    AssetInfo::Token { contract_addr } => {
-                        response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                            contract_addr: contract_addr.clone(),
-                            msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
-                                spender: wormhole_token_bridge_addr.to_string(),
-                                amount: asset.amount,
-                                expires: None,
-                            })?,
-                            funds: vec![],
-                        }));
-                    }
-                }
-                response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: wormhole_token_bridge_addr.to_string(),
-                    msg: to_binary(&WormholeTokenBridgeExecuteMsg::InitiateTransfer {
-                        asset,
-                        recipient_chain,
-                        recipient: recipient.clone(),
-                        fee: Uint128::zero(),
-                        nonce: 0u32,
-                    })?,
-                    funds: vec![],
-                }));
+            // Publish serialized token disbursement instruction.
+            let instruction_bytes = ApertureInstruction::SingleTokenDisbursementInstruction {
+                sequence: get_next_sequence(deps, &wormhole_token_bridge_addr)?,
+                recipient_chain_id,
+                recipient_addr: recipient_addr.to_array()?,
+                swap_info,
             }
+            .serialize()?;
+            response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: WORMHOLE_CORE_BRIDGE_ADDR.load(deps.storage)?.to_string(),
+                funds: vec![],
+                msg: to_binary(&WormholeCoreBridgeExecuteMsg::PostMessage {
+                    message: Binary::from(instruction_bytes),
+                    nonce: WORMHOLE_NONCE,
+                })?,
+            }));
+
+            // Transfer token to Aperture manager contract on the recipient chain.
+            if cross_chain_assets.len() != 1 {
+                return Err(StdError::generic_err(
+                    "only single-token cross-chain disbursement is supported at this time",
+                ));
+            }
+            let asset = &cross_chain_assets[0];
+            match &asset.info {
+                AssetInfo::NativeToken { denom } => {
+                    response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: wormhole_token_bridge_addr.to_string(),
+                        msg: to_binary(&WormholeTokenBridgeExecuteMsg::DepositTokens {})?,
+                        funds: vec![Coin {
+                            amount: asset.amount,
+                            denom: denom.clone(),
+                        }],
+                    }));
+                }
+                AssetInfo::Token { contract_addr } => {
+                    response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                        contract_addr: contract_addr.clone(),
+                        msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
+                            spender: wormhole_token_bridge_addr.to_string(),
+                            amount: asset.amount,
+                            expires: None,
+                        })?,
+                        funds: vec![],
+                    }));
+                }
+            }
+            response = response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: wormhole_token_bridge_addr.to_string(),
+                msg: to_binary(&WormholeTokenBridgeExecuteMsg::InitiateTransfer {
+                    asset: asset.clone(),
+                    recipient_chain: recipient_chain_id,
+                    recipient: Binary::from(
+                        CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP
+                            .load(deps.storage, U16Key::from(recipient_chain_id))?,
+                    ),
+                    fee: Uint128::zero(),
+                    nonce: WORMHOLE_NONCE,
+                })?,
+                funds: vec![],
+            }));
         }
     }
     Ok(response)
@@ -134,15 +162,16 @@ pub fn initiate_outgoing_token_transfer(
 
 #[test]
 fn test_initiate_outgoing_token_transfer() {
+    use crate::mock_querier::custom_mock_dependencies;
     use crate::state::CrossChainOutgoingFeeConfig;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::testing::{mock_env, mock_info};
     use cosmwasm_std::{Addr, BankMsg, Decimal};
 
     let uusd_coin = Coin {
         denom: String::from("uusd"),
         amount: Uint128::from(1001u128),
     };
-    let mut deps = mock_dependencies(&[uusd_coin.clone()]);
+    let mut deps = custom_mock_dependencies("wormhole_core_bridge");
     let assets = vec![Asset {
         amount: Uint128::from(1001u128),
         info: AssetInfo::NativeToken {
@@ -181,24 +210,58 @@ fn test_initiate_outgoing_token_transfer() {
             },
         )
         .unwrap();
+    WORMHOLE_CORE_BRIDGE_ADDR
+        .save(
+            deps.as_mut().storage,
+            &Addr::unchecked("wormhole_core_bridge"),
+        )
+        .unwrap();
     WORMHOLE_TOKEN_BRIDGE_ADDR
         .save(
             deps.as_mut().storage,
             &Addr::unchecked("wormhole_token_bridge"),
         )
         .unwrap();
+
+    let recipient_chain_id = 5u16;
+    let recipient_addr = [1u8; 32];
+    let aperture_manager = [2u8; 32];
+    CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP
+        .save(
+            deps.as_mut().storage,
+            U16Key::from(recipient_chain_id),
+            &aperture_manager,
+        )
+        .unwrap();
+
     let response = initiate_outgoing_token_transfer(
         deps.as_ref(),
         mock_env(),
         mock_info("sender", &[uusd_coin.clone()]),
         assets.clone(),
         Recipient::ExternalChain {
-            recipient_chain: 5,
-            recipient: Binary::default(),
+            recipient_chain_id,
+            recipient_addr: Binary::from(recipient_addr),
+            swap_info: None,
         },
     )
     .unwrap();
-    assert_eq!(response.messages.len(), 3);
+
+    /*
+    let instruction_bytes = ApertureInstruction::SingleTokenDisbursementInstruction {
+        sequence: 10u64,
+        recipient_chain_id,
+        recipient_addr,
+        swap_info: None,
+    }
+    .serialize()
+    .unwrap();*/
+    let instruction_bytes = vec![
+        0, 2, 0, 0, 0, 0, 0, 0, 0, 10, 0, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    ];
+
+    assert_eq!(response.messages.len(), 4);
     assert_eq!(
         response.messages[0].msg,
         CosmosMsg::Bank(BankMsg::Send {
@@ -212,6 +275,18 @@ fn test_initiate_outgoing_token_transfer() {
     assert_eq!(
         response.messages[1].msg,
         CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("wormhole_core_bridge"),
+            msg: to_binary(&WormholeCoreBridgeExecuteMsg::PostMessage {
+                message: Binary::from(instruction_bytes.clone()),
+                nonce: WORMHOLE_NONCE,
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        response.messages[2].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: String::from("wormhole_token_bridge"),
             msg: to_binary(&WormholeTokenBridgeExecuteMsg::DepositTokens {}).unwrap(),
             funds: vec![Coin {
@@ -221,7 +296,7 @@ fn test_initiate_outgoing_token_transfer() {
         })
     );
     assert_eq!(
-        response.messages[2].msg,
+        response.messages[3].msg,
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: String::from("wormhole_token_bridge"),
             msg: to_binary(&WormholeTokenBridgeExecuteMsg::InitiateTransfer {
@@ -231,10 +306,10 @@ fn test_initiate_outgoing_token_transfer() {
                         denom: String::from("uusd")
                     }
                 },
-                recipient_chain: 5,
-                recipient: Binary::default(),
+                recipient_chain: recipient_chain_id,
+                recipient: Binary::from(aperture_manager.to_vec()),
                 fee: Uint128::zero(),
-                nonce: 0,
+                nonce: WORMHOLE_NONCE,
             })
             .unwrap(),
             funds: vec![],
@@ -254,12 +329,13 @@ fn test_initiate_outgoing_token_transfer() {
         mock_info("sender", &[]),
         assets.clone(),
         Recipient::ExternalChain {
-            recipient_chain: 5,
-            recipient: Binary::default(),
+            recipient_chain_id,
+            recipient_addr: Binary::from(recipient_addr),
+            swap_info: None,
         },
     )
     .unwrap();
-    assert_eq!(response.messages.len(), 3);
+    assert_eq!(response.messages.len(), 4);
     assert_eq!(
         response.messages[0].msg,
         CosmosMsg::Wasm(WasmMsg::Execute {
@@ -276,6 +352,18 @@ fn test_initiate_outgoing_token_transfer() {
     assert_eq!(
         response.messages[1].msg,
         CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: String::from("wormhole_core_bridge"),
+            msg: to_binary(&WormholeCoreBridgeExecuteMsg::PostMessage {
+                message: Binary::from(instruction_bytes),
+                nonce: WORMHOLE_NONCE,
+            })
+            .unwrap(),
+            funds: vec![],
+        })
+    );
+    assert_eq!(
+        response.messages[2].msg,
+        CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: String::from("terra1cw20"),
             msg: to_binary(&cw20::Cw20ExecuteMsg::IncreaseAllowance {
                 spender: String::from("wormhole_token_bridge"),
@@ -287,15 +375,15 @@ fn test_initiate_outgoing_token_transfer() {
         })
     );
     assert_eq!(
-        response.messages[2].msg,
+        response.messages[3].msg,
         CosmosMsg::Wasm(WasmMsg::Execute {
             contract_addr: String::from("wormhole_token_bridge"),
             msg: to_binary(&WormholeTokenBridgeExecuteMsg::InitiateTransfer {
                 asset: assets[0].clone(),
-                recipient_chain: 5,
-                recipient: Binary::default(),
+                recipient_chain: recipient_chain_id,
+                recipient: Binary::from(aperture_manager),
                 fee: Uint128::zero(),
-                nonce: 0,
+                nonce: WORMHOLE_NONCE,
             })
             .unwrap(),
             funds: vec![],
@@ -307,7 +395,7 @@ pub fn register_external_chain_manager(
     deps: DepsMut,
     info: MessageInfo,
     chain_id: ChainId,
-    aperture_manager_addr: Vec<u8>,
+    aperture_manager_addr: Binary,
 ) -> StdResult<Response> {
     if info.sender != ADMIN.load(deps.storage)? {
         return Err(StdError::generic_err("unauthorized"));
@@ -315,7 +403,7 @@ pub fn register_external_chain_manager(
     CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP.save(
         deps.storage,
         U16Key::from(chain_id),
-        &aperture_manager_addr,
+        &aperture_manager_addr.to_array()?,
     )?;
     Ok(Response::default())
 }
@@ -332,22 +420,44 @@ fn test_register_external_chain_manager() {
 
     // Unauthorized call.
     assert_eq!(
-        register_external_chain_manager(deps.as_mut(), mock_info("sender", &[]), 1, vec![3, 2, 1])
-            .unwrap_err(),
+        register_external_chain_manager(
+            deps.as_mut(),
+            mock_info("sender", &[]),
+            1,
+            Binary::from(vec![3, 2, 1])
+        )
+        .unwrap_err(),
         StdError::generic_err("unauthorized")
     );
 
-    // Authorized call.
+    // Authorized call but incorrect length.
     assert_eq!(
-        register_external_chain_manager(deps.as_mut(), mock_info("admin", &[]), 1, vec![3, 2, 1])
-            .unwrap(),
+        register_external_chain_manager(
+            deps.as_mut(),
+            mock_info("admin", &[]),
+            1,
+            Binary::from(vec![3, 2, 1])
+        )
+        .unwrap_err(),
+        StdError::invalid_data_size(32, 3)
+    );
+
+    // Authorized call and correct length.
+    assert_eq!(
+        register_external_chain_manager(
+            deps.as_mut(),
+            mock_info("admin", &[]),
+            1,
+            Binary::from(vec![1; 32])
+        )
+        .unwrap(),
         Response::default()
     );
     assert_eq!(
         CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP
             .load(deps.as_ref().storage, U16Key::from(1))
             .unwrap(),
-        vec![3, 2, 1]
+        [1; 32]
     );
 }
 
@@ -358,16 +468,6 @@ fn test_register_external_chain_manager() {
 /// the associated token transfers, via Wormhole token bridge, are provided by `token_transfer_vaas`.
 /// The instruction message payload encodes sufficient information for us to verify that these token transfers
 /// are intended to be consumed to fulfill this particular instruction.
-///
-/// Format of the instruction message payload:
-/// starting byte index | # of bytes | parsed field type | field name          | comment
-///          0          |     16     |       u128        | position_id         |
-///         16          |      2     |        u16        | strategy_chain      |
-///         18          |      8     |        u64        | strategy_id         | Only used for open_position action
-///         26          |      4     |        u32        | num_token_transfers | Name this NTT for short
-///         30          |    8 * NTT |     u64 * NTT     | token_transfer_seq  | Sequence numbers of these NTT transfers
-///     30 + 8 * NTT    |      4     |        u32        | encoded_action_len  | Length of encoded action string. Name this EAL for short.
-///     34 + 8 * NTT    |    1 * EAL |      u8 * EAL     | encoded_action      | Action enum's JSON-encoded string in base 64.
 ///
 /// Validation criteria for the instruction message:
 /// (1) Emitter address is the registered Aperture manager address for the emitter chain.
@@ -405,36 +505,37 @@ pub fn process_cross_chain_instruction(
     }
     COMPLETED_INSTRUCTIONS.save(deps.storage, parsed_instruction_vaa.hash.as_slice(), &true)?;
 
-    let instruction_payload_slice = parsed_instruction_vaa.payload.as_slice();
-    let position = Position {
-        chain_id: parsed_instruction_vaa.emitter_chain,
-        position_id: Uint128::from(instruction_payload_slice.get_u128_be(0)),
+    let instruction = ApertureInstruction::deserialize(&parsed_instruction_vaa.payload)?;
+    let strategy_instruction_info = match &instruction {
+        ApertureInstruction::PositionOpenInstruction { strategy_info, .. } => strategy_info,
+        ApertureInstruction::ExecuteStrategyInstruction { strategy_info, .. } => strategy_info,
+        _ => unreachable!("unsupported instruction type should not have been deserialized"),
     };
 
-    let strategy_chain = instruction_payload_slice.get_u16(16);
-    if strategy_chain != TERRA_CHAIN_ID {
+    if strategy_instruction_info.strategy_chain_id != TERRA_CHAIN_ID {
         return Err(StdError::generic_err(
             "instruction not intended for Terra chain",
         ));
     }
 
-    let mut assets = vec![];
-    let num_token_transfers = instruction_payload_slice.get_u32(26) as usize;
-    if num_token_transfers != token_transfer_vaas.len() {
+    if strategy_instruction_info.token_transfer_sequences.len() != token_transfer_vaas.len() {
         return Err(StdError::generic_err(
             "unexpected token_transfer_vaas length",
         ));
     }
 
     let mut response = Response::new();
+    let mut assets = vec![];
     let wormhole_token_bridge_addr = WORMHOLE_TOKEN_BRIDGE_ADDR.load(deps.storage)?;
-    for (i, token_transfer_vaa) in token_transfer_vaas.iter().enumerate() {
-        let expected_sequence = instruction_payload_slice.get_u64((i << 3) + 30);
+    for (token_transfer_vaa, expected_sequence) in token_transfer_vaas
+        .iter()
+        .zip(strategy_instruction_info.token_transfer_sequences.iter())
+    {
         assets.push(process_token_transfer_message(
             deps.as_ref(),
             &env,
             parsed_instruction_vaa.emitter_chain,
-            expected_sequence,
+            *expected_sequence,
             token_transfer_vaa,
         )?);
 
@@ -449,7 +550,7 @@ pub fn process_cross_chain_instruction(
                 contract_addr: wormhole_token_bridge_addr.to_string(),
                 funds: vec![],
                 msg: to_binary(&WormholeTokenBridgeExecuteMsg::SubmitVaa {
-                    data: token_transfer_vaas[i].clone(),
+                    data: token_transfer_vaa.clone(),
                 })?,
             }),
             gas_limit: None,
@@ -457,34 +558,36 @@ pub fn process_cross_chain_instruction(
         });
     }
 
-    let encoded_action_len_index = (num_token_transfers << 3) + 30;
-    let encoded_action_len = instruction_payload_slice.get_u32(encoded_action_len_index) as usize;
-    let encoded_action_index = encoded_action_len_index + 4;
-    let action_binary = Binary::from_base64(std::str::from_utf8(
-        &instruction_payload_slice[encoded_action_index..encoded_action_index + encoded_action_len],
-    )?)?;
-    let action: Action = from_binary(&action_binary)?;
-
-    if let Action::OpenPosition { data } = action {
-        let strategy_id = StrategyId::from(instruction_payload_slice.get_u64(18));
-        Ok(response.add_messages(save_new_position_info_and_open_it(
+    let position = Position {
+        chain_id: parsed_instruction_vaa.emitter_chain,
+        position_id: strategy_instruction_info.position_id,
+    };
+    match instruction {
+        ApertureInstruction::PositionOpenInstruction {
+            strategy_id,
+            open_position_action_data,
+            ..
+        } => Ok(response.add_messages(save_new_position_info_and_open_it(
             deps,
             env,
             None,
             position,
             strategy_id,
-            data,
+            open_position_action_data,
             assets,
-        )?))
-    } else {
-        Ok(response.add_messages(create_execute_strategy_messages(
-            deps.as_ref(),
-            env,
-            None,
-            position,
-            action,
-            assets,
-        )?))
+        )?)),
+        ApertureInstruction::ExecuteStrategyInstruction { action, .. } => Ok(response
+            .add_messages(create_execute_strategy_messages(
+                deps.as_ref(),
+                env,
+                None,
+                position,
+                action,
+                assets,
+            )?)),
+        _ => {
+            unreachable!("unsupported instruction type; code execution shouldn't have reached here")
+        }
     }
 }
 
@@ -587,7 +690,7 @@ fn test_process_cross_chain_instruction_close_position() {
     use crate::mock_querier::custom_mock_dependencies;
     use crate::state::{POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP};
     use aperture_common::common::{
-        get_position_key, StrategyLocation, StrategyPositionManagerExecuteMsg,
+        get_position_key, Action, StrategyLocation, StrategyPositionManagerExecuteMsg,
     };
     use cosmwasm_std::testing::mock_env;
     use cosmwasm_std::{Addr, Uint64};
@@ -610,7 +713,7 @@ fn test_process_cross_chain_instruction_close_position() {
         .save(
             deps.as_mut().storage,
             U16Key::from(10001),
-            &vec![
+            &[
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 106, 233, 112, 219, 235, 53, 127, 85, 58, 144,
                 106, 20, 222, 5, 18, 37, 187, 26, 238, 73,
             ],
@@ -657,11 +760,9 @@ fn test_process_cross_chain_instruction_close_position() {
                 },
                 action: Action::ClosePosition {
                     recipient: Recipient::ExternalChain {
-                        recipient_chain: 10001,
-                        recipient: Binary(vec![
-                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 153, 97, 96, 141, 45, 112, 71,
-                            245, 65, 31, 157, 144, 4, 212, 64, 68, 156, 189, 39
-                        ]),
+                        recipient_chain_id: 10001,
+                        recipient_addr: Binary::from([3u8; 32]),
+                        swap_info: None,
                     }
                 },
                 assets: vec![],
@@ -677,10 +778,11 @@ fn test_process_cross_chain_instruction_open_position() {
     use crate::mock_querier::custom_mock_dependencies;
     use crate::state::{POSITION_TO_STRATEGY_LOCATION_MAP, STRATEGY_ID_TO_METADATA_MAP};
     use aperture_common::common::{
-        get_position_key, StrategyLocation, StrategyPositionManagerExecuteMsg,
+        get_position_key, Action, StrategyLocation, StrategyPositionManagerExecuteMsg,
     };
+    use aperture_common::delta_neutral_position_manager::DeltaNeutralParams;
     use cosmwasm_std::testing::mock_env;
-    use cosmwasm_std::{Addr, Uint64};
+    use cosmwasm_std::{Addr, Decimal, Uint64};
     use cw_storage_plus::U64Key;
 
     let mut deps = custom_mock_dependencies("wormhole_core_bridge");
@@ -700,7 +802,7 @@ fn test_process_cross_chain_instruction_open_position() {
         .save(
             deps.as_mut().storage,
             U16Key::from(10001),
-            &vec![
+            &[
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 190, 119, 130, 59, 86, 190, 176, 84, 62,
                 154, 118, 154, 32, 103, 134, 108, 225, 13, 14,
             ],
@@ -758,16 +860,16 @@ fn test_process_cross_chain_instruction_open_position() {
                     position_id: Uint128::zero(),
                 },
                 action: Action::OpenPosition {
-                    /*
-                    The following base64 encoding is for the following JSON object:
-                    {
-                        "target_min_collateral_ratio": "2.3",
-                        "target_max_collateral_ratio": "2.7",
-                        "mirror_asset_cw20_addr": "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"
-                    }
-                    This is the data field associated with a delta-neutral position open action.
-                     */
-                    data: Some(Binary::from_base64("ewogICAgInRhcmdldF9taW5fY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjMiLAogICAgInRhcmdldF9tYXhfY29sbGF0ZXJhbF9yYXRpbyI6ICIyLjciLAogICAgIm1pcnJvcl9hc3NldF9jdzIwX2FkZHIiOiAidGVycmExeXM0ZHd3emFlbmpnMmd5MDJtc2xtYzk2ZjI2N3h2cHNqYXQ3Z3giCn0=").unwrap()),
+                    data: Some(
+                        to_binary(&DeltaNeutralParams {
+                            target_min_collateral_ratio: Decimal::from_ratio(23u128, 10u128),
+                            target_max_collateral_ratio: Decimal::from_ratio(27u128, 10u128),
+                            mirror_asset_cw20_addr: String::from(
+                                "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"
+                            ),
+                        })
+                        .unwrap()
+                    ),
                 },
                 assets: vec![Asset {
                     info: AssetInfo::NativeToken {

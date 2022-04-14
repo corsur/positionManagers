@@ -51,8 +51,10 @@ pub enum ExecuteMsg {
     /// Can only be called by the administrator.
     RegisterExternalChainManager {
         chain_id: ChainId,
-        // Wormhole encoded address of the Aperture manager contract (length of 32).
-        aperture_manager_addr: Vec<u8>,
+        // Wormhole encoded address of the Aperture manager contract (32-byte array).
+        // We use `Binary` instead of `Vec<u8>` for a more compact (base-64) encoding.
+        // See https://docs.rs/cosmwasm-std/0.16.4/cosmwasm_std/struct.Binary.html.
+        aperture_manager_addr: Binary,
     },
     /// Processes a position action request instructed by an Aperture manager contract on an external chain.
     /// This handles actions on Terra strategy positions held by external chain addresses.

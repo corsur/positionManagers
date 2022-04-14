@@ -36,7 +36,7 @@ pub const CROSS_CHAIN_OUTGOING_FEE_CONFIG: Item<CrossChainOutgoingFeeConfig> =
     Item::new("cross_chain_outgoing_fee_config");
 
 // Map from Wormhole chain id to the Aperture manager contract address (32 bytes) on the keyed chain.
-pub const CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP: Map<U16Key, Vec<u8>> =
+pub const CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP: Map<U16Key, [u8; 32]> =
     Map::new("chain_id_to_aperture_manager_address_map");
 
 // Map for storing hashes of completed Aperture instruction messages.

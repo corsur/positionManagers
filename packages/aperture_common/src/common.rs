@@ -1,5 +1,5 @@
 /// This module defines data types commonly used in Aperture contracts.
-use cosmwasm_std::{Addr, Binary, Decimal, Uint128, Uint64};
+use cosmwasm_std::{Addr, Binary, Decimal, Uint128, Uint256, Uint64};
 use cw_storage_plus::{U128Key, U16Key};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -82,6 +82,16 @@ pub enum StrategyPositionManagerExecuteMsg {
     },
 }
 
+/// Information about a swap-and-disburse instruction.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct SwapAndDisburseInfo {
+    // Encoded contract address of the desired token to disburse to the recipient (32-byte array).
+    pub desired_token_addr: Binary,
+    // The swap to the desired token must result in at least this amount of the output token; otherwise no swap is performed and the original token is directly disbursed to the recipient.
+    pub minimum_amount: Uint256,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Recipient {
@@ -89,8 +99,13 @@ pub enum Recipient {
         recipient: String,
     },
     ExternalChain {
-        recipient_chain: u16,
-        recipient: Binary,
+        recipient_chain_id: u16,
+        // Encoded recipient address (32-byte array).
+        recipient_addr: Binary,
+        // If Some(SwapAndDisburseInfo), swap wormhole-wrapped UST on the destination chain for `desired_token` and disburse that token to `recipient`,
+        // but *only* if the swap results in an output amount of at least `minimum_amount`.
+        // If `swap` is None, or if the swap results in a smaller output amount, then directly disburse wormhole-wrapped UST to `recipient`.
+        swap_info: Option<SwapAndDisburseInfo>,
     },
 }
 
