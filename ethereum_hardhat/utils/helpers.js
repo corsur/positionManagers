@@ -79,13 +79,7 @@ async function approveERC20(tokenAddr, spender, amount) {
 }
 
 function getStableYieldOpenRequest() {
-  const actionData = {
-    open_position: {},
-  };
-  const encodedActionData = utf8Encode.encode(
-    Buffer.from(JSON.stringify(actionData)).toString("base64")
-  );
-  return encodedActionData;
+  return [];
 }
 
 function getDeltaNeutralOpenRequest() {
@@ -94,15 +88,7 @@ function getDeltaNeutralOpenRequest() {
     target_max_collateral_ratio: "2.7",
     mirror_asset_cw20_addr: "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx",
   };
-  const actionData = {
-    open_position: {
-      data: Buffer.from(JSON.stringify(deltaNeutralParams)).toString("base64"),
-    },
-  };
-  const encodedActionData = utf8Encode.encode(
-    Buffer.from(JSON.stringify(actionData)).toString("base64")
-  );
-  return encodedActionData;
+  return utf8Encode.encode(Buffer.from(JSON.stringify(deltaNeutralParams)).toString("base64"));
 }
 
 function getStableYieldIncreaseRequest() {

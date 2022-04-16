@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.12;
+pragma solidity ^0.8.13;
 
 interface WormholeCoreBridge {
     function publishMessage(
@@ -76,4 +76,11 @@ interface WormholeTokenBridge {
     function isTransferCompleted(bytes32 hash) external view returns (bool);
 
     function completeTransfer(bytes memory encodedVm) external;
+
+    function wrappedAsset(uint16 tokenChainId, bytes32 tokenAddress)
+        external
+        view
+        returns (address);
+
+    function chainId() external view returns (uint16);
 }

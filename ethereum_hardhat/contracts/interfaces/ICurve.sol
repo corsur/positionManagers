@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.12;
+pragma solidity ^0.8.13;
 
 interface ICurve {
     function N_COINS() external view returns (int128);
