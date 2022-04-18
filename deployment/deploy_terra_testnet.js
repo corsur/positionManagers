@@ -180,28 +180,26 @@ async function instantiate_delta_neutral_position_manager(
   return getContractAddress(response);
 }
 
-async function instantiate_stable_yield_manager(
+async function instantiate_anchor_earn_proxy(
   terra_manager_addr,
-  stable_yield_manager_code_id
+  anchor_earn_proxy_code_id
 ) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
       new MsgInstantiateContract(
         /*sender=*/ test_wallet.key.accAddress,
         /*admin=*/ test_wallet.key.accAddress,
-        stable_yield_manager_code_id,
+        anchor_earn_proxy_code_id,
         {
           admin_addr: test_wallet.key.accAddress,
           terra_manager_addr: terra_manager_addr,
-          accrual_rate_per_period: "1.00000002987",
-          seconds_per_period: 30,
           anchor_market_addr: "terra15dwd5mj8v59wpj0wvt233mf5efdff808c5tkal",
           anchor_ust_cw20_addr: "terra1ajt556dpzvjwl0kl5tzku3fc3p3knkg9mkv8jl",
         },
         /*init_coins=*/ {}
       ),
     ],
-    memo: "Instantiate stable-yield manager",
+    memo: "Instantiate Anchor Earn proxy",
     sequence: getAndIncrementSequence(),
   });
 
@@ -244,9 +242,9 @@ async function add_delta_neutral_strategy_to_terra_manager(
   }
 }
 
-async function add_stable_yield_strategy_to_terra_manager(
+async function add_anchor_earn_proxy_strategy_to_terra_manager(
   terra_manager_addr,
-  stable_yield_manager_addr
+  anchor_earn_proxy_addr
 ) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
@@ -255,21 +253,21 @@ async function add_stable_yield_strategy_to_terra_manager(
         /*contract=*/ terra_manager_addr,
         {
           add_strategy: {
-            name: "StableYield",
+            name: "AnchorEarnProxy",
             version: "v0",
-            manager_addr: stable_yield_manager_addr,
+            manager_addr: anchor_earn_proxy_addr,
           },
         }
       ),
     ],
-    memo: "Add stable-yield strategy",
+    memo: "Add Anchor Earn proxy strategy",
     sequence: getAndIncrementSequence(),
   });
 
   const response = await testnet.tx.broadcast(tx);
   if (isTxError(response)) {
     throw new Error(
-      `add_stable_yield_strategy_to_terra_manager failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+      `add_anchor_earn_proxy_strategy_to_terra_manager failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
     );
   }
 }
@@ -300,10 +298,10 @@ async function deploy() {
   );
   console.log("delta_neutral_position_id: ", delta_neutral_position_id);
 
-  const stable_yield_manager_id = await store_code(
-    "../artifacts/stable_yield_manager-aarch64.wasm"
+  const anchor_earn_proxy_id = await store_code(
+    "../artifacts/anchor_earn_proxy-aarch64.wasm"
   );
-  console.log("stable_yield_manager_id: ", stable_yield_manager_id);
+  console.log("anchor_earn_proxy_id: ", anchor_earn_proxy_id);
   /***************************************************/
   /***** End of storing bytecode onto blockchain *****/
   /***************************************************/
@@ -326,11 +324,11 @@ async function deploy() {
     delta_neutral_position_manager_addr
   );
 
-  const stable_yield_manager_addr = await instantiate_stable_yield_manager(
+  const anchor_earn_proxy_addr = await instantiate_anchor_earn_proxy(
     terra_manager_addr,
-    stable_yield_manager_id
+    anchor_earn_proxy_id
   );
-  console.log("stable yield manager address: ", stable_yield_manager_addr);
+  console.log("anchor earn proxy address: ", anchor_earn_proxy_addr);
   /*****************************************/
   /***** End of contract instantiation *****/
   /*****************************************/
@@ -341,11 +339,11 @@ async function deploy() {
     delta_neutral_position_manager_addr
   );
   console.log("Registered delta-neutral strategy with Terra manager.");
-  await add_stable_yield_strategy_to_terra_manager(
+  await add_anchor_earn_proxy_strategy_to_terra_manager(
     terra_manager_addr,
-    stable_yield_manager_addr
+    anchor_earn_proxy_addr
   );
-  console.log("Registered stable-yield strategy with Terra manager.");
+  console.log("Registered Anchor Earn proxy strategy with Terra manager.");
   return terra_manager_addr;
 }
 
@@ -393,7 +391,7 @@ async function open_delta_neutral_position(terra_manager_addr, ust_amount) {
   );
 }
 
-async function open_stable_yield_position(terra_manager_addr, ust_amount) {
+async function open_anchor_earn_proxy_position(terra_manager_addr, ust_amount) {
   const tx = await test_wallet.createAndSignTx({
     msgs: [
       new MsgExecuteContract(
@@ -420,14 +418,14 @@ async function open_stable_yield_position(terra_manager_addr, ust_amount) {
         [new Coin("uusd", (ust_amount * 1e6).toString())]
       ),
     ],
-    memo: "Open stable yield position",
+    memo: "Open Anchor Earn proxy position",
     sequence: getAndIncrementSequence(),
   });
 
   const response = await testnet.tx.broadcast(tx);
   if (isTxError(response)) {
     throw new Error(
-      `open_stable_yield_position failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+      `open_anchor_earn_proxy_position failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
     );
   }
   console.log(

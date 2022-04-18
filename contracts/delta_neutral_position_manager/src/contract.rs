@@ -20,7 +20,7 @@ use terraswap::asset::{Asset, AssetInfo};
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{
     ADMIN_CONFIG, CONTEXT, FEE_COLLECTION_CONFIG, POSITION_OPEN_ALLOWED_MIRROR_ASSETS,
-    POSITION_TO_CONTRACT_ADDR, TMP_POSITION,
+    POSITION_TO_CONTRACT_ADDR, SHOULD_PREEMPTIVELY_CLOSE_CDP_MIRROR_ASSETS, TMP_POSITION,
 };
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
@@ -108,6 +108,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             mirror_assets,
             allowed,
         } => update_position_open_mirror_asset_list(deps, info, mirror_assets, allowed),
+        ExecuteMsg::AddShouldPreemptivelyCloseCdpMirrorAssetList { mirror_assets } => {
+            add_should_preemptively_close_cdp_mirror_asset_list(deps, info, mirror_assets)
+        }
         ExecuteMsg::UpdateFeeCollectionConfig {
             fee_collection_config,
         } => update_fee_collection_config(deps, info, fee_collection_config),
@@ -197,6 +200,25 @@ fn update_position_open_mirror_asset_list(
     }
     for mirror_asset in mirror_assets {
         POSITION_OPEN_ALLOWED_MIRROR_ASSETS.save(deps.storage, mirror_asset, &allowed)?;
+    }
+    Ok(Response::default())
+}
+
+fn add_should_preemptively_close_cdp_mirror_asset_list(
+    deps: DepsMut,
+    info: MessageInfo,
+    mirror_assets: Vec<String>,
+) -> StdResult<Response> {
+    let config = ADMIN_CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+    for mirror_asset in mirror_assets {
+        SHOULD_PREEMPTIVELY_CLOSE_CDP_MIRROR_ASSETS.save(
+            deps.storage,
+            deps.api.addr_validate(&mirror_asset)?,
+            &true,
+        )?;
     }
     Ok(Response::default())
 }

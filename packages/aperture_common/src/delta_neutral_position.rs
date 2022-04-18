@@ -12,9 +12,11 @@ pub struct InstantiateMsg {}
 #[serde(rename_all = "snake_case")]
 pub enum InternalExecuteMsg {
     AchieveSafeCollateralRatio {},
-    WithdrawFundsInUusd {
+    CloseCdpAndDisburseUusd {
         recipient: Recipient,
     },
+    CloseCdpAndDepositToAnchorEarn {},
+    DepositUusdBalanceToAnchorEarn {},
     WithdrawCollateralAndRedeemForUusd {
         proportion: Decimal,
     },
@@ -130,10 +132,15 @@ pub struct PositionActionInfo {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct DetailedPositionInfo {
-    // None if position was opened when oracle price was stale and the position is currently pending DN setup.
+    pub cdp_preemptively_closed: bool,
+    // None if either:
+    // (1) the position was opened when oracle price was stale and the position is currently pending DN setup; OR
+    // (2) the CDP has been preemptively closed and the funds are currently in Anchor Earn.
     pub state: Option<PositionState>,
     pub target_collateral_ratio_range: TargetCollateralRatioRange,
-    // None if position was opened when oracle price was stale and the position is currently pending DN setup.
+    // None if either:
+    // (1) the position was opened when oracle price was stale and the position is currently pending DN setup; OR
+    // (2) the CDP has been preemptively closed and the funds are currently in Anchor Earn.
     pub collateral_ratio: Option<Decimal>,
     pub unclaimed_short_proceeds_uusd_amount: Uint128,
     pub claimable_short_proceeds_uusd_amount: Uint128,

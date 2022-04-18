@@ -11,7 +11,7 @@ use cosmwasm_std::{
     to_binary, Addr, Coin, CosmosMsg, Decimal, Deps, Env, QuerierWrapper, StdResult, Uint128,
     WasmMsg,
 };
-use cw_storage_plus::Item;
+use cw_storage_plus::{Item, Map};
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -20,11 +20,14 @@ use crate::{
         compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info,
         get_terraswap_mirror_asset_uusd_liquidity_info,
     },
-    mirror_util::get_mirror_asset_oracle_uusd_price_response,
+    mirror_util::{
+        get_mirror_asset_config_response, get_mirror_asset_oracle_uusd_price_response,
+        is_mirror_asset_delisted,
+    },
     spectrum_util::unstake_lp_from_spectrum_and_withdraw_liquidity,
     state::{
-        CDP_IDX, MANAGER, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
-        TARGET_COLLATERAL_RATIO_RANGE,
+        CDP_IDX, CDP_PREEMPTIVELY_CLOSED, MANAGER, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO,
+        POSITION_OPEN_INFO, TARGET_COLLATERAL_RATIO_RANGE,
     },
 };
 
@@ -388,8 +391,11 @@ pub fn query_position_info(
         return Ok(response);
     }
 
-    // Position was opened when oracle price was stale, currently pending DN setup.
-    if response.cdp_idx.is_none() {
+    // CDP is inactive because:
+    // (1) this position was opened when oracle price was stale, currently pending DN setup; OR
+    // (2) the CDP has been preemptively closed and the funds are currently in Anchor Earn.
+    let cdp_preemptively_closed = CDP_PREEMPTIVELY_CLOSED.may_load(deps.storage)? == Some(true);
+    if response.cdp_idx.is_none() || cdp_preemptively_closed {
         let (_, anchor_earn_uusd_value) = get_anchor_ust_balance_with_uusd_value(
             deps,
             env,
@@ -397,6 +403,7 @@ pub fn query_position_info(
             &context.anchor_ust_cw20_addr,
         )?;
         response.detailed_info = Some(DetailedPositionInfo {
+            cdp_preemptively_closed,
             state: None,
             target_collateral_ratio_range: TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?,
             collateral_ratio: None,
@@ -480,6 +487,7 @@ pub fn query_position_info(
     );
 
     response.detailed_info = Some(DetailedPositionInfo {
+        cdp_preemptively_closed,
         state: Some(state),
         target_collateral_ratio_range: TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?,
         collateral_ratio: Some(collateral_ratio),
@@ -496,4 +504,24 @@ pub fn get_fee_collection_config_from_manager(deps: Deps) -> StdResult<FeeCollec
     let manager_addr = MANAGER.load(deps.storage)?;
     const FEE_COLLECTION_CONFIG: Item<FeeCollectionConfig> = Item::new("fee_collection_config");
     FEE_COLLECTION_CONFIG.query(&deps.querier, manager_addr)
+}
+
+// Determines whether the CDP should be closed due to preemptive setting by the manager or because the mAsset is already delisted from Mirror.
+pub fn should_close_cdp(
+    deps: Deps,
+    mirror_mint_addr: &Addr,
+    mirror_asset_cw20_addr: &Addr,
+) -> StdResult<bool> {
+    let manager_addr = MANAGER.load(deps.storage)?;
+    const SHOULD_PREEMPTIVELY_CLOSE_CDP_MIRROR_ASSETS: Map<Addr, bool> = Map::new("spccma");
+    return Ok(SHOULD_PREEMPTIVELY_CLOSE_CDP_MIRROR_ASSETS.query(
+        &deps.querier,
+        manager_addr,
+        mirror_asset_cw20_addr.clone(),
+    )? == Some(true)
+        || is_mirror_asset_delisted(&get_mirror_asset_config_response(
+            &deps.querier,
+            mirror_mint_addr,
+            mirror_asset_cw20_addr.as_str(),
+        )?));
 }

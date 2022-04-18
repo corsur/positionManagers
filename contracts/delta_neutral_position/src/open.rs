@@ -52,8 +52,11 @@ pub fn delta_neutral_invest(
         )?;
 
     // Abort if mAsset is delisted.
-    let mirror_asset_config_response =
-        get_mirror_asset_config_response(&deps.querier, &context, mirror_asset_cw20_addr.as_str())?;
+    let mirror_asset_config_response = get_mirror_asset_config_response(
+        &deps.querier,
+        &context.mirror_mint_addr,
+        mirror_asset_cw20_addr.as_str(),
+    )?;
     if is_mirror_asset_delisted(&mirror_asset_config_response) {
         return Err(StdError::generic_err("mAsset is delisted"));
     }

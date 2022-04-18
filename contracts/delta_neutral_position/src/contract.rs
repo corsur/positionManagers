@@ -20,14 +20,14 @@ use crate::open::delta_neutral_invest;
 use crate::rebalance::achieve_delta_neutral;
 use crate::spectrum_util::check_spectrum_mirror_farm_existence;
 use crate::state::{
-    CDP_IDX, LAST_FEE_COLLECTION_POSITION_UUSD_VALUE, MANAGER, MIRROR_ASSET_CW20_ADDR,
-    POSITION_CLOSE_INFO, POSITION_OPEN_INFO, TARGET_COLLATERAL_RATIO_RANGE,
+    CDP_IDX, CDP_PREEMPTIVELY_CLOSED, LAST_FEE_COLLECTION_POSITION_UUSD_VALUE, MANAGER,
+    MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
     get_cdp_uusd_lock_info_result, get_fee_collection_config_from_manager, get_position_state,
     get_uusd_asset_from_amount, get_uusd_balance, get_uusd_coin_from_amount,
     increase_mirror_asset_balance_from_long_farm, increase_uusd_balance_from_aust_collateral,
-    query_position_info, MIN_TARGET_CR_RANGE_WIDTH,
+    query_position_info, should_close_cdp, MIN_TARGET_CR_RANGE_WIDTH,
 };
 use aperture_common::anchor_util::get_anchor_ust_balance_with_uusd_value;
 use aperture_common::delta_neutral_position::{
@@ -82,8 +82,14 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             InternalExecuteMsg::AchieveSafeCollateralRatio {} => {
                 achieve_safe_collateral_ratios(deps, env, context)
             }
-            InternalExecuteMsg::WithdrawFundsInUusd { recipient } => {
-                withdraw_funds_in_uusd(deps, env, context, recipient)
+            InternalExecuteMsg::CloseCdpAndDisburseUusd { recipient } => {
+                close_cdp_and_disburse_uusd(deps, env, context, recipient)
+            }
+            InternalExecuteMsg::CloseCdpAndDepositToAnchorEarn {} => {
+                close_cdp_and_deposit_to_anchor_earn(deps, env, context)
+            }
+            InternalExecuteMsg::DepositUusdBalanceToAnchorEarn {} => {
+                deposit_uusd_balance_to_anchor_earn(deps, env, context)
             }
             InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd { proportion } => {
                 withdraw_collateral_and_redeem_for_uusd(deps.as_ref(), context, proportion)
@@ -191,6 +197,12 @@ pub fn get_reinvest_internal_messages(
 pub fn rebalance_and_reinvest(deps: DepsMut, env: Env, context: Context) -> StdResult<Response> {
     let mut response = Response::new();
 
+    // Do nothing if the position is already fully closed or if the CDP has been preemptively closed.
+    let cdp_preemptively_closed = CDP_PREEMPTIVELY_CLOSED.may_load(deps.storage)? == Some(true);
+    if POSITION_CLOSE_INFO.may_load(deps.storage)?.is_some() || cdp_preemptively_closed {
+        return Ok(response);
+    }
+
     let cdp_idx = CDP_IDX.may_load(deps.storage)?;
     if cdp_idx.is_some() {
         response = response.add_messages(achieve_delta_neutral(deps.as_ref(), &env, &context)?);
@@ -202,7 +214,20 @@ pub fn rebalance_and_reinvest(deps: DepsMut, env: Env, context: Context) -> StdR
 
     // Since the operations below require fresh oracle price in order to modify the CDP, we skip these steps if the current oracle price is not fresh.
     if let Some(rate) = fresh_oracle_uusd_rate {
+        let should_close_cdp = should_close_cdp(
+            deps.as_ref(),
+            &context.mirror_mint_addr,
+            &mirror_asset_cw20_addr,
+        )?;
         if cdp_idx.is_some() {
+            if should_close_cdp {
+                CDP_PREEMPTIVELY_CLOSED.save(deps.storage, &true)?;
+                return Ok(response.add_message(create_internal_execute_message(
+                    &env,
+                    InternalExecuteMsg::CloseCdpAndDepositToAnchorEarn {},
+                )));
+            }
+
             Ok(response
                 .add_message(create_internal_execute_message(
                     &env,
@@ -215,6 +240,13 @@ pub fn rebalance_and_reinvest(deps: DepsMut, env: Env, context: Context) -> StdR
                     rate,
                 )))
         } else {
+            // Position was opened when oracle price was stale. However, since then the mAsset has been added to the should-close list by the admin, or if the mAsset has been delisted from Mirror.
+            // Thus, we set CDP_PREEMPTIVELY_CLOSED and do nothing else to keep funds in Anchor Earn.
+            if should_close_cdp {
+                CDP_PREEMPTIVELY_CLOSED.save(deps.storage, &true)?;
+                return Ok(response);
+            }
+
             // Position was opened when oracle price was stale. Now that oracle price is fresh, we set up the DN position.
             let target_collateral_ratio_range = TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?;
             let (anchor_ust_balance, uusd_value) = get_anchor_ust_balance_with_uusd_value(
@@ -242,7 +274,11 @@ pub fn rebalance_and_reinvest(deps: DepsMut, env: Env, context: Context) -> StdR
                     &mirror_asset_cw20_addr,
                     rate,
                     None,
-                )?))
+                )?)
+                .add_message(create_internal_execute_message(
+                    &env,
+                    InternalExecuteMsg::OpenPositionSanityCheck {},
+                )))
         }
     } else {
         // Log an attribute in the "wasm" event for skipping DN rebalance due to non-fresh oracle price.
@@ -264,8 +300,11 @@ pub fn achieve_safe_collateral_ratios(
 
     // Increase target CR range if the current minimum required has been raised by Mirror governance.
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
-    let mirror_asset_config_response =
-        get_mirror_asset_config_response(&deps.querier, &context, mirror_asset_cw20_addr.as_str())?;
+    let mirror_asset_config_response = get_mirror_asset_config_response(
+        &deps.querier,
+        &context.mirror_mint_addr,
+        mirror_asset_cw20_addr.as_str(),
+    )?;
     if target_collateral_ratio_range.min
         < mirror_asset_config_response.min_collateral_ratio + context.collateral_ratio_safety_margin
     {
@@ -395,20 +434,25 @@ pub fn open_position(
             )))
     } else if let Some(true) = params.allow_off_market_position_open {
         let fee_collection_config = get_fee_collection_config_from_manager(deps.as_ref())?;
-        Ok(Response::new()
-            .add_message(CosmosMsg::Bank(BankMsg::Send {
+        let mut response = Response::new();
+        if !fee_collection_config
+            .off_market_position_open_service_fee_uusd
+            .is_zero()
+        {
+            response = response.add_message(CosmosMsg::Bank(BankMsg::Send {
                 to_address: fee_collection_config.collector_addr,
                 amount: vec![get_uusd_coin_from_amount(
                     fee_collection_config.off_market_position_open_service_fee_uusd,
                 )],
-            }))
-            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-                contract_addr: context.anchor_market_addr.to_string(),
-                msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
-                funds: vec![get_uusd_coin_from_amount(
-                    uusd_balance - fee_collection_config.off_market_position_open_service_fee_uusd,
-                )],
-            })))
+            }));
+        }
+        Ok(response.add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: context.anchor_market_addr.to_string(),
+            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
+            funds: vec![get_uusd_coin_from_amount(
+                uusd_balance - fee_collection_config.off_market_position_open_service_fee_uusd,
+            )],
+        })))
     } else {
         Err(StdError::generic_err(
             "oracle price stale; off-market position open service not requested",
@@ -422,11 +466,40 @@ pub fn close_position(
     context: Context,
     recipient: Recipient,
 ) -> StdResult<Response> {
+    if POSITION_CLOSE_INFO.may_load(deps.storage)?.is_some() {
+        return Err(StdError::generic_err("position is already closed"));
+    }
+
+    if CDP_PREEMPTIVELY_CLOSED.may_load(deps.storage)? == Some(true) {
+        let anchor_ust_balance = terraswap::querier::query_token_balance(
+            &deps.querier,
+            context.anchor_ust_cw20_addr.clone(),
+            env.contract.address.clone(),
+        )?;
+        return Ok(Response::new()
+            .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: context.anchor_ust_cw20_addr.to_string(),
+                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                    contract: context.anchor_market_addr.to_string(),
+                    amount: anchor_ust_balance,
+                    msg: to_binary(&moneymarket::market::Cw20HookMsg::RedeemStable {})?,
+                })?,
+                funds: vec![],
+            }))
+            .add_message(create_internal_execute_message(
+                &env,
+                InternalExecuteMsg::SendUusdToRecipient {
+                    proportion: Decimal::one(),
+                    recipient,
+                },
+            )));
+    }
+
     Ok(Response::new()
         .add_messages(achieve_delta_neutral(deps, &env, &context)?)
         .add_message(create_internal_execute_message(
             &env,
-            InternalExecuteMsg::WithdrawFundsInUusd { recipient },
+            InternalExecuteMsg::CloseCdpAndDisburseUusd { recipient },
         )))
 }
 
@@ -494,16 +567,12 @@ pub fn withdraw_collateral_and_redeem_for_uusd(
     )
 }
 
-// Reduce position for protocol fee collection and/or position close.
-// If `recipient` is None, then only protocol fees are collected;
-// otherwise, this closes the position, and will send the remaining amount to `recipient`.
-pub fn withdraw_funds_in_uusd(
+fn close_cdp_and_collect_fees(
     deps: DepsMut,
-    env: Env,
+    env: &Env,
     context: Context,
-    recipient: Recipient,
-) -> StdResult<Response> {
-    let state = get_position_state(deps.as_ref(), &env, &context)?;
+) -> StdResult<Vec<CosmosMsg>> {
+    let state = get_position_state(deps.as_ref(), env, &context)?;
     let position_value = state.collateral_uusd_value + state.uusd_balance + state.uusd_long_farm;
     let last_fee_collection_position_uusd_value =
         LAST_FEE_COLLECTION_POSITION_UUSD_VALUE.load(deps.storage)?;
@@ -514,32 +583,31 @@ pub fn withdraw_funds_in_uusd(
     };
     let fee_collection_config = get_fee_collection_config_from_manager(deps.as_ref())?;
     let fee_amount = gain * fee_collection_config.performance_rate;
-    let mut response = Response::new();
+    let mut messages = vec![];
 
     // Reduce mAsset short position.
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
-    response = response
-        .add_messages(increase_mirror_asset_balance_from_long_farm(
-            &state,
-            &context.spectrum_mirror_farms_addr,
-            &mirror_asset_cw20_addr,
-            state.mirror_asset_short_amount,
-        ))
-        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: mirror_asset_cw20_addr.to_string(),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: context.mirror_mint_addr.to_string(),
-                amount: state.mirror_asset_short_amount,
-                msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
-                    position_idx: CDP_IDX.load(deps.storage)?,
-                })?,
+    messages.extend(increase_mirror_asset_balance_from_long_farm(
+        &state,
+        &context.spectrum_mirror_farms_addr,
+        &mirror_asset_cw20_addr,
+        state.mirror_asset_short_amount,
+    ));
+    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: mirror_asset_cw20_addr.to_string(),
+        msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+            contract: context.mirror_mint_addr.to_string(),
+            amount: state.mirror_asset_short_amount,
+            msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
+                position_idx: CDP_IDX.load(deps.storage)?,
             })?,
-            funds: vec![],
-        }));
+        })?,
+        funds: vec![],
+    }));
 
     // Withdraw aUST collateral and redeem for uusd.
-    response = response.add_message(create_internal_execute_message(
-        &env,
+    messages.push(create_internal_execute_message(
+        env,
         InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd {
             proportion: Decimal::one(),
         },
@@ -547,7 +615,7 @@ pub fn withdraw_funds_in_uusd(
 
     // Send protocol fees to fee collector.
     if !fee_amount.is_zero() {
-        response = response.add_message(CosmosMsg::Bank(BankMsg::Send {
+        messages.push(CosmosMsg::Bank(BankMsg::Send {
             to_address: fee_collection_config.collector_addr,
             amount: vec![get_uusd_coin_from_amount(fee_amount)],
         }));
@@ -555,16 +623,54 @@ pub fn withdraw_funds_in_uusd(
             .save(deps.storage, &(position_value - fee_amount))?;
     }
 
-    // Send the remaining amount to the recipient specified in the position closure request.
-    response = response.add_message(create_internal_execute_message(
-        &env,
-        InternalExecuteMsg::SendUusdToRecipient {
-            proportion: Decimal::one(),
-            recipient,
-        },
-    ));
+    Ok(messages)
+}
 
-    Ok(response)
+// Closes the CDP, send Aperture fees to the collector, and the remaining funds to `recipient`.
+pub fn close_cdp_and_disburse_uusd(
+    deps: DepsMut,
+    env: Env,
+    context: Context,
+    recipient: Recipient,
+) -> StdResult<Response> {
+    Ok(Response::new()
+        .add_messages(close_cdp_and_collect_fees(deps, &env, context)?)
+        .add_message(create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::SendUusdToRecipient {
+                proportion: Decimal::one(),
+                recipient,
+            },
+        )))
+}
+
+// Closes the CDP, send Aperture fees to the collector, and deposit the remaining funds into Anchor Earn.
+pub fn close_cdp_and_deposit_to_anchor_earn(
+    deps: DepsMut,
+    env: Env,
+    context: Context,
+) -> StdResult<Response> {
+    Ok(Response::new()
+        .add_messages(close_cdp_and_collect_fees(deps, &env, context)?)
+        .add_message(create_internal_execute_message(
+            &env,
+            InternalExecuteMsg::DepositUusdBalanceToAnchorEarn {},
+        )))
+}
+
+pub fn deposit_uusd_balance_to_anchor_earn(
+    deps: DepsMut,
+    env: Env,
+    context: Context,
+) -> StdResult<Response> {
+    let uusd_balance = get_uusd_balance(&deps.querier, &env)?;
+    Ok(
+        Response::new().add_message(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: context.anchor_market_addr.to_string(),
+            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
+            funds: vec![get_uusd_coin_from_amount(uusd_balance)],
+        })),
+    )
 }
 
 pub fn pair_uusd_with_mirror_asset_to_provide_liquidity_and_stake(

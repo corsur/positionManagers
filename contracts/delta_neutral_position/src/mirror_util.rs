@@ -16,11 +16,11 @@ pub fn get_mirror_asset_oracle_uusd_price_response(
 
 pub fn get_mirror_asset_config_response(
     querier: &QuerierWrapper,
-    context: &Context,
+    mirror_mint_addr: &Addr,
     mirror_asset_cw20_addr: &str,
 ) -> StdResult<mirror_protocol::mint::AssetConfigResponse> {
     querier.query_wasm_smart(
-        context.mirror_mint_addr.clone(),
+        mirror_mint_addr.clone(),
         &mirror_protocol::mint::QueryMsg::AssetConfig {
             asset_token: mirror_asset_cw20_addr.to_string(),
         },

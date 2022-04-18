@@ -86,6 +86,15 @@ pub enum ExecuteMsg {
         allowed: bool,
     },
     // Can only be called by admin.
+    // If a certain mAsset will be delisted soon, the admin can preemptively add the mAsset to this list so the controller can close the CDPs involving the mAsset before the delist takes effect.
+    // The admin should only utilize this feature when the delisting is certain to happen, either:
+    // (1) Due to an announced corporate event with a scheduled date (merger, stock split, etc.);
+    // (2) Mirror governance voted to delist an mAsset.
+    // The admin should add the mAsset to this list no earlier than ~1 business day before the scheduled effective timestamp. For example, the admin should ideally wait until Mirror governance vote successfully passes (but has not yet executed).
+    AddShouldPreemptivelyCloseCdpMirrorAssetList {
+        mirror_assets: Vec<String>,
+    },
+    // Can only be called by admin.
     UpdateContext {
         controller: Option<String>,
         mirror_collateral_oracle_addr: Option<String>,
