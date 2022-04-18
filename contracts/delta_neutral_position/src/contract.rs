@@ -351,6 +351,12 @@ pub fn achieve_safe_collateral_ratios(
             })?,
         }));
     } else if collateral_ratio > target_collateral_ratio_range.max {
+        // If there is short proceeds pending unlock in the CDP, we do not withdraw aUST collateral from the CDP.
+        let cdp_uusd_lock_info = get_cdp_uusd_lock_info_result(deps.as_ref(), &context)?;
+        if !cdp_uusd_lock_info.locked_amount.is_zero() {
+            return Ok(response);
+        }
+
         let target_anchor_ust_collateral_amount = state.mirror_asset_short_amount
             * state.mirror_asset_oracle_price
             * decimal_division(
@@ -469,7 +475,10 @@ pub fn close_position(
         return Err(StdError::generic_err("position is already closed"));
     }
 
-    if CDP_PREEMPTIVELY_CLOSED.may_load(deps.storage)? == Some(true) {
+    // If the CDP is not active (either the CDP has not yet been set up, or the CDP has been preemptively closed), then all funds are invested in Anchor Earn, so we redeem aUST for UST and disburse.
+    if CDP_IDX.may_load(deps.storage)?.is_none()
+        || CDP_PREEMPTIVELY_CLOSED.may_load(deps.storage)? == Some(true)
+    {
         let anchor_ust_balance = terraswap::querier::query_token_balance(
             &deps.querier,
             context.anchor_ust_cw20_addr.clone(),
