@@ -613,11 +613,7 @@ fn query_should_call_rebalance_and_reinvest(
         });
     }
 
-    to_binary(&ShouldCallRebalanceAndReinvestResponse {
-        position_contract,
-        should_call: false,
-        reason: Some(String::from("LOOKS_GOOD")),
-    })
+    Ok(Binary::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
