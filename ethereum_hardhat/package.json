@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@certusone/wormhole-sdk": "^0.1.6",
+    "@improbable-eng/grpc-web": "^0.15.0",
     "@improbable-eng/grpc-web-node-http-transport": "^0.15.0",
     "@openzeppelin/contracts": "^4.5.0",
     "@openzeppelin/contracts-upgradeable": "^4.5.2",

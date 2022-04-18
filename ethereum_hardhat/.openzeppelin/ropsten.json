@@ -435,6 +435,56 @@
       "address": "0xcd2fF4310FeA9304027423B0BB4c22479A896134",
       "txHash": "0xb122fcecc3e2c046715d3c59d5df19f7930db13d2cb697ea584bac16ede62ba8",
       "kind": "uups"
+    },
+    {
+      "address": "0x41bD49E2AF7D26953c0EC6253Aea57080d388569",
+      "txHash": "0x45bc4dac5a005159effcee7dc96ea2754cbd75799d1db722d5eea672e929348a",
+      "kind": "uups"
+    },
+    {
+      "address": "0x1f48B9a949F8a39d04aA3049f7fc95dab72903c1",
+      "txHash": "0x0134def97835c50121eb4050759de65668562a025f3c1e093b768313ad1026cd",
+      "kind": "uups"
+    },
+    {
+      "address": "0x43E57E8F3248528B382FcCd4B1c770805Fada8Ea",
+      "txHash": "0x7e7f9967890392554e9a052c1e1627f1dfe27832c697c930ae2f3edc1f8897bc",
+      "kind": "uups"
+    },
+    {
+      "address": "0x1b106dFCCd43db431C3145E71Ab92c583c8EBb83",
+      "txHash": "0x9578b5bdb62b73cf5a4b8026907b64ca2edd1cc9356132ffbcf0c50b3fbdf137",
+      "kind": "uups"
+    },
+    {
+      "address": "0x7e43E80A5EB049b21a54922C5B41D3d91fdfad8b",
+      "txHash": "0x33098fb5fe315b66f1cb527544f7b48efc20de5349d680609717cb0aef066ae8",
+      "kind": "uups"
+    },
+    {
+      "address": "0x9444627DE6d1E55c85e746DF6743dbaEBC1387d8",
+      "txHash": "0x50eaeba9c1812170388edcd91e4efee30440a352e635a68cdfa37c223fe8044e",
+      "kind": "uups"
+    },
+    {
+      "address": "0xaaD274A907F55C0c7a8B4ab1D84E0d243B37571d",
+      "txHash": "0xb56b56998781ea9ce84b56aeed4e8e36764ea7dccba6a861589c820ae316abe3",
+      "kind": "uups"
+    },
+    {
+      "address": "0x358DDEFa8F12E6c3112DA883698BD480b6177716",
+      "txHash": "0x11c38672236a8a035edfebf04400ed1c04d753bb7fb2db36e680a1f7e021efb4",
+      "kind": "uups"
+    },
+    {
+      "address": "0xF50f96Cb8153EaDec85ca23f7fb7B5Afa4222599",
+      "txHash": "0xaa33281475c2cabbdb5fda341970263ca1757fc0d8c4f3345d4868de522b1622",
+      "kind": "uups"
+    },
+    {
+      "address": "0x568c611BCC9FDFcF44A67E82C3E1b159699B6bFe",
+      "txHash": "0xf257d47ce29e2979c6c134397996a2a9312c04032f1f9e01b52c3d29afc0c099",
+      "kind": "uups"
     }
   ],
   "impls": {
@@ -1835,6 +1885,298 @@
           },
           "t_array(t_uint256)50_storage": {
             "label": "uint256[50]"
+          }
+        }
+      }
+    },
+    "d5db4d4b590ac1ef9ac53358abfaa0eafd7be72eb64883edbd898bfc7212117b": {
+      "address": "0x8A83BA0De06Ebd149639A0b8e826022C49FbA04b",
+      "txHash": "0x6560127588f402293deea055ab26d50b946a944193eab65352e1807f8f1a502f",
+      "layout": {
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:39"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:44"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:211"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:107"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:87"
+          },
+          {
+            "label": "isTokenWhitelistedForStrategy",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_mapping(t_uint16,t_mapping(t_uint64,t_mapping(t_address,t_bool)))",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:70"
+          },
+          {
+            "label": "WORMHOLE_TOKEN_BRIDGE",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_address",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:74"
+          },
+          {
+            "label": "WORMHOLE_CORE_BRIDGE",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_address",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:76"
+          },
+          {
+            "label": "CONSISTENCY_LEVEL",
+            "offset": 20,
+            "slot": "203",
+            "type": "t_uint8",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:79"
+          },
+          {
+            "label": "CROSS_CHAIN_FEE_BPS",
+            "offset": 21,
+            "slot": "203",
+            "type": "t_uint32",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:81"
+          },
+          {
+            "label": "FEE_SINK",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_address",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:83"
+          },
+          {
+            "label": "nextPositionId",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_uint128",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:86"
+          },
+          {
+            "label": "chainIdToApertureManager",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_mapping(t_uint16,t_bytes32)",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:88"
+          },
+          {
+            "label": "curveSwapRoutes",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)1706_storage)dyn_storage))",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:91"
+          },
+          {
+            "label": "positionIdToInfo",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_mapping(t_uint128,t_struct(StoredPositionInfo)1682_storage)",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:95"
+          },
+          {
+            "label": "processedInstructions",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_mapping(t_bytes32,t_bool)",
+            "contract": "EthereumManager",
+            "src": "contracts/EthereumManager.sol:98"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_struct(CurveSwapOperation)1706_storage)dyn_storage": {
+            "label": "struct CurveSwapOperation[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_int128": {
+            "label": "int128",
+            "numberOfBytes": "16"
+          },
+          "t_mapping(t_address,t_array(t_struct(CurveSwapOperation)1706_storage)dyn_storage)": {
+            "label": "mapping(address => struct CurveSwapOperation[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)1706_storage)dyn_storage))": {
+            "label": "mapping(address => mapping(address => struct CurveSwapOperation[]))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint128,t_struct(StoredPositionInfo)1682_storage)": {
+            "label": "mapping(uint128 => struct StoredPositionInfo)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint16,t_bytes32)": {
+            "label": "mapping(uint16 => bytes32)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint16,t_mapping(t_uint64,t_mapping(t_address,t_bool)))": {
+            "label": "mapping(uint16 => mapping(uint64 => mapping(address => bool)))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint64,t_mapping(t_address,t_bool))": {
+            "label": "mapping(uint64 => mapping(address => bool))",
+            "numberOfBytes": "32"
+          },
+          "t_struct(CurveSwapOperation)1706_storage": {
+            "label": "struct CurveSwapOperation",
+            "members": [
+              {
+                "label": "pool",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "from_index",
+                "type": "t_int128",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "to_index",
+                "type": "t_int128",
+                "offset": 16,
+                "slot": "1"
+              },
+              {
+                "label": "underlying",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(StoredPositionInfo)1682_storage": {
+            "label": "struct StoredPositionInfo",
+            "members": [
+              {
+                "label": "ownerAddr",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "strategyChainId",
+                "type": "t_uint16",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "strategyId",
+                "type": "t_uint64",
+                "offset": 22,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint16": {
+            "label": "uint16",
+            "numberOfBytes": "2"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
           }
         }
       }

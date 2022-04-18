@@ -6,15 +6,13 @@ const {
   getEmitterAddressTerra,
   hexToUint8Array,
   parseSequencesFromLogEth,
-  parseSequenceFromLogTerra,
-  redeemOnEth,
 } = require("@certusone/wormhole-sdk");
 const {
   ETH_UST_CONTRACT_ADDR,
   ETH_TOKEN_BRIDGE_ADDR,
   TERRA_MANAGER_ADDR,
   ETH_WORMHOLE_ADDR,
-  TERRA_TOKEN_BRIDGE_ADDR,
+  DELTA_NEUTRAL,
 } = require("../constants");
 const { getSignedVAAWithRetry } = require("./wormhole.js");
 const { ethWallet } = require("./eth.js");
@@ -59,15 +57,31 @@ async function deployEthereumManager() {
     EthereumManager,
     [
       consistencyLevel,
-      ETH_UST_CONTRACT_ADDR,
       ETH_TOKEN_BRIDGE_ADDR,
-      hexToUint8Array(await getEmitterAddressTerra(TERRA_MANAGER_ADDR)),
-      0,
-      "0x689961608D2d7047F5411F9d9004D440449CbD27",
+      /*_crossChainFeeBPS=*/ 0,
+      /*_feeSink=*/ ethWallet.address,
     ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
   );
+  // Wait for contract deployment.
   await ethereumManager.deployed();
+
+  // Register Aperture Terra manager to allow Terra manager to send instruction
+  // to Ethereum manager.
+  await ethereumManager.updateApertureManager(
+    CHAIN_ID_TERRA,
+    hexToUint8Array(await getEmitterAddressTerra(TERRA_MANAGER_ADDR))
+  );
+
+  // Register strategy params.
+  console.log("Registering token with Ethereum manager...");
+  await ethereumManager.updateIsTokenWhitelistedForStrategy(
+    CHAIN_ID_TERRA,
+    DELTA_NEUTRAL,
+    ETH_UST_CONTRACT_ADDR,
+    true
+  );
+
   return ethereumManager;
 }
 
@@ -88,7 +102,9 @@ function getDeltaNeutralOpenRequest() {
     target_max_collateral_ratio: "2.7",
     mirror_asset_cw20_addr: "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx",
   };
-  return utf8Encode.encode(Buffer.from(JSON.stringify(deltaNeutralParams)).toString("base64"));
+  return utf8Encode.encode(
+    Buffer.from(JSON.stringify(deltaNeutralParams)).toString("base64")
+  );
 }
 
 function getStableYieldIncreaseRequest() {
@@ -107,8 +123,8 @@ function getCloseRequest(redeemAddr) {
     close_position: {
       recipient: {
         external_chain: {
-          recipient_chain: CHAIN_ID_ETHEREUM_ROPSTEN,
-          recipient: Buffer.from(
+          recipient_chain_id: CHAIN_ID_ETHEREUM_ROPSTEN,
+          recipient_addr: Buffer.from(
             getEmitterAddressEth(redeemAddr),
             "hex"
           ).toString("base64"),

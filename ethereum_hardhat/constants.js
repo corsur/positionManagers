@@ -14,8 +14,7 @@ module.exports = {
   TERRA_LCD_CHAIN_ID: "bombay-12",
   TERRA_WALLET_MNEMONIC:
     "plastic evidence song forest fence daughter nuclear road angry knife wing punch sustain suit resist vapor thrive diesel collect easily minimum thing cost phone",
-  TERRA_MANAGER_ADDR: "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n",
-  ETH_MANAGER_ADDR: "0x479250E286eEC0F39e007C67491DfE15A99Ab789",
+  TERRA_MANAGER_ADDR: "terra1jk3q4mej6qdazyzxas6s75e56qxr934nj20pdy",
   INFURA_URL_RINKERBY:
     "https://rinkeby.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
   INFURA_URL_ROPSTEN:

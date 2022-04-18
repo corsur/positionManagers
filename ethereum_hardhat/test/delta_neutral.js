@@ -1,8 +1,8 @@
 const {
   ETH_UST_CONTRACT_ADDR,
-  ETH_TOKEN_BRIDGE_ADDR,
   TERRA_TOKEN_BRIDGE_ADDR,
   DELTA_NEUTRAL,
+  TERRA_MANAGER_ADDR,
 } = require("../constants");
 const { getSignedVAAWithRetry } = require("../utils/wormhole.js");
 const {
@@ -10,10 +10,8 @@ const {
   CHAIN_ID_ETHEREUM_ROPSTEN,
   getEmitterAddressEth,
   getEmitterAddressTerra,
-  hexToUint8Array,
-  parseSequenceFromLogTerra,
-  redeemOnEth,
   redeemOnTerra,
+  parseSequencesFromLogTerra,
 } = require("@certusone/wormhole-sdk");
 const { ethWallet } = require("../utils/eth.js");
 const {
@@ -42,19 +40,19 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
   const amount = 600 * 1e6;
   await approveERC20(ETH_UST_CONTRACT_ADDR, ethereumManager.address, amount);
 
-  // Update to 1000 BPS -> 10%.
-  await ethereumManager.updateCrossChainFeeBPS(1000, {
+  // Update cross-chain fee.
+  await ethereumManager.updateCrossChainFeeBPS(10, {
     gasLimit: 600000,
   });
 
   // Base64 encoding of the Action enum on Terra side.
   const encodedActionData = getDeltaNeutralOpenRequest();
   let createPositionTX = await ethereumManager.createPosition(
-    DELTA_NEUTRAL,
     CHAIN_ID_TERRA,
+    DELTA_NEUTRAL,
     [{ assetAddr: ETH_UST_CONTRACT_ADDR, amount: amount }],
     encodedActionData,
-    { gasLimit: 600000 }
+    { gasLimit: 900000 }
   );
 
   const [genericMessagingVAA, tokenTransferVAA] = await getVAAs(
@@ -65,7 +63,9 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
   console.log("Registering with Terra Manager");
   await registerWithTerraManager(
     CHAIN_ID_ETHEREUM_ROPSTEN,
-    Array.from(hexToUint8Array(getEmitterAddressEth(ethereumManager.address)))
+    Buffer.from(getEmitterAddressEth(ethereumManager.address), "hex").toString(
+      "base64"
+    )
   );
 
   // Self-claim token transfer on Terra side. This is to stress test Terra
@@ -92,38 +92,49 @@ async function deployOpenAndClose(shouldSelfClaimTokenTransfer = false) {
 
   // Close position.
   const positionId = 0;
-  const encodedCloseActionData = getCloseRequest(ethereumManager.address);
+  const encodedCloseActionData = getCloseRequest(ethWallet.address);
   let closePositionTX = await ethereumManager.executeStrategy(
     positionId,
-    DELTA_NEUTRAL,
     [],
-    encodedCloseActionData.length,
     encodedCloseActionData
   );
+  console.log("Sent close request on ETH.");
 
   const genericMessagingCloseVAA = await getVAA(
     await closePositionTX.wait(),
     ethereumManager.address
   );
 
+  console.log("Processing close VAA on Terra.");
   const terraRes = await processVAA(
     Buffer.from(genericMessagingCloseVAA).toString("base64")
   );
-  let terraWithdrawSeq = parseSequenceFromLogTerra(terraRes);
+
+  let [terraGenericMessagingSeq, terraTokenSeq] =
+    parseSequencesFromLogTerra(terraRes);
+
+  console.log(
+    `Terra token seq: ${terraTokenSeq}, generic seq: ${terraGenericMessagingSeq}`
+  );
+
   const terraTokenTransferVAABytes = await getSignedVAAWithRetry(
     CHAIN_ID_TERRA,
     await getEmitterAddressTerra(TERRA_TOKEN_BRIDGE_ADDR),
-    terraWithdrawSeq
+    terraTokenSeq
   );
-  console.log("Redeeming on ETH");
 
-  console.log(
-    await redeemOnEth(
-      ETH_TOKEN_BRIDGE_ADDR,
-      ethWallet,
-      terraTokenTransferVAABytes
-    )
+  const terraGenericMessagingVAABytes = await getSignedVAAWithRetry(
+    CHAIN_ID_TERRA,
+    await getEmitterAddressTerra(TERRA_MANAGER_ADDR),
+    terraGenericMessagingSeq
   );
+
+  // Process Terra's VAA on ETH.
+  await ethereumManager.processApertureInstruction(
+    terraGenericMessagingVAABytes,
+    [terraTokenTransferVAABytes]
+  );
+  console.log("Finished processing on ETH");
 }
 
 describe("Delta-neutral integration test", function () {
