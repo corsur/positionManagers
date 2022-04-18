@@ -10,3 +10,5 @@ pub const FEE_COLLECTION_CONFIG: Item<FeeCollectionConfig> = Item::new("fee_coll
 pub const ADMIN_CONFIG: Item<AdminConfig> = Item::new("admin_config");
 pub const TMP_POSITION: Item<Position> = Item::new("tmp_position");
 pub const POSITION_TO_CONTRACT_ADDR: Map<PositionKey, Addr> = Map::new("position_to_contract_addr");
+pub const POSITION_OPEN_ALLOWED_MIRROR_ASSETS: Map<String, bool> = Map::new("poama");
+pub const SHOULD_CLOSE_CDP_MIRROR_ASSETS: Map<Addr, bool> = Map::new("sccma");

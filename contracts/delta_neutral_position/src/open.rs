@@ -1,12 +1,12 @@
 use std::str::FromStr;
 
 use aperture_common::{
-    delta_neutral_position::TargetCollateralRatioRange, delta_neutral_position_manager::Context,
+    anchor_util::get_anchor_ust_exchange_rate, delta_neutral_position::TargetCollateralRatioRange,
+    delta_neutral_position_manager::Context,
 };
 use cosmwasm_bignumber::Uint256;
 use cosmwasm_std::{
-    to_binary, Addr, Coin, CosmosMsg, Decimal, DepsMut, Env, Response, StdError, StdResult,
-    Uint128, WasmMsg,
+    to_binary, Addr, Coin, CosmosMsg, Decimal, DepsMut, Env, StdError, StdResult, Uint128, WasmMsg,
 };
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -33,6 +33,7 @@ use crate::{
 // (3) We swap `uusd_long_swap_amount` amount of uusd for mAsset; the returned mAsset amount should match the shorted amount so the position is delta-neutral overall.
 //
 // This function uses binary search to find the largest possible `uusd_collateral_amount` such that `uusd_collateral_amount + uusd_long_swap_amount <= uusd_amount`.
+#[allow(clippy::too_many_arguments)]
 pub fn delta_neutral_invest(
     deps: DepsMut,
     env: &Env,
@@ -42,7 +43,7 @@ pub fn delta_neutral_invest(
     mirror_asset_cw20_addr: &Addr,
     mirror_asset_oracle_uusd_rate: Decimal,
     cdp_idx: Option<Uint128>,
-) -> StdResult<Response> {
+) -> StdResult<Vec<CosmosMsg>> {
     let (pair_info, pool_mirror_asset_balance, pool_uusd_balance) =
         get_terraswap_mirror_asset_uusd_liquidity_info(
             deps.as_ref(),
@@ -77,15 +78,8 @@ pub fn delta_neutral_invest(
     }
 
     // Query Anchor Market epoch state for aUST exchange rate.
-    let anchor_market_epoch_state: moneymarket::market::EpochStateResponse =
-        deps.querier.query_wasm_smart(
-            context.anchor_market_addr.to_string(),
-            &moneymarket::market::QueryMsg::EpochState {
-                block_height: Some(env.block.height),
-                distributed_interest: None,
-            },
-        )?;
-    let anchor_ust_exchange_rate = Decimal::from(anchor_market_epoch_state.exchange_rate);
+    let anchor_ust_exchange_rate =
+        get_anchor_ust_exchange_rate(deps.as_ref(), env, &context.anchor_market_addr)?;
 
     // Our goal is to find the maximum amount of uusd that can be posted as collateral (in the form of aUST) such that there is enough uusd remaining that can be swapped for the minted amount of mAsset.
     // We use binary search to achieve this goal.
@@ -98,14 +92,16 @@ pub fn delta_neutral_invest(
         let uusd_collateral_amount = (a + b) >> 1;
 
         // First, we deposit `uusd_collateral_amount` amount of uusd into Anchor Market, and get back `collateral_anchor_ust_amount` amount of aUST.
-        let collateral_anchor_ust_amount = Uint128::from(
-            Uint256::from(uusd_collateral_amount) / anchor_market_epoch_state.exchange_rate,
-        );
+        let collateral_anchor_ust_amount =
+            Uint128::from(Uint256::from(uusd_collateral_amount) / anchor_ust_exchange_rate);
 
         // Second, we open a short position via Mirror Mint.
         // With `collateral_anchor_ust_amount` amount of aUST collateral and `collateral_ratio`, Mirror will mint `mirror_asset_mint_amount` amount of mAsset.
         let mirror_asset_mint_amount = collateral_anchor_ust_amount
-            * decimal_division(anchor_ust_exchange_rate, mirror_asset_oracle_uusd_rate)
+            * decimal_division(
+                Decimal::from(anchor_ust_exchange_rate),
+                mirror_asset_oracle_uusd_rate,
+            )
             * reverse_decimal(collateral_ratio);
 
         // Third, Mirror will swap `mirror_asset_mint_amount` amount of mAsset for uusd via Terraswap.
@@ -138,11 +134,13 @@ pub fn delta_neutral_invest(
 
     // Simulate the process one final time using the final `uusd_collateral_amount` value.
     let uusd_collateral_amount = a;
-    let collateral_anchor_ust_amount = Uint128::from(
-        Uint256::from(uusd_collateral_amount) / anchor_market_epoch_state.exchange_rate,
-    );
+    let collateral_anchor_ust_amount =
+        Uint128::from(Uint256::from(uusd_collateral_amount) / anchor_ust_exchange_rate);
     let mirror_asset_mint_amount = collateral_anchor_ust_amount
-        * decimal_division(anchor_ust_exchange_rate, mirror_asset_oracle_uusd_rate)
+        * decimal_division(
+            Decimal::from(anchor_ust_exchange_rate),
+            mirror_asset_oracle_uusd_rate,
+        )
         * reverse_decimal(collateral_ratio);
     let (pool_mirror_asset_balance_after_short_swap, pool_uusd_balance_after_short_swap, _) =
         simulate_terraswap_swap(
@@ -156,37 +154,33 @@ pub fn delta_neutral_invest(
         mirror_asset_mint_amount,
     )?;
 
-    Ok(Response::new()
-        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: context.anchor_market_addr.to_string(),
-            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
-            funds: vec![Coin {
-                denom: String::from("uusd"),
-                amount: uusd_collateral_amount,
-            }],
-        }))
-        .add_messages(open_or_increase_cdp(
-            &context,
-            collateral_ratio,
-            collateral_anchor_ust_amount,
-            mirror_asset_cw20_addr.to_string(),
-            mirror_asset_mint_amount,
-            cdp_idx,
-        )?)
-        .add_message(CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: pair_info.contract_addr,
-            msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                offer_asset: get_uusd_asset_from_amount(uusd_long_swap_amount),
-                belief_price: None,
-                max_spread: None,
-                to: None,
-            })?,
-            funds: vec![get_uusd_coin_from_amount(uusd_long_swap_amount)],
-        }))
-        .add_attributes(vec![
-            ("collateral_anchor_ust_amount", collateral_anchor_ust_amount),
-            ("mirror_asset_mint_amount", mirror_asset_mint_amount),
-        ]))
+    let mut messages = vec![CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: context.anchor_market_addr.to_string(),
+        msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {})?,
+        funds: vec![Coin {
+            denom: String::from("uusd"),
+            amount: uusd_collateral_amount,
+        }],
+    })];
+    messages.extend(open_or_increase_cdp(
+        &context,
+        collateral_ratio,
+        collateral_anchor_ust_amount,
+        mirror_asset_cw20_addr.to_string(),
+        mirror_asset_mint_amount,
+        cdp_idx,
+    )?);
+    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: pair_info.contract_addr,
+        msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+            offer_asset: get_uusd_asset_from_amount(uusd_long_swap_amount),
+            belief_price: None,
+            max_spread: None,
+            to: None,
+        })?,
+        funds: vec![get_uusd_coin_from_amount(uusd_long_swap_amount)],
+    }));
+    Ok(messages)
 }
 
 fn open_or_increase_cdp(
@@ -267,6 +261,7 @@ fn test_delta_neutral_invest() {
         cw20_token_addr.to_string(),
         Uint128::from(1000000u128),
         Uint128::from(9000000u128),
+        Uint128::zero(),
     );
     let mut deps = cosmwasm_std::OwnedDeps {
         storage: cosmwasm_std::testing::MockStorage::default(),
@@ -299,7 +294,7 @@ fn test_delta_neutral_invest() {
         min: Decimal::from_ratio(18u128, 10u128),
         max: Decimal::from_ratio(22u128, 10u128),
     };
-    let response = delta_neutral_invest(
+    let messages = delta_neutral_invest(
         deps.as_mut(),
         &env,
         context.clone(),
@@ -310,56 +305,51 @@ fn test_delta_neutral_invest() {
         None,
     )
     .unwrap();
-    assert_eq!(response.messages.len(), 3);
     assert_eq!(
-        response.messages[0].msg,
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: String::from("anchor_market"),
-            msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {}).unwrap(),
-            funds: vec![get_uusd_coin_from_amount(Uint128::from(420u128))],
-        })
-    );
-    assert_eq!(
-        response.messages[1].msg,
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: String::from("anchor_ust_cw20"),
-            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-                contract: String::from("mirror_mint"),
-                amount: Uint128::from(381u128),
-                msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
-                    asset_info: AssetInfo::Token {
-                        contract_addr: cw20_token_addr.to_string(),
-                    },
-                    collateral_ratio: target_collateral_ratio_range.midpoint(),
-                    short_params: Some(mirror_protocol::mint::ShortParams {
-                        belief_price: None,
-                        max_spread: None,
-                    }),
+        messages,
+        vec![
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("anchor_market"),
+                msg: to_binary(&moneymarket::market::ExecuteMsg::DepositStable {}).unwrap(),
+                funds: vec![get_uusd_coin_from_amount(Uint128::from(420u128))],
+            }),
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("anchor_ust_cw20"),
+                msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                    contract: String::from("mirror_mint"),
+                    amount: Uint128::from(381u128),
+                    msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::OpenPosition {
+                        asset_info: AssetInfo::Token {
+                            contract_addr: cw20_token_addr.to_string(),
+                        },
+                        collateral_ratio: target_collateral_ratio_range.midpoint(),
+                        short_params: Some(mirror_protocol::mint::ShortParams {
+                            belief_price: None,
+                            max_spread: None,
+                        }),
+                    })
+                    .unwrap(),
                 })
                 .unwrap(),
+                funds: vec![],
+            }),
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: String::from("mock_terraswap_pair"),
+                msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
+                    offer_asset: Asset {
+                        amount: Uint128::from(180u128),
+                        info: AssetInfo::NativeToken {
+                            denom: String::from("uusd"),
+                        }
+                    },
+                    belief_price: None,
+                    max_spread: None,
+                    to: None,
+                })
+                .unwrap(),
+                funds: vec![get_uusd_coin_from_amount(Uint128::from(180u128))],
             })
-            .unwrap(),
-            funds: vec![],
-        })
-    );
-    assert_eq!(
-        response.messages[2].msg,
-        CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: String::from("mock_terraswap_pair"),
-            msg: to_binary(&terraswap::pair::ExecuteMsg::Swap {
-                offer_asset: Asset {
-                    amount: Uint128::from(180u128),
-                    info: AssetInfo::NativeToken {
-                        denom: String::from("uusd"),
-                    }
-                },
-                belief_price: None,
-                max_spread: None,
-                to: None,
-            })
-            .unwrap(),
-            funds: vec![get_uusd_coin_from_amount(Uint128::from(180u128))],
-        })
+        ]
     );
 
     assert_eq!(

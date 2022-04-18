@@ -1,5 +1,4 @@
-use cosmwasm_bignumber::{Decimal256, Uint256};
-use cosmwasm_std::Uint128;
+use cosmwasm_bignumber::Uint256;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -14,11 +13,6 @@ pub struct InstantiateMsg {
     // Address of the Aperture Terra Manager.
     // Authorized to run `PerformAction`.
     pub terra_manager_addr: String,
-
-    // Initial interest accural settings.
-    pub accrual_rate_per_period: Decimal256,
-    pub seconds_per_period: u64,
-
     // aUST cw20 address.
     pub anchor_ust_cw20_addr: String,
     // Anchor Market contract address.
@@ -38,13 +32,6 @@ pub enum ExecuteMsg {
     UpdateAdminConfig {
         admin_addr: Option<String>,
         terra_manager_addr: Option<String>,
-        accrual_rate_per_period: Option<Decimal256>,
-        seconds_per_period: Option<u64>,
-    },
-    // Can only be called by admin.
-    CollectFees {
-        uusd_amount: Uint128,
-        recipient: String,
     },
 }
 

@@ -168,7 +168,7 @@ pub fn achieve_delta_neutral_from_state(
                 } else {
                     simulate_spectrum_mirror_farm_unbond(
                         spectrum_mirror_pool_lp_balance,
-                        spectrum_pool_info.clone().unwrap(),
+                        spectrum_pool_info.as_ref().unwrap(),
                         info.spectrum_auto_compound_share_amount,
                         withdraw_lp_token_amount,
                     )?
@@ -205,7 +205,7 @@ pub fn achieve_delta_neutral_from_state(
                 current_pool_mirror_asset_amount -= withdrawn_mirror_asset_amount;
                 current_lp_token_amount = simulate_spectrum_mirror_farm_unbond(
                     spectrum_mirror_pool_lp_balance,
-                    spectrum_pool_info.unwrap(),
+                    spectrum_pool_info.as_ref().unwrap(),
                     info.spectrum_auto_compound_share_amount,
                     withdraw_lp_token_amount,
                 )?;
@@ -275,7 +275,7 @@ pub fn achieve_delta_neutral_from_state(
                 } else {
                     simulate_spectrum_mirror_farm_unbond(
                         spectrum_mirror_pool_lp_balance,
-                        spectrum_pool_info.clone().unwrap(),
+                        spectrum_pool_info.as_ref().unwrap(),
                         info.spectrum_auto_compound_share_amount,
                         withdraw_lp_token_amount,
                     )?
@@ -329,7 +329,7 @@ pub fn achieve_delta_neutral_from_state(
                 current_pool_uusd_amount -= withdrawn_uusd_amount;
                 current_lp_token_amount = simulate_spectrum_mirror_farm_unbond(
                     spectrum_mirror_pool_lp_balance,
-                    spectrum_pool_info.unwrap(),
+                    spectrum_pool_info.as_ref().unwrap(),
                     info.spectrum_auto_compound_share_amount,
                     withdraw_lp_token_amount,
                 )?;
@@ -382,7 +382,6 @@ pub fn achieve_delta_neutral_from_state(
     Ok(messages)
 }
 
-/*
 #[test]
 fn test_achieve_delta_neutral() {
     use cosmwasm_std::testing::mock_env;
@@ -403,6 +402,7 @@ fn test_achieve_delta_neutral() {
         cw20_token_addr.to_string(),
         Uint128::from(1000000u128),
         Uint128::from(9000000u128),
+        Uint128::from(1u128),
     );
     let mut deps = cosmwasm_std::OwnedDeps {
         storage: cosmwasm_std::testing::MockStorage::default(),
@@ -560,6 +560,7 @@ fn run_achieve_delta_neutral_from_position_state_test(
         cw20_token_addr.to_string(),
         Uint128::from(1000000u128),
         Uint128::from(9000000u128),
+        position_state.terraswap_pool_info.lp_token_amount,
     );
     let mut deps = cosmwasm_std::OwnedDeps {
         storage: cosmwasm_std::testing::MockStorage::default(),
@@ -623,7 +624,7 @@ fn test_achieve_delta_neutral_from_net_long() {
                 terraswap_pair_addr: String::from("terra1prfcyujt9nsn5kfj5n925sfd737r2n8tk5lmpv"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(27948214u128),
                 terraswap_pool_uusd_amount: Uint128::from(1398215539717u128),
-                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
+                spectrum_auto_compound_share_amount: Uint128::from(549523u128),
             },
         }),
         [CosmosMsg::Wasm(WasmMsg::Execute {
@@ -662,7 +663,7 @@ fn test_achieve_delta_neutral_from_net_long() {
                 terraswap_pair_addr: String::from("mock_terraswap_pair"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
                 terraswap_pool_uusd_amount: Uint128::from(9000000u128),
-                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
+                spectrum_auto_compound_share_amount: Uint128::from(6000u128),
             },
         }),
         [
@@ -725,7 +726,7 @@ fn test_achieve_delta_neutral_from_net_short() {
                 terraswap_pair_addr: String::from("mock_terraswap_pair"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
                 terraswap_pool_uusd_amount: Uint128::from(9000000u128),
-                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
+                spectrum_auto_compound_share_amount: Uint128::from(1u128),
             },
         }),
         [CosmosMsg::Wasm(WasmMsg::Execute {
@@ -768,7 +769,7 @@ fn test_achieve_delta_neutral_from_net_short() {
                 terraswap_pair_addr: String::from("mock_terraswap_pair"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
                 terraswap_pool_uusd_amount: Uint128::from(9000000u128),
-                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
+                spectrum_auto_compound_share_amount: Uint128::from(3000u128),
             },
         }),
         [
@@ -835,10 +836,9 @@ fn test_achieve_delta_neutral_from_neutral() {
                 terraswap_pair_addr: String::from("mock_terraswap_pair"),
                 terraswap_pool_mirror_asset_amount: Uint128::from(1000000u128),
                 terraswap_pool_uusd_amount: Uint128::from(9000000u128),
-                spectrum_auto_compound_share_amount: Uint128::from(335195917u128),
+                spectrum_auto_compound_share_amount: Uint128::from(1u128),
             },
         })
         .is_empty()
     );
 }
-*/

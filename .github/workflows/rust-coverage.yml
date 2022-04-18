@@ -14,7 +14,7 @@ jobs:
 
       - name:                   Generate code coverage
         run: |
-          cargo +nightly tarpaulin --verbose --workspace --timeout 120 --out Xml --exclude spectrum-protocol --exclude-files msg_instantiate_contract_response.rs
+          cargo +nightly tarpaulin --verbose --workspace --timeout 120 --out Xml --exclude spectrum-protocol --exclude mirror-protocol --exclude-files msg_instantiate_contract_response.rs
 
       - name:                   Upload to codecov.io
         uses:                   codecov/codecov-action@v2

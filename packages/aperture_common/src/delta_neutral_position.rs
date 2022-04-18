@@ -13,7 +13,7 @@ pub struct InstantiateMsg {}
 pub enum InternalExecuteMsg {
     AchieveSafeCollateralRatio {},
     WithdrawFundsInUusd {
-        recipient: Option<Recipient>,
+        recipient: Recipient,
     },
     WithdrawCollateralAndRedeemForUusd {
         proportion: Decimal,
@@ -34,7 +34,6 @@ pub enum InternalExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub enum ControllerExecuteMsg {
     RebalanceAndReinvest {},
-    RebalanceAndCollectFees {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -131,9 +130,11 @@ pub struct PositionActionInfo {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub struct DetailedPositionInfo {
-    pub state: PositionState,
+    // None if position was opened when oracle price was stale and the position is currently pending DN setup.
+    pub state: Option<PositionState>,
     pub target_collateral_ratio_range: TargetCollateralRatioRange,
-    pub collateral_ratio: Decimal,
+    // None if position was opened when oracle price was stale and the position is currently pending DN setup.
+    pub collateral_ratio: Option<Decimal>,
     pub unclaimed_short_proceeds_uusd_amount: Uint128,
     pub claimable_short_proceeds_uusd_amount: Uint128,
     pub claimable_mir_reward_uusd_value: Uint128,
@@ -145,8 +146,11 @@ pub struct DetailedPositionInfo {
 #[serde(rename_all = "snake_case")]
 pub struct PositionInfoResponse {
     pub position_open_info: PositionActionInfo,
+    // None if position is closed.
     pub position_close_info: Option<PositionActionInfo>,
-    pub cdp_idx: Uint128,
+    // None if position was opened when oracle price was stale and the position is currently pending DN setup.
+    pub cdp_idx: Option<Uint128>,
     pub mirror_asset_cw20_addr: Addr,
+    // None if position is closed.
     pub detailed_info: Option<DetailedPositionInfo>,
 }

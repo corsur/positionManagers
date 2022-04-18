@@ -4,9 +4,9 @@ use aperture_common::common::{
     get_position_key, get_position_key_from_tuple, Action, Position, Recipient,
 };
 use aperture_common::delta_neutral_position_manager::{
-    AdminConfig, BatchGetPositionInfoResponse, BatchGetPositionInfoResponseItem, Context,
-    DeltaNeutralParams, ExecuteMsg, FeeCollectionConfig, InstantiateMsg, InternalExecuteMsg,
-    MigrateMsg, QueryMsg,
+    AdminConfig, BatchGetPositionInfoResponse, BatchGetPositionInfoResponseItem,
+    CheckMirrorAssetAllowlistResponse, Context, DeltaNeutralParams, ExecuteMsg,
+    FeeCollectionConfig, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
 };
 use aperture_common::terra_manager::TERRA_CHAIN_ID;
 use aperture_common::{delta_neutral_position, terra_manager};
@@ -19,7 +19,8 @@ use terraswap::asset::{Asset, AssetInfo};
 
 use crate::msg_instantiate_contract_response::MsgInstantiateContractResponse;
 use crate::state::{
-    ADMIN_CONFIG, CONTEXT, FEE_COLLECTION_CONFIG, POSITION_TO_CONTRACT_ADDR, TMP_POSITION,
+    ADMIN_CONFIG, CONTEXT, FEE_COLLECTION_CONFIG, POSITION_OPEN_ALLOWED_MIRROR_ASSETS,
+    POSITION_TO_CONTRACT_ADDR, TMP_POSITION,
 };
 
 const INSTANTIATE_REPLY_ID: u64 = 1;
@@ -103,6 +104,10 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             terra_manager_addr,
             delta_neutral_position_code_id,
         ),
+        ExecuteMsg::UpdatePositionOpenMirrorAssetList {
+            mirror_assets,
+            allowed,
+        } => update_position_open_mirror_asset_list(deps, info, mirror_assets, allowed),
         ExecuteMsg::UpdateFeeCollectionConfig {
             fee_collection_config,
         } => update_fee_collection_config(deps, info, fee_collection_config),
@@ -180,6 +185,23 @@ fn update_fee_collection_config(
     Ok(Response::default())
 }
 
+fn update_position_open_mirror_asset_list(
+    deps: DepsMut,
+    info: MessageInfo,
+    mirror_assets: Vec<String>,
+    allowed: bool,
+) -> StdResult<Response> {
+    let config = ADMIN_CONFIG.load(deps.storage)?;
+    if info.sender != config.admin {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+    for mirror_asset in mirror_assets {
+        POSITION_OPEN_ALLOWED_MIRROR_ASSETS.save(deps.storage, mirror_asset, &allowed)?;
+    }
+    Ok(Response::default())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn update_context(
     deps: DepsMut,
     info: MessageInfo,
@@ -283,6 +305,11 @@ pub fn open_position(
     let context = CONTEXT.load(storage)?;
     let uusd_amount = validate_assets(&info, &context, &assets)?;
 
+    // Check that the specified mirror asset is on the allowlist.
+    if !POSITION_OPEN_ALLOWED_MIRROR_ASSETS.load(storage, params.mirror_asset_cw20_addr.clone())? {
+        return Err(StdError::generic_err("mAsset not allowed"));
+    }
+
     // Instantiate a new contract for the position.
     TMP_POSITION.save(storage, &position)?;
     let mut response = Response::new();
@@ -353,6 +380,19 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::GetContext {} => to_binary(&CONTEXT.load(deps.storage)?),
         QueryMsg::GetAdminConfig {} => to_binary(&(ADMIN_CONFIG.load(deps.storage)?)),
+        QueryMsg::CheckMirrorAssetAllowlist { mirror_assets } => {
+            to_binary(&CheckMirrorAssetAllowlistResponse {
+                allowed: mirror_assets
+                    .into_iter()
+                    .map(|mirror_asset| {
+                        POSITION_OPEN_ALLOWED_MIRROR_ASSETS
+                            .may_load(deps.storage, mirror_asset)
+                            .unwrap()
+                            .unwrap_or(false)
+                    })
+                    .collect(),
+            })
+        }
         QueryMsg::BatchGetPositionInfo { positions, ranges } => {
             let mut position_set = HashSet::new();
             if let Some(positions) = positions {
@@ -403,7 +443,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
+pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> StdResult<Response> {
+    FEE_COLLECTION_CONFIG.save(deps.storage, &msg.fee_collection_config)?;
+    for mirror_asset in msg.position_open_allowed_mirror_assets {
+        POSITION_OPEN_ALLOWED_MIRROR_ASSETS.save(deps.storage, mirror_asset, &true)?;
+    }
     Ok(Response::default())
 }
 
@@ -456,6 +500,7 @@ fn test_contract() {
         min_reinvest_uusd_amount: Uint128::from(10u128),
         fee_collection_config: FeeCollectionConfig {
             performance_rate: Decimal::from_ratio(1u128, 10u128),
+            off_market_position_open_service_fee_uusd: Uint128::zero(),
             collector_addr: String::from("collector"),
         },
     };
@@ -507,6 +552,7 @@ fn test_contract() {
         FEE_COLLECTION_CONFIG.load(&deps.storage).unwrap(),
         FeeCollectionConfig {
             performance_rate: Decimal::from_ratio(1u128, 10u128),
+            off_market_position_open_service_fee_uusd: Uint128::zero(),
             collector_addr: String::from("collector"),
         }
     );
@@ -548,11 +594,39 @@ fn test_contract() {
         ),
         Err(StdError::generic_err("unauthorized"))
     );
+    assert_eq!(
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("non-admin", &[]),
+            ExecuteMsg::UpdateFeeCollectionConfig {
+                fee_collection_config: FeeCollectionConfig {
+                    performance_rate: Decimal::from_ratio(1u128, 10u128),
+                    off_market_position_open_service_fee_uusd: Uint128::from(10u128),
+                    collector_addr: String::from("collector"),
+                }
+            },
+        ),
+        Err(StdError::generic_err("unauthorized"))
+    );
+    assert_eq!(
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("non-admin", &[]),
+            ExecuteMsg::UpdatePositionOpenMirrorAssetList {
+                mirror_assets: vec![],
+                allowed: true
+            },
+        ),
+        Err(StdError::generic_err("unauthorized"))
+    );
 
     let delta_neutral_params = DeltaNeutralParams {
         target_min_collateral_ratio: Decimal::from_ratio(23u128, 10u128),
         target_max_collateral_ratio: Decimal::from_ratio(27u128, 10u128),
         mirror_asset_cw20_addr: String::from("terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"),
+        allow_off_market_position_open: None,
     };
     let data = Some(to_binary(&delta_neutral_params).unwrap());
 
@@ -602,7 +676,43 @@ fn test_contract() {
         Err(StdError::generic_err("invalid assets"))
     );
 
-    // Open position.
+    // Open position with disallowed mAsset.
+    assert!(execute(
+        deps.as_mut(),
+        env.clone(),
+        mock_info(
+            "manager",
+            &[Coin {
+                denom: String::from("uusd"),
+                amount: Uint128::from(500u128),
+            }],
+        ),
+        ExecuteMsg::PerformAction {
+            position: position.clone(),
+            action: Action::OpenPosition { data: data.clone() },
+            assets: vec![Asset {
+                info: AssetInfo::NativeToken {
+                    denom: String::from("uusd"),
+                },
+                amount: Uint128::from(500u128),
+            }],
+        },
+    )
+    .is_err());
+
+    // Allow mAsset and open position.
+    assert_eq!(
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("admin", &[]),
+            ExecuteMsg::UpdatePositionOpenMirrorAssetList {
+                mirror_assets: vec![delta_neutral_params.mirror_asset_cw20_addr.clone()],
+                allowed: true
+            },
+        ),
+        Ok(Response::default())
+    );
     let response = execute(
         deps.as_mut(),
         env.clone(),
@@ -754,9 +864,8 @@ fn test_contract() {
                 terra_manager_addr: None,
                 delta_neutral_position_code_id: Some(165),
             },
-        )
-        .unwrap(),
-        Response::default()
+        ),
+        Ok(Response::default())
     );
     assert_eq!(
         ADMIN_CONFIG.load(deps.as_ref().storage).unwrap(),
@@ -764,6 +873,31 @@ fn test_contract() {
             admin: Addr::unchecked("new-admin"),
             terra_manager: Addr::unchecked("manager"),
             delta_neutral_position_code_id: 165,
+        }
+    );
+
+    // Fee collection config update.
+    assert_eq!(
+        execute(
+            deps.as_mut(),
+            env.clone(),
+            mock_info("new-admin", &[]),
+            ExecuteMsg::UpdateFeeCollectionConfig {
+                fee_collection_config: FeeCollectionConfig {
+                    performance_rate: Decimal::from_ratio(2u128, 10u128),
+                    off_market_position_open_service_fee_uusd: Uint128::from(100u128),
+                    collector_addr: String::from("new_collector"),
+                }
+            },
+        ),
+        Ok(Response::default())
+    );
+    assert_eq!(
+        FEE_COLLECTION_CONFIG.load(deps.as_ref().storage).unwrap(),
+        FeeCollectionConfig {
+            performance_rate: Decimal::from_ratio(2u128, 10u128),
+            off_market_position_open_service_fee_uusd: Uint128::from(100u128),
+            collector_addr: String::from("new_collector"),
         }
     );
 

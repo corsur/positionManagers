@@ -173,6 +173,7 @@ impl WasmMockQuerier {
                                     target_min_collateral_ratio: Decimal::from_ratio(23u128, 10u128),
                                     target_max_collateral_ratio: Decimal::from_ratio(27u128, 10u128),
                                     mirror_asset_cw20_addr: String::from("terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"),
+                                    allow_off_market_position_open: None,
                                 }).unwrap()),
                             }.serialize().unwrap(),
                             hash: vec![

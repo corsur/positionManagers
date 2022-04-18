@@ -186,6 +186,7 @@ fn test_swap_cw20_token_for_uusd() {
         cw20_token_addr.to_string(),
         Uint128::zero(),
         Uint128::zero(),
+        Uint128::zero(),
     );
     let querier_astroport_better_rate = crate::mock_querier::WasmMockQuerier::new(
         terraswap_factory_addr.to_string(),
@@ -195,6 +196,7 @@ fn test_swap_cw20_token_for_uusd() {
         Uint128::from(8u128),
         Uint128::from(12u128),
         cw20_token_addr.to_string(),
+        Uint128::zero(),
         Uint128::zero(),
         Uint128::zero(),
     );
@@ -520,6 +522,7 @@ fn test_get_terraswap_mirror_asset_uusd_liquidity_info() {
         cw20_token_addr.to_string(),
         Uint128::from(1000u128),
         Uint128::from(100u128),
+        Uint128::zero(),
     );
     let deps = cosmwasm_std::OwnedDeps {
         storage: cosmwasm_std::testing::MockStorage::default(),

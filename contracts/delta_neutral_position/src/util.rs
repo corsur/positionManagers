@@ -1,15 +1,17 @@
 use std::cmp::Ordering;
 
 use aperture_common::{
+    anchor_util::get_anchor_ust_balance_with_uusd_value,
     delta_neutral_position::{
         DetailedPositionInfo, PositionInfoResponse, PositionState, TerraswapPoolInfo,
     },
-    delta_neutral_position_manager::Context,
+    delta_neutral_position_manager::{Context, FeeCollectionConfig},
 };
 use cosmwasm_std::{
     to_binary, Addr, Coin, CosmosMsg, Decimal, Deps, Env, QuerierWrapper, StdResult, Uint128,
     WasmMsg,
 };
+use cw_storage_plus::Item;
 use mirror_protocol::collateral_oracle::CollateralPriceResponse;
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -21,12 +23,12 @@ use crate::{
     mirror_util::get_mirror_asset_oracle_uusd_price_response,
     spectrum_util::unstake_lp_from_spectrum_and_withdraw_liquidity,
     state::{
-        CDP_IDX, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
+        CDP_IDX, MANAGER, MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO,
         TARGET_COLLATERAL_RATIO_RANGE,
     },
 };
 
-// TODO(gnarlycow): Consider making this configurable through delta_neutral_position_manager::Context or AdminConfig.
+// The minimum allowed width for the target collateral ratio range.
 pub const MIN_TARGET_CR_RANGE_WIDTH: &str = "0.4";
 
 pub fn get_uusd_asset_from_amount(amount: Uint128) -> Asset {
@@ -376,11 +378,34 @@ pub fn query_position_info(
     let mut response = PositionInfoResponse {
         position_open_info: POSITION_OPEN_INFO.load(deps.storage)?,
         position_close_info: POSITION_CLOSE_INFO.may_load(deps.storage)?,
-        cdp_idx: CDP_IDX.load(deps.storage)?,
+        cdp_idx: CDP_IDX.may_load(deps.storage)?,
         mirror_asset_cw20_addr: MIRROR_ASSET_CW20_ADDR.load(deps.storage)?,
         detailed_info: None,
     };
+
+    // Position is closed.
     if response.position_close_info.is_some() {
+        return Ok(response);
+    }
+
+    // Position was opened when oracle price was stale, currently pending DN setup.
+    if response.cdp_idx.is_none() {
+        let (_, anchor_earn_uusd_value) = get_anchor_ust_balance_with_uusd_value(
+            deps,
+            env,
+            &context.anchor_market_addr,
+            &context.anchor_ust_cw20_addr,
+        )?;
+        response.detailed_info = Some(DetailedPositionInfo {
+            state: None,
+            target_collateral_ratio_range: TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?,
+            collateral_ratio: None,
+            unclaimed_short_proceeds_uusd_amount: Uint128::zero(),
+            claimable_short_proceeds_uusd_amount: Uint128::zero(),
+            claimable_mir_reward_uusd_value: Uint128::zero(),
+            claimable_spec_reward_uusd_value: Uint128::zero(),
+            uusd_value: anchor_earn_uusd_value,
+        });
         return Ok(response);
     }
 
@@ -455,9 +480,9 @@ pub fn query_position_info(
     );
 
     response.detailed_info = Some(DetailedPositionInfo {
-        state,
+        state: Some(state),
         target_collateral_ratio_range: TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?,
-        collateral_ratio,
+        collateral_ratio: Some(collateral_ratio),
         unclaimed_short_proceeds_uusd_amount,
         claimable_short_proceeds_uusd_amount,
         claimable_mir_reward_uusd_value: mir_uusd_value,
@@ -465,4 +490,10 @@ pub fn query_position_info(
         uusd_value: value,
     });
     Ok(response)
+}
+
+pub fn get_fee_collection_config_from_manager(deps: Deps) -> StdResult<FeeCollectionConfig> {
+    let manager_addr = MANAGER.load(deps.storage)?;
+    const FEE_COLLECTION_CONFIG: Item<FeeCollectionConfig> = Item::new("fee_collection_config");
+    FEE_COLLECTION_CONFIG.query(&deps.querier, manager_addr)
 }

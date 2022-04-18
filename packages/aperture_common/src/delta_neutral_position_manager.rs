@@ -81,6 +81,11 @@ pub enum ExecuteMsg {
         fee_collection_config: FeeCollectionConfig,
     },
     // Can only be called by admin.
+    UpdatePositionOpenMirrorAssetList {
+        mirror_assets: Vec<String>,
+        allowed: bool,
+    },
+    // Can only be called by admin.
     UpdateContext {
         controller: Option<String>,
         mirror_collateral_oracle_addr: Option<String>,
@@ -95,7 +100,10 @@ pub enum ExecuteMsg {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub struct MigrateMsg {}
+pub struct MigrateMsg {
+    pub fee_collection_config: FeeCollectionConfig,
+    pub position_open_allowed_mirror_assets: Vec<String>,
+}
 
 /// Represents position ids of the range [start, end) on the chain identified by `chain_id`.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -118,6 +126,17 @@ pub enum QueryMsg {
     },
     GetContext {},
     GetAdminConfig {},
+    // Returns CheckMirrorAssetAllowlistResponse.
+    CheckMirrorAssetAllowlist {
+        mirror_assets: Vec<String>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct CheckMirrorAssetAllowlistResponse {
+    // Whether the requested mirror assets are allowed to open positions with, in the order of the input mAsset array.
+    pub allowed: Vec<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -172,6 +191,8 @@ pub struct Context {
 pub struct FeeCollectionConfig {
     // Performance fee rate. We periodically collect fees from positions; this fee rate is applied to the net uusd value gain since the previous fee collection.
     pub performance_rate: Decimal,
+    // Flat service fee in uusd for opening a position when oracle price is stale (usually off-market).
+    pub off_market_position_open_service_fee_uusd: Uint128,
     // Address to which the collected fees go.
     pub collector_addr: String,
 }
@@ -188,4 +209,9 @@ pub struct DeltaNeutralParams {
     pub target_max_collateral_ratio: Decimal,
     // The mAsset token used in this delta-neutral position.
     pub mirror_asset_cw20_addr: String,
+    // If `Some(true)`, then allow the position to open even if the current oracle price is not fresh.
+    // An off-market position open service fee will be deducted immediately from the deposit.
+    // A non-fresh oracle price usually indicates that the off-chain market for the mAsset is currently closed; however, during active market hours there is a possibility of oracle provider delay making the oracle price stale.
+    // Funds will be deposited to Anchor Earn at the time of position open; later when oracle price becomes fresh, the controller is able to trigger actual DN position setup by invoking RebalanceAndReinvest.
+    pub allow_off_market_position_open: Option<bool>,
 }

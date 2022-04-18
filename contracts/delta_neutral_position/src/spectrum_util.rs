@@ -48,8 +48,17 @@ pub struct SpectrumPoolInfo {
     pub reinvest_allowance: Uint128,
 }
 
+// Abridged version of Spectrum Mirror Farm pool info; only comprises fields relevant to auto-compound LP unbond simulation.
+pub struct AbridgedSpectrumPoolInfo {
+    // total auto-compound share in the pool
+    pub total_auto_bond_share: Uint128,
+
+    // LP amount for auto-stake
+    pub total_stake_bond_amount: Uint128,
+}
+
 // Copied from https://github.com/spectrumprotocol/contracts/blob/c6d95b8e853b16c94f98db60695c299c0d308fce/contracts/farms/spectrum_mirror_farm/src/state.rs#L121
-impl SpectrumPoolInfo {
+impl AbridgedSpectrumPoolInfo {
     pub fn calc_auto_bond_share(&self, auto_bond_amount: Uint128, lp_balance: Uint128) -> Uint128 {
         let total_auto_bond_amount = lp_balance
             .checked_sub(self.total_stake_bond_amount)
@@ -78,9 +87,9 @@ pub fn get_spectrum_mirror_pool_info(
     deps: Deps,
     spectrum_mirror_farms_addr: &Addr,
     mirror_asset_cw20_addr: &Addr,
-) -> StdResult<SpectrumPoolInfo> {
+) -> StdResult<AbridgedSpectrumPoolInfo> {
     let pool_info_map: Map<&[u8], SpectrumPoolInfo> = Map::new("pool_info");
-    Ok(pool_info_map
+    let pool_info = pool_info_map
         .query(
             &deps.querier,
             spectrum_mirror_farms_addr.clone(),
@@ -88,7 +97,11 @@ pub fn get_spectrum_mirror_pool_info(
                 .addr_canonicalize(mirror_asset_cw20_addr.as_str())?
                 .as_slice(),
         )?
-        .unwrap())
+        .unwrap();
+    Ok(AbridgedSpectrumPoolInfo {
+        total_auto_bond_share: pool_info.total_auto_bond_share,
+        total_stake_bond_amount: pool_info.total_stake_bond_amount,
+    })
 }
 
 // Obtain LP balance of the whole Spectrum pool, i.e. the amount of LP tokens staked in Mirror long farm by the Spectrum farm contract.
@@ -114,7 +127,7 @@ pub fn get_spectrum_mirror_lp_balance(
 // The amount of auto-compound shares is `spectrum_auto_compound_share_amount` prior to the simulated withdrawal.
 pub fn simulate_spectrum_mirror_farm_unbond(
     spectrum_mirror_pool_lp_balance: Uint128,
-    mut spectrum_pool_info: SpectrumPoolInfo,
+    spectrum_pool_info: &AbridgedSpectrumPoolInfo,
     spectrum_auto_compound_share_amount: Uint128,
     withdraw_lp_token_amount: Uint128,
 ) -> StdResult<Uint128> {
@@ -127,10 +140,13 @@ pub fn simulate_spectrum_mirror_farm_unbond(
     {
         auto_bond_share += Uint128::new(1u128);
     }
-    spectrum_pool_info.total_auto_bond_share = spectrum_pool_info
-        .total_auto_bond_share
-        .checked_sub(auto_bond_share)?;
-    Ok(spectrum_pool_info.calc_user_auto_balance(
+    let pool_info_after_unbond = AbridgedSpectrumPoolInfo {
+        total_auto_bond_share: spectrum_pool_info
+            .total_auto_bond_share
+            .checked_sub(auto_bond_share)?,
+        total_stake_bond_amount: spectrum_pool_info.total_stake_bond_amount,
+    };
+    Ok(pool_info_after_unbond.calc_user_auto_balance(
         spectrum_mirror_pool_lp_balance - withdraw_lp_token_amount,
         spectrum_auto_compound_share_amount - auto_bond_share,
     ))

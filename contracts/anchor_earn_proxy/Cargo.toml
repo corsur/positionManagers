@@ -1,5 +1,5 @@
 [package]
-name = "stable-yield-manager"
+name = "anchor-earn-proxy"
 version = "0.1.0"
 authors = ["Aperture Finance"]
 edition = "2018"

@@ -867,6 +867,7 @@ fn test_process_cross_chain_instruction_open_position() {
                             mirror_asset_cw20_addr: String::from(
                                 "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"
                             ),
+                            allow_off_market_position_open: None,
                         })
                         .unwrap()
                     ),

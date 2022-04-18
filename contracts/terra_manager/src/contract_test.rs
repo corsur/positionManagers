@@ -159,6 +159,7 @@ fn test_create_position() {
         target_min_collateral_ratio: Decimal::one(),
         target_max_collateral_ratio: Decimal::one(),
         mirror_asset_cw20_addr: MOCK_CONTRACT_ADDR.to_string(),
+        allow_off_market_position_open: None,
     })
     .unwrap();
 
