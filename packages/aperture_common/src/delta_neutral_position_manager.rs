@@ -139,6 +139,22 @@ pub enum QueryMsg {
     CheckMirrorAssetAllowlist {
         mirror_assets: Vec<String>,
     },
+    // Returns ShouldCallRebalanceAndReinvestResponse.
+    ShouldCallRebalanceAndReinvest {
+        position: Position,
+        // Should call when mAsset net amount is above this threshold, i.e. `abs(longAmount - shortAmount) / longAmount > mirror_asset_net_amount_tolerance_ratio`.
+        mirror_asset_net_amount_tolerance_ratio: Decimal,
+        // Should call when liquid uusd / position value is above this threshold.
+        liquid_uusd_threshold_ratio: Decimal,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct ShouldCallRebalanceAndReinvestResponse {
+    pub should_call: bool,
+    pub position_contract: Addr,
+    pub reason: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

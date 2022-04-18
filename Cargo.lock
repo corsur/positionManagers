@@ -26,10 +26,12 @@ dependencies = [
  "cosmwasm-std",
  "cw-storage-plus 0.9.1",
  "cw20 0.9.1",
+ "mirror-protocol",
  "moneymarket",
  "schemars",
  "serde",
  "spectrum-protocol",
+ "tefi-oracle",
  "terraswap",
 ]
 

@@ -3,7 +3,6 @@ pub mod state;
 
 mod dex_util;
 mod math;
-mod mirror_util;
 mod open;
 mod rebalance;
 mod spectrum_util;

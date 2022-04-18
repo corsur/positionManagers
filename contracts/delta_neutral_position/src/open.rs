@@ -1,8 +1,10 @@
 use std::str::FromStr;
 
 use aperture_common::{
-    anchor_util::get_anchor_ust_exchange_rate, delta_neutral_position::TargetCollateralRatioRange,
+    anchor_util::get_anchor_ust_exchange_rate,
+    delta_neutral_position::TargetCollateralRatioRange,
     delta_neutral_position_manager::Context,
+    mirror_util::{get_mirror_asset_config_response, is_mirror_asset_delisted},
 };
 use cosmwasm_bignumber::Uint256;
 use cosmwasm_std::{
@@ -16,7 +18,6 @@ use crate::{
         simulate_terraswap_swap,
     },
     math::{decimal_division, reverse_decimal},
-    mirror_util::{get_mirror_asset_config_response, is_mirror_asset_delisted},
     util::{get_uusd_asset_from_amount, get_uusd_coin_from_amount, MIN_TARGET_CR_RANGE_WIDTH},
 };
 

@@ -6,6 +6,10 @@ use aperture_common::{
         DetailedPositionInfo, PositionInfoResponse, PositionState, TerraswapPoolInfo,
     },
     delta_neutral_position_manager::{Context, FeeCollectionConfig},
+    mirror_util::{
+        get_mirror_asset_config_response, get_mirror_asset_oracle_uusd_price_response,
+        is_mirror_asset_delisted,
+    },
 };
 use cosmwasm_std::{
     to_binary, Addr, Coin, CosmosMsg, Decimal, Deps, Env, QuerierWrapper, StdResult, Uint128,
@@ -19,10 +23,6 @@ use crate::{
     dex_util::{
         compute_terraswap_offer_amount, create_terraswap_cw20_uusd_pair_asset_info,
         get_terraswap_mirror_asset_uusd_liquidity_info,
-    },
-    mirror_util::{
-        get_mirror_asset_config_response, get_mirror_asset_oracle_uusd_price_response,
-        is_mirror_asset_delisted,
     },
     spectrum_util::unstake_lp_from_spectrum_and_withdraw_liquidity,
     state::{

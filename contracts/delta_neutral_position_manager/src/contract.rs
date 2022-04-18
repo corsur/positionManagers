@@ -3,10 +3,16 @@ use std::collections::HashSet;
 use aperture_common::common::{
     get_position_key, get_position_key_from_tuple, Action, Position, Recipient,
 };
+use aperture_common::delta_neutral_position::PositionInfoResponse;
 use aperture_common::delta_neutral_position_manager::{
     AdminConfig, BatchGetPositionInfoResponse, BatchGetPositionInfoResponseItem,
     CheckMirrorAssetAllowlistResponse, Context, DeltaNeutralParams, ExecuteMsg,
     FeeCollectionConfig, InstantiateMsg, InternalExecuteMsg, MigrateMsg, QueryMsg,
+    ShouldCallRebalanceAndReinvestResponse,
+};
+use aperture_common::mirror_util::{
+    get_mirror_asset_config_response, get_mirror_asset_fresh_oracle_uusd_rate,
+    is_mirror_asset_delisted,
 };
 use aperture_common::terra_manager::TERRA_CHAIN_ID;
 use aperture_common::{delta_neutral_position, terra_manager};
@@ -461,7 +467,153 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             }
             to_binary(&response)
         }
+        QueryMsg::ShouldCallRebalanceAndReinvest {
+            position,
+            mirror_asset_net_amount_tolerance_ratio,
+            liquid_uusd_threshold_ratio,
+        } => query_should_call_rebalance_and_reinvest(
+            deps,
+            position,
+            mirror_asset_net_amount_tolerance_ratio,
+            liquid_uusd_threshold_ratio,
+        ),
     }
+}
+
+fn query_should_call_rebalance_and_reinvest(
+    deps: Deps,
+    position: Position,
+    mirror_asset_net_amount_tolerance_ratio: Decimal,
+    liquid_uusd_threshold_ratio: Decimal,
+) -> StdResult<Binary> {
+    let position_contract =
+        POSITION_TO_CONTRACT_ADDR.load(deps.storage, get_position_key(&position))?;
+    let position_info: PositionInfoResponse = deps.querier.query_wasm_smart(
+        &position_contract,
+        &delta_neutral_position::QueryMsg::GetPositionInfo {},
+    )?;
+
+    if position_info.position_close_info.is_some() {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: false,
+            reason: Some(String::from("POSITION_CLOSED")),
+        });
+    }
+
+    if position_info
+        .detailed_info
+        .as_ref()
+        .unwrap()
+        .cdp_preemptively_closed
+    {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: false,
+            reason: Some(String::from("CDP_PREEMPTIVELY_CLOSED")),
+        });
+    }
+
+    let context = CONTEXT.load(deps.storage)?;
+    let fresh_oracle_uusd_rate = get_mirror_asset_fresh_oracle_uusd_rate(
+        &deps.querier,
+        &context,
+        &position_info.mirror_asset_cw20_addr,
+    );
+    if fresh_oracle_uusd_rate.is_none() {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: false,
+            reason: Some(String::from("ORACLE_PRICE_STALE")),
+        });
+    }
+
+    if position_info.cdp_idx.is_none() {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: true,
+            reason: Some(String::from("DELAYED_DN_OPEN")),
+        });
+    }
+
+    let mirror_asset_config_response = get_mirror_asset_config_response(
+        &deps.querier,
+        &context.mirror_mint_addr,
+        position_info.mirror_asset_cw20_addr.as_str(),
+    )?;
+    let should_close_cdp = SHOULD_PREEMPTIVELY_CLOSE_CDP_MIRROR_ASSETS
+        .may_load(deps.storage, position_info.mirror_asset_cw20_addr.clone())?
+        == Some(true)
+        || is_mirror_asset_delisted(&mirror_asset_config_response);
+    if should_close_cdp {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: true,
+            reason: Some(String::from("PREEMPTIVELY_CLOSE_CDP")),
+        });
+    }
+
+    let info = &position_info.detailed_info.unwrap();
+    if mirror_asset_config_response.min_collateral_ratio + context.collateral_ratio_safety_margin
+        > info.target_collateral_ratio_range.min
+    {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: true,
+            reason: Some(String::from("RAISE_TARGET_CR_RANGE")),
+        });
+    }
+
+    if info.collateral_ratio.unwrap() < info.target_collateral_ratio_range.min {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: true,
+            reason: Some(String::from("CR_BELOW_MIN")),
+        });
+    }
+
+    let uusd_short_proceeds_pending_unlock = !info.unclaimed_short_proceeds_uusd_amount.is_zero()
+        && info.claimable_short_proceeds_uusd_amount.is_zero();
+    if info.collateral_ratio.unwrap() > info.target_collateral_ratio_range.max
+        && !uusd_short_proceeds_pending_unlock
+    {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: true,
+            reason: Some(String::from("CR_ABOVE_MAX")),
+        });
+    }
+
+    let long_amount = info.state.as_ref().unwrap().mirror_asset_long_amount;
+    let short_amount = info.state.as_ref().unwrap().mirror_asset_short_amount;
+    let diff_amount = if long_amount > short_amount {
+        long_amount - short_amount
+    } else {
+        short_amount - long_amount
+    };
+    if diff_amount > long_amount * mirror_asset_net_amount_tolerance_ratio {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: true,
+            reason: Some(String::from("DELTA_ABOVE_THRESHOLD")),
+        });
+    }
+
+    let liquid_uusd_amount = info.state.as_ref().unwrap().uusd_balance
+        + info.claimable_mir_reward_uusd_value
+        + info.claimable_spec_reward_uusd_value
+        + info.claimable_short_proceeds_uusd_amount;
+    if liquid_uusd_amount > info.uusd_value * liquid_uusd_threshold_ratio
+        && !uusd_short_proceeds_pending_unlock
+    {
+        return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+            position_contract,
+            should_call: true,
+            reason: Some(String::from("LIQUID_UUSD_ABOVE_THRESHOLD")),
+        });
+    }
+
+    Ok(Binary::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
