@@ -6,18 +6,13 @@ This monorepository contains the source code for the core smart contracts implem
 
 ## Directory Overview
 
-    |-- contracts // Contains all CosmWasm contracts and test.
-        |-- delta_neutral_position // Core ∆-neutral strategy logic
-        |-- delta_neutral_position_manager // Manage positions for all users.
-        |-- anchor_earn_proxy // A wrapper of Anchor Earn.
-        |-- terra_manager // Entry point on Terra and manage all strategies.
-    |-- controller // Jobs to periodically trigger rebalance.
-    |-- data_pipeline // Scripts to periodically push analysis data for web app and dashboard uses.
-    |-- deployment // Scripts to deploy Terra contracts.
-    |-- ethereum_hardhat // All EVM related contracts built using Hardhat.
-    |-- packages // Terra packages
-        |-- spectrum_protocol // This is copied from Spectrum Protocol's repo; this package is not uploaded to crates.io index.
-        |-- aperture_common // Aperture common util libraries and data types.
+    |-- terra_contracts // Contains all Terra (CosmWasm) contracts.
+        |-- contracts/delta_neutral_position // Core ∆-neutral strategy logic.
+        |-- contracts/delta_neutral_position_manager // Manage positions for all users.
+        |-- contracts/anchor_earn_proxy // A wrapper of Anchor Earn.
+        |-- contracts/terra_manager // Aperture manager on Terra which handles all Terra strategies and cross-chain communications with Aperture managers on other chains.
+    |-- ethereum_contracts // EVM contracts with Hardhat.
+    |-- scripts // Controller and data collection scripts.
 
 ## Development
 
