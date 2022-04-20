@@ -20,6 +20,7 @@ import {
   TERRA_MANAGER_TESTNET,
   testnetTerra,
 } from "./utils/terra.js";
+import { generateRangeArray } from "./utils/hive.js";
 import pool from "@ricokahler/pool";
 import {
   getPositionInfoQueries,
@@ -34,9 +35,11 @@ axiosRetry(axios, {
 });
 
 // Global variables setup.
+
 var blockchain_network = undefined;
+const region = "us-west-2";
 const client = new DynamoDBClient({
-  region: "us-west-2"
+  region
 });
 const position_ticks_dev = "position_ticks_dev";
 const position_ticks_prod = "position_ticks";
@@ -52,7 +55,7 @@ const terra_hive_address_dev = "https://testnet-hive.terra.dev/graphql";
 const terra_hive_address_prod = "https://hive.terra.dev/graphql";
 
 const cw_client = new CloudWatchClient({
-  region: "us-west-2"
+  region
 });
 // Metrics definitions.
 var metrics = {};
@@ -65,11 +68,12 @@ const GET_POSITION_MANAGER_FAILURE = "GET_POSITION_MANAGER_FAILURE";
 const GET_POSITION_CONTRACT_FAILURE = "GET_POSITION_CONTRACT_FAILURE";
 const GET_POSITION_INFO_FAILURE = "GET_POSITION_INFO_FAILURE";
 const BATCH_GET_POSITION_INFO_FAILURE = "BATCH_GET_POSITION_INFO_FAILURE";
-const NUM_PROCESSED_POSITION = "NUM_PROCESSED_POSITION";
 const DB_POSITION_TICKS_WRITE_FAILURE = "DB_POSITION_TICKS_WRITE_FAILURE";
 const DB_POSITION_TICKS_WRITE_SUCCESS = "DB_POSITION_TICKS_WRITE_SUCCESS";
 const DB_STRATEGY_TVL_WRITE_FAILURE = "DB_STRATEGY_TVL_WRITE_FAILURE";
 const DB_STRATEGY_TVL_WRITE_SUCCESS = "DB_STRATEGY_TVL_WRITE_SUCCESS";
+const DB_LATEST_STRATEGY_TVL_WRITE_FAILURE = "DB_LATEST_STRATEGY_TVL_WRITE_FAILURE";
+const DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS = "DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS";
 
 async function run_pipeline() {
   // Setup argument parsing and input specs.
@@ -112,7 +116,6 @@ async function run_pipeline() {
   metrics[GET_POSITION_CONTRACT_FAILURE] = 0;
   metrics[GET_POSITION_INFO_FAILURE] = 0;
   metrics[BATCH_GET_POSITION_INFO_FAILURE] = 0;
-  metrics[NUM_PROCESSED_POSITION] = 0;
   metrics[DB_POSITION_TICKS_WRITE_FAILURE] = 0;
   metrics[DB_POSITION_TICKS_WRITE_SUCCESS] = 0;
   metrics[DB_STRATEGY_TVL_WRITE_FAILURE] = 0;
@@ -126,8 +129,6 @@ async function run_pipeline() {
   var position_ticks_table = "";
   var strategy_tvl_table = "";
   var latest_strategy_tvl_table = "";
-  var terraswap_data_table = "";
-  var terraswap_api_address = "";
   var connection = undefined;
   var terra_hive_address = "";
 
@@ -202,7 +203,6 @@ async function run_pipeline() {
   var position_infos_promise = await getPositionInfos(
     next_id,
     qps,
-    connection,
     position_manager_addr,
     hive_batch_size
   )
@@ -289,48 +289,9 @@ async function run_pipeline() {
     await write_strategy_metrics(latest_strategy_tvl_table, strategy_id, tvl_uusd);
   }
 
-  // Query and persist Terraswap data.
-  // axios.get(terraswap_api_address)
-  //   .then((response) => {
-  //     response.data.forEach(pair_data => {
-  //       const timestamp_sec = Date.parse(pair_data.timestamp).getTime() / 1e3;
-  //       await write_terraswap_data(terraswap_data_table, timestamp_sec, pair_data.pairAddress, pair_data.apr);
-  //     });
-  //   }, (error) => {
-  //     console.log(error);
-  //   });
-}
-
-async function write_terraswap_data(
-  table_name,
-  timestamp_sec,
-  pairAddress,
-  apr
-) {
-  const input = {
-    TableName: table_name,
-    Item: {
-      timestamp_sec: {
-        N: timestamp_sec
-      },
-      pair_address: {
-        S: pairAddress
-      },
-      apr: {
-        S: apr
-      },
-    },
-  };
-  const command = new PutItemCommand(input);
-  try {
-    const results = await client.send(command);
-    console.log(results);
-  } catch (err) {
-    console.error(err);
-  }
-}
-
 async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
+  // Check if we are writing to latest_strategy_tvl_table
+  const useLatestTable = table_name === latest_strategy_tvl_table;
   const input = {
     TableName: table_name,
     Item: {
@@ -348,35 +309,10 @@ async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
   const command = new PutItemCommand(input);
   try {
     await client.send(command);
-    metrics[DB_STRATEGY_TVL_WRITE_SUCCESS]++;
+    metrics[useLatestTable ? DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS : DB_STRATEGY_TVL_WRITE_SUCCESS]++
   } catch (err) {
-    console.error(`Strategy TVL write failed with error:  ${err}`);
-    metrics[DB_STRATEGY_TVL_WRITE_FAILURE]++;
-  }
-}
-
-async function write_latest_strategy_metrics(table_name, strategy_id, tvl_uusd) {
-  const input = {
-    TableName: table_name,
-    Item: {
-      strategy_id: {
-        S: strategy_id.toString()
-      },
-      tvl_uusd: {
-        S: tvl_uusd.toString()
-      },
-      timestamp_sec: {
-        N: parseInt(new Date().getTime() / 1e3).toString()
-      },
-    },
-  };
-  const command = new PutItemCommand(input);
-  try {
-    await client.send(command);
-    metrics[DB_STRATEGY_TVL_WRITE_SUCCESS]++;
-  } catch (err) {
-    console.error(`Strategy TVL write failed with error:  ${err}`);
-    metrics[DB_STRATEGY_TVL_WRITE_FAILURE]++;
+    console.error(`${useLatestTable? 'Latest Strategy' : 'Strategy'} TVL write failed with error:  ${err}`);
+    metrics[useLatestTable ? DB_LATEST_STRATEGY_TVL_WRITE_FAILURE : DB_STRATEGY_TVL_WRITE_FAILURE];
   }
 }
 
@@ -406,16 +342,9 @@ async function publishMetrics(metrics_and_count) {
   }
 }
 
-// Generates array [begin, begin + 1, begin + 2, ..., end - 1].
-function generateRangeArray(begin, end) {
-  if (begin >= end) return [];
-  return [...Array(end - begin).keys()].map((num) => num + begin);
-}
-
 async function getPositionInfos(
   next_id,
   qps,
-  connection,
   position_manager_addr,
   hive_batch_size
 ) {
@@ -439,7 +368,7 @@ async function getPositionInfos(
 
           let hive_response = await axios({
             method: "post",
-            url: "https://testnet-hive.terra.dev/graphql",
+            url: terra_hive_address,
             data: {
               query: hive_query,
             },
@@ -450,42 +379,14 @@ async function getPositionInfos(
         },
       })
     ).flat();
-    console.log("Using Terra Hive for position info queries.");
+    console.log("Querying position infos using Terra Hive.");
   } catch (error) {
     console.log(
-      `Failed to query Terra Hive with error: ${error}. Falling back to Terra node.`
+      `Failed to query Terra Hive with error: ${error}.`
     );
     metrics[BATCH_GET_POSITION_INFO_FAILURE]++;
     metrics[HIVE_QUERY_ERROR]++;
-
-    all_position_infos = await pool({
-      collection: generateRangeArray(0, next_id),
-      maxConcurrency: qps,
-      task: async (position_id) => {
-        metrics[NUM_PROCESSED_POSITION]++;
-        var position_info = undefined;
-        try {
-          position_info = await connection.wasm.contractQuery(
-            position_manager_addr, {
-              batch_get_position_info: {
-                positions: [{
-                  position_id: position_id.toString(),
-                  chain_id: TERRA_CHAIN_ID,
-                }, ],
-              },
-            }
-          );
-        } catch (error) {
-          console.log(
-            `Failed to batch get for position id ${position_id} with error: ${error}`
-          );
-          metrics[BATCH_GET_POSITION_INFO_FAILURE]++;
-          metrics[CONTRACT_QUERY_ERROR]++;
-        }
-        return position_info;
-      },
-    });
-    console.log("Using Terra node for position info queries.");
+    return;
   }
   return all_position_infos;
 }
