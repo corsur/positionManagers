@@ -20,6 +20,11 @@ import {
   testnetTerra,
 } from "./utils/terra.js";
 
+import dotenv from "dotenv";
+
+// Setup env variable loading.
+dotenv.config();
+
 // Global variables setup.
 var blockchain_network = undefined;
 const client = new DynamoDBClient({ region: "us-west-2" });
@@ -368,6 +373,12 @@ try {
 } catch (error) {
   console.log(`Uncaught error at data pipeline: ${error}`);
 } finally {
-  await publishMetrics(metrics);
+  if (process.env.NODE_ENV === 'production') {
+    await publishMetrics(metrics);
+  } else {
+    console.log("Skip publishing metrics for dev env. See metrics below.");
+    console.dir(metrics, {depth: null});
+  }
+
   console.log("Data collector script execution completed.");
 }

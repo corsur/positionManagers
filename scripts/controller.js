@@ -33,6 +33,10 @@ import {
 } from "./utils/graphql_queries.js";
 import axios from "axios";
 import axiosRetry from "axios-retry";
+import dotenv from "dotenv";
+
+// Setup env variable loading.
+dotenv.config();
 
 // Configure retry mechanism global Axios instance.
 axiosRetry(axios, { retries: 3, retryDelay: axiosRetry.exponentialDelay });
@@ -811,8 +815,13 @@ async function getAssetRequiredCR(connection, qps, mirror_mint_addr) {
 try {
   await run_pipeline();
 } catch (error) {
-  console.log(`Some part of the operations failed with error: ${error}`);
+  console.log(`[Unknown Failure] Some part of the operations failed with error: ${error}`);
 } finally {
-  await publishMetrics(metrics);
+  if (process.env.NODE_ENV === 'production') {
+    await publishMetrics(metrics);
+  } else {
+    console.log("Skip publishing metrics for dev env. See metrics below.");
+    console.dir(metrics, {depth: null});
+  }
   console.log("Rebalance script execution completed.");
 }
