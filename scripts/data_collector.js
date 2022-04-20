@@ -310,7 +310,7 @@ async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
     metrics[DB_STRATEGY_TVL_WRITE_SUCCESS]++
   } catch (err) {
     console.error(`Strategy TVL write failed with error:  ${err}`);
-    metrics[DB_LATEST_STRATEGY_TVL_WRITE_FAILURE];
+    metrics[DB_STRATEGY_TVL_WRITE_FAILURE];
   }
 }
 
