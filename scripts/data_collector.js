@@ -273,7 +273,6 @@ async function doWork(
   }
 
   if (position_info.detailed_info == null) {
-    console.log(`Position id  ${position_id} is closed.`);
     return;
   }
 
