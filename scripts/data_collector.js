@@ -20,7 +20,9 @@ import {
   TERRA_MANAGER_TESTNET,
   testnetTerra,
 } from "./utils/terra.js";
-import { generateRangeArray } from "./utils/hive.js";
+import {
+  generateRangeArray
+} from "./utils/hive.js";
 import pool from "@ricokahler/pool";
 import {
   getPositionInfoQueries,
@@ -47,10 +49,6 @@ const strategy_tvl_dev = "strategy_tvl_dev";
 const strategy_tvl_prod = "strategy_tvl";
 const latest_strategy_tvl_dev = "latest_strategy_tvl_dev";
 const latest_strategy_tvl_prod = "latest_strategy_tvl";
-const terraswap_data_table_dev = "terraswap_data_dev";
-const terraswap_data_table_prod = "terraswap_data";
-const terraswap_api_address_dev = "https://api-bombay.terraswap.io/pairs";
-const terraswap_api_address_prod = "https://api.terraswap.io/dashboard/pairs";
 const terra_hive_address_dev = "https://testnet-hive.terra.dev/graphql";
 const terra_hive_address_prod = "https://hive.terra.dev/graphql";
 
@@ -137,8 +135,6 @@ async function run_pipeline() {
     position_ticks_table = position_ticks_dev;
     strategy_tvl_table = strategy_tvl_dev;
     latest_strategy_tvl_table = latest_strategy_tvl_dev;
-    terraswap_data_table = terraswap_data_table_dev;
-    terraswap_api_address = terraswap_api_address_dev;
     connection = testnetTerra;
     terra_hive_address = terra_hive_address_dev;
   } else if (blockchain_network == "mainnet") {
@@ -146,8 +142,6 @@ async function run_pipeline() {
     position_ticks_table = position_ticks_prod;
     strategy_tvl_table = strategy_tvl_prod;
     latest_strategy_tvl_table = latest_strategy_tvl_prod;
-    terraswap_data_table = terraswap_data_table_prod;
-    terraswap_api_address = terraswap_api_address_prod;
     connection = mainnetTerraData;
     terra_hive_address = terra_hive_address_prod;
   } else {
@@ -159,7 +153,7 @@ async function run_pipeline() {
     `Generating data for ${blockchain_network} with terra manager address: ${terra_manager}`
   );
   console.log(
-    `Position ticks table: ${position_ticks_table}. Strategy tvl table: ${strategy_tvl_table}`
+    `Position ticks table: ${position_ticks_table}. Strategy tvl table: ${strategy_tvl_table}. Latest strategy tvl table: ${latest_strategy_tvl_table}.`
   );
 
   var mAssetToTVL = {};
@@ -204,7 +198,8 @@ async function run_pipeline() {
     next_id,
     qps,
     position_manager_addr,
-    hive_batch_size
+    hive_batch_size,
+    terra_hive_address,
   )
 
   const resolved_promises = position_infos_promise.filter(x => x.items[0].info.detailed_info !== null).map(x => {
@@ -286,12 +281,11 @@ async function run_pipeline() {
   for (var strategy_id in mAssetToTVL) {
     const tvl_uusd = mAssetToTVL[strategy_id];
     await write_strategy_metrics(strategy_tvl_table, strategy_id, tvl_uusd);
-    await write_strategy_metrics(latest_strategy_tvl_table, strategy_id, tvl_uusd);
+    await write_latest_strategy_metrics(latest_strategy_tvl_table, strategy_id, tvl_uusd);
   }
+}
 
-async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
-  // Check if we are writing to latest_strategy_tvl_table
-  const useLatestTable = table_name === latest_strategy_tvl_table;
+function strategy_input(table_name, strategy_id, tvl_uusd){
   const input = {
     TableName: table_name,
     Item: {
@@ -306,13 +300,28 @@ async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
       },
     },
   };
-  const command = new PutItemCommand(input);
+  return input;
+}
+
+async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
+  const command = new PutItemCommand(strategy_input(table_name, strategy_id, tvl_uusd));
   try {
     await client.send(command);
-    metrics[useLatestTable ? DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS : DB_STRATEGY_TVL_WRITE_SUCCESS]++
+    metrics[DB_STRATEGY_TVL_WRITE_SUCCESS]++
   } catch (err) {
-    console.error(`${useLatestTable? 'Latest Strategy' : 'Strategy'} TVL write failed with error:  ${err}`);
-    metrics[useLatestTable ? DB_LATEST_STRATEGY_TVL_WRITE_FAILURE : DB_STRATEGY_TVL_WRITE_FAILURE];
+    console.error(`Strategy TVL write failed with error:  ${err}`);
+    metrics[DB_LATEST_STRATEGY_TVL_WRITE_FAILURE];
+  }
+}
+
+async function write_latest_strategy_metrics(table_name, strategy_id, tvl_uusd) {
+  const command = new PutItemCommand(strategy_input(table_name, strategy_id, tvl_uusd));
+  try {
+    await client.send(command);
+    metrics[DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS]++
+  } catch (err) {
+    console.error(`Latest Strategy : 'Strategy'} TVL write failed with error:  ${err}`);
+    metrics[DB_LATEST_STRATEGY_TVL_WRITE_FAILURE];
   }
 }
 
@@ -346,7 +355,8 @@ async function getPositionInfos(
   next_id,
   qps,
   position_manager_addr,
-  hive_batch_size
+  hive_batch_size,
+  terra_hive_address,
 ) {
   var all_position_infos = undefined;
   let hive_query_num_batches = Math.ceil(parseFloat(next_id) / hive_batch_size);
@@ -397,6 +407,6 @@ try {
 } catch (error) {
   console.log(`Uncaught error at data pipeline: ${error}`);
 } finally {
-  await publishMetrics(metrics);
+  // await publishMetrics(metrics);
   console.log("Data collector script execution completed.");
 }
