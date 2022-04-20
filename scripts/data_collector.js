@@ -145,7 +145,7 @@ async function run_pipeline() {
     connection = mainnetTerraData;
     terra_hive_address = terra_hive_address_prod;
   } else {
-    console.log(`Invalid network argument ${blockchain_network}`);
+    console.error(`Invalid network argument ${blockchain_network}`);
     return;
   }
 
@@ -165,7 +165,7 @@ async function run_pipeline() {
       get_next_position_id: {},
     });
   } catch (error) {
-    console.log("Failed to get next position id.");
+    console.error("Failed to get next position id.");
     metrics[GET_NEXT_POSITION_ID_FAILURE]++;
     return;
   }
@@ -182,7 +182,7 @@ async function run_pipeline() {
       }
     );
   } catch (error) {
-    console.log(
+    console.error(
       `Failed to get delta-neutral strategy manager with error ${error}`
     );
     metrics[GET_POSITION_MANAGER_FAILURE]++;
@@ -267,7 +267,7 @@ async function run_pipeline() {
         console.log("Position ticks batch write is successful.");
         metrics[DB_POSITION_TICKS_WRITE_SUCCESS]++;
       } catch (error) {
-        console.log(
+        console.error(
           `Failed to batch write for position ticks with error: ${error}`
         );
         metrics[DB_POSITION_TICKS_WRITE_FAILURE]++;
@@ -307,7 +307,7 @@ async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
   const command = new PutItemCommand(strategy_input(table_name, strategy_id, tvl_uusd));
   try {
     await client.send(command);
-    console.error(`Strategy TVL write is successful.`);
+    console.log(`Strategy TVL write is successful.`);
     metrics[DB_STRATEGY_TVL_WRITE_SUCCESS]++
   } catch (err) {
     console.error(`Strategy TVL write failed with error:  ${err}`);
@@ -319,7 +319,7 @@ async function write_latest_strategy_metrics(table_name, strategy_id, tvl_uusd) 
   const command = new PutItemCommand(strategy_input(table_name, strategy_id, tvl_uusd));
   try {
     await client.send(command);
-    console.error(`Latest strategy TVL write is successful.`);
+    console.log(`Latest strategy TVL write is successful.`);
     metrics[DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS]++
   } catch (err) {
     console.error(`Latest Strategy TVL write failed with error:  ${err}`);
@@ -349,7 +349,7 @@ async function publishMetrics(metrics_and_count) {
   try {
     await cw_client.send(new PutMetricDataCommand(metrics_to_publish));
   } catch (error) {
-    console.log("FATAL: Failed to send metrics to CloudWatch.");
+    console.error("FATAL: Failed to send metrics to CloudWatch.");
   }
 }
 
@@ -393,7 +393,7 @@ async function getPositionInfos(
     ).flat();
     console.log("Querying position infos using Terra Hive.");
   } catch (error) {
-    console.log(
+    console.error(
       `Failed to query Terra Hive with error: ${error}.`
     );
     metrics[BATCH_GET_POSITION_INFO_FAILURE]++;
@@ -407,7 +407,7 @@ async function getPositionInfos(
 try {
   await run_pipeline();
 } catch (error) {
-  console.log(`Uncaught error at data pipeline: ${error}`);
+  console.error(`Uncaught error at data pipeline: ${error}`);
 } finally {
   await publishMetrics(metrics);
   console.log("Data collector script execution completed.");
