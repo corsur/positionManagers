@@ -407,6 +407,6 @@ try {
 } catch (error) {
   console.log(`Uncaught error at data pipeline: ${error}`);
 } finally {
-  // await publishMetrics(metrics);
+  await publishMetrics(metrics);
   console.log("Data collector script execution completed.");
 }
