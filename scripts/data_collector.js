@@ -285,7 +285,7 @@ async function run_pipeline() {
   }
 }
 
-function strategy_input(table_name, strategy_id, tvl_uusd){
+function strategy_input(table_name, strategy_id, tvl_uusd) {
   const input = {
     TableName: table_name,
     Item: {
