@@ -31,6 +31,7 @@ import {
   getMAssetRequiredCRQueries,
   getPositionInfoQueries,
 } from "./utils/graphql_queries.js";
+import { generateRangeArray } from "./utils/hive.js";
 import axios from "axios";
 import axiosRetry from "axios-retry";
 import dotenv from "dotenv";
@@ -411,12 +412,6 @@ async function run_pipeline() {
       }
     }
   }
-}
-
-// Generates array [begin, begin + 1, begin + 2, ..., end - 1].
-function generateRangeArray(begin, end) {
-  if (begin >= end) return [];
-  return [...Array(end - begin).keys()].map((num) => num + begin);
 }
 
 async function getPositionInfos(
