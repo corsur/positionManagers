@@ -1,0 +1,24 @@
+[package]
+name = "aperture-common"
+version = "0.2.0"
+authors = ["Aperture team"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+# for quicker tests, cargo test --lib
+# for more explicit tests, cargo test --features=backtraces
+backtraces = ["cosmwasm-std/backtraces"]
+
+[dependencies]
+cosmwasm-std = { version = "0.16.6" }
+cosmwasm-bignumber = "2.2.0"
+cw-storage-plus = { version = "0.9.1" }
+cw20 = "0.9.1"
+mirror-protocol = { version = "2.2.0", path = "../../packages/mirror_protocol" }
+moneymarket = "0.3.0"
+schemars = "0.8.1"
+serde = { version = "1.0.136", default-features = false, features = ["derive"] }
+spectrum-protocol = { version = "0.2.0", path = "../spectrum_protocol" }
+tefi-oracle = "0.2.0"
+terraswap = "2.4.0"

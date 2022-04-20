@@ -6,18 +6,13 @@ This monorepository contains the source code for the core smart contracts implem
 
 ## Directory Overview
 
-    |-- contracts // Contains all CosmWasm contracts and test.
-        |-- delta_neutral_position // Core ∆-neutral strategy logic
-        |-- delta_neutral_position_manager // Manage positions for all users.
-        |-- stable_yield_manager // Manage positions for a stable X% yield strategy.
-        |-- terra_manager // Entry point on Terra and manage all strategies.
-    |-- controller // Jobs to periodically trigger rebalance.
-    |-- data_pipeline // Scripts to periodically push analysis data for web app and dashboard uses.
-    |-- deployment // Scripts to deploy Terra contracts.
-    |-- ethereum_hardhat // All EVM related contracts built using Hardhat.
-    |-- packages // Terra packages
-        |-- spectrum_protocol // This is copied from Spectrum Protocol's repo; this package is not uploaded to crates.io index.
-        |-- aperture_common // Aperture common util libraries and data types.
+    |-- terra_contracts // Contains all Terra (CosmWasm) contracts.
+        |-- contracts/delta_neutral_position // Core ∆-neutral strategy logic.
+        |-- contracts/delta_neutral_position_manager // Manage positions for all users.
+        |-- contracts/anchor_earn_proxy // A wrapper of Anchor Earn.
+        |-- contracts/terra_manager // Aperture manager on Terra which handles all Terra strategies and cross-chain communications with Aperture managers on other chains.
+    |-- ethereum_contracts // EVM contracts with Hardhat.
+    |-- scripts // Controller and data collection scripts.
 
 ## Development
 
@@ -175,10 +170,10 @@ Initially, Aperture will launch on Terra first without the aforementioned cross-
   - See Aperture's [GitBook](https://docs.aperture.finance/docs/aperture-invest+/delta-neutral-strategy-terra) for an overview; there are pages that go into detail about position opening, etc.
 - Delta-neutral contract
   - Contains actual logic to carry out the delta-neutral strategy.
-- Stable yield manager
+- Anchor Earn proxy
   - Is a lite position manager
-  - Contract that contains business logic specific to anchor based strategies.
-  - This simple strategy accumulates yield at a fixed rate per time period. This is intended to be offered to non-Terra users (for example, Solana users can use this strategy to get, say, 15% APY fixed yield using this strategy). This strategy internally invests UST in Anchor Earn. The difference between treasury and liability can be collected in the form of protocol fees.
+  - Contract that contains business logic specific to Anchor Earn.
+  - This simple strategy put deposited funds in Anchor Earn. This is intended to be offered to non-Terra users (for example, Avax/Polygon/Ethereum/BSC/Solana users can use this strategy to achieve cross-chain Anchor Earn investment).
 
 To put the above modules together, we have the following localized setup:
 
