@@ -307,6 +307,7 @@ async function write_strategy_metrics(table_name, strategy_id, tvl_uusd) {
   const command = new PutItemCommand(strategy_input(table_name, strategy_id, tvl_uusd));
   try {
     await client.send(command);
+    console.error(`Strategy TVL write is successful.`);
     metrics[DB_STRATEGY_TVL_WRITE_SUCCESS]++
   } catch (err) {
     console.error(`Strategy TVL write failed with error:  ${err}`);
@@ -318,6 +319,7 @@ async function write_latest_strategy_metrics(table_name, strategy_id, tvl_uusd) 
   const command = new PutItemCommand(strategy_input(table_name, strategy_id, tvl_uusd));
   try {
     await client.send(command);
+    console.error(`Latest strategy TVL write is successful.`);
     metrics[DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS]++
   } catch (err) {
     console.error(`Latest Strategy TVL write failed with error:  ${err}`);
@@ -407,6 +409,6 @@ try {
 } catch (error) {
   console.log(`Uncaught error at data pipeline: ${error}`);
 } finally {
-  await publishMetrics(metrics);
+  // await publishMetrics(metrics);
   console.log("Data collector script execution completed.");
 }
