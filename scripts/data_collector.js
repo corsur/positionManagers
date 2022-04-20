@@ -320,7 +320,7 @@ async function write_latest_strategy_metrics(table_name, strategy_id, tvl_uusd) 
     await client.send(command);
     metrics[DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS]++
   } catch (err) {
-    console.error(`Latest Strategy : 'Strategy'} TVL write failed with error:  ${err}`);
+    console.error(`Latest Strategy TVL write failed with error:  ${err}`);
     metrics[DB_LATEST_STRATEGY_TVL_WRITE_FAILURE];
   }
 }
