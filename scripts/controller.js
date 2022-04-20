@@ -20,10 +20,7 @@ import {
   TERRA_MANAGER_TESTNET,
   testnetTerra,
 } from "./utils/terra.js";
-import {
-  MnemonicKey,
-  MsgExecuteContract,
-} from "@terra-money/terra.js";
+import { MnemonicKey, MsgExecuteContract } from "@terra-money/terra.js";
 import pool from "@ricokahler/pool";
 import {
   getMAssetQuoteQueries,
@@ -188,7 +185,8 @@ async function run_pipeline() {
   );
 
   console.log(
-    `Controller operating on ${parser.parse_args().network
+    `Controller operating on ${
+      parser.parse_args().network
     } with terra manager address: ${terra_manager}`
   );
 
@@ -249,11 +247,12 @@ async function run_pipeline() {
     hive_batch_size
   );
 
-  var [asset_timestamps, asset_required_crs, position_infos] = await Promise.all([
-    asset_timestamps_promise,
-    asset_required_cr_promise,
-    position_infos_promise,
-  ]);
+  var [asset_timestamps, asset_required_crs, position_infos] =
+    await Promise.all([
+      asset_timestamps_promise,
+      asset_required_cr_promise,
+      position_infos_promise,
+    ]);
 
   asset_timestamps = asset_timestamps.reduce((acc, cur) => {
     if (cur && cur.token_addr) {
@@ -339,10 +338,19 @@ async function run_pipeline() {
           sequence: await wallet.sequence(),
         });
       } catch (error) {
-        console.log(
-          `Failed to createAndSignTx with error: ${error.response.data.message
-          } for position ids: ${position_ids.join(",")}`
-        );
+        if (error.response && error.response.data) {
+          console.log(
+            `Failed to createAndSignTx with error: ${
+              error.response.data.message
+            } for position ids: ${position_ids.join(",")}`
+          );
+        } else {
+          console.log(
+            `Failed to createAndSignTx with ${error} for position ids: ${position_ids.join(
+              ","
+            )}`
+          );
+        }
         metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
         console.log("\n");
         // Clear states.
@@ -377,10 +385,19 @@ async function run_pipeline() {
         }
       } catch (error) {
         metrics[REBALANCE_BROADCAST_FAILURE]++;
-        console.log(
-          `Broadcast tx failed with error: ${error.response.data.message
-          } for position ids: ${position_ids.join(",")}`
-        );
+        if (error.response && error.response.data) {
+          console.log(
+            `Broadcast tx failed with error: ${
+              error.response.data.message
+            } for position ids: ${position_ids.join(",")}`
+          );
+        } else {
+          console.log(
+            `Broadcast tx failed with error: ${error} for position ids: ${position_ids.join(
+              ","
+            )}`
+          );
+        }
       } finally {
         // Clear states.
         num_included_positions = 0;
@@ -579,7 +596,11 @@ function shouldRebalance(
   }
 
   // Check if the current target CR range satisfies the current required CR for the mAsset.
-  if (new Big(asset_required_crs[position_info.mirror_asset_cw20_addr]).plus(CR_SAFETY_MARGIN).gt(detailed_info.target_collateral_ratio_range.min)) {
+  if (
+    new Big(asset_required_crs[position_info.mirror_asset_cw20_addr])
+      .plus(CR_SAFETY_MARGIN)
+      .gt(detailed_info.target_collateral_ratio_range.min)
+  ) {
     logging += "Should rebalance due to: TCR.min needs to be raised.\n";
     return { result: true, logging: logging, reason: "CRR" };
   }
@@ -587,8 +608,9 @@ function shouldRebalance(
   // Check if current CR is within range.
   logging += `Current CR: ${parseFloat(
     detailed_info.collateral_ratio
-  )}. Position CR range is [${detailed_info.target_collateral_ratio_range.min
-    }, ${detailed_info.target_collateral_ratio_range.max}]\n`;
+  )}. Position CR range is [${
+    detailed_info.target_collateral_ratio_range.min
+  }, ${detailed_info.target_collateral_ratio_range.max}]\n`;
 
   if (
     parseFloat(detailed_info.collateral_ratio) <
@@ -600,7 +622,7 @@ function shouldRebalance(
 
   if (
     parseFloat(detailed_info.collateral_ratio) >
-    parseFloat(detailed_info.target_collateral_ratio_range.max) &&
+      parseFloat(detailed_info.target_collateral_ratio_range.max) &&
     (new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(0) ||
       new Big(detailed_info.unclaimed_short_proceeds_uusd_amount).eq(
         detailed_info.claimable_short_proceeds_uusd_amount
@@ -613,8 +635,9 @@ function shouldRebalance(
   // Check delta-neutrality.
   const short_amount = new Big(detailed_info.state.mirror_asset_short_amount);
   const long_amount = new Big(detailed_info.state.mirror_asset_long_amount);
-  logging += `delta percentage: ${short_amount.minus(long_amount).abs() / long_amount
-    }\n`;
+  logging += `delta percentage: ${
+    short_amount.minus(long_amount).abs() / long_amount
+  }\n`;
 
   if (
     short_amount.minus(long_amount).abs().div(long_amount).gt(delta_tolerance)
@@ -759,14 +782,11 @@ async function getAssetRequiredCR(connection, qps, mirror_mint_addr) {
         var retry_count = 0;
         while (retry_count < mirror_max_retry) {
           try {
-            mirror_res = await connection.wasm.contractQuery(
-              mirror_mint_addr,
-              {
-                asset_config: {
-                  asset_token: token_addr,
-                },
-              }
-            );
+            mirror_res = await connection.wasm.contractQuery(mirror_mint_addr, {
+              asset_config: {
+                asset_token: token_addr,
+              },
+            });
             break;
           } catch (error) {
             console.log(`Failed to query Mirror Mint with error: ${error}\n`);
@@ -777,7 +797,10 @@ async function getAssetRequiredCR(connection, qps, mirror_mint_addr) {
             retry_count++;
           }
         }
-        return { token_addr: token_addr, required_cr: mirror_res.min_collateral_ratio };
+        return {
+          token_addr: token_addr,
+          required_cr: mirror_res.min_collateral_ratio,
+        };
       },
     });
     console.log("Using Terra node for mAsset required CR queries.");
