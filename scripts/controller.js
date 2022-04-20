@@ -20,7 +20,11 @@ import {
   TERRA_MANAGER_TESTNET,
   testnetTerra,
 } from "./utils/terra.js";
-import { MnemonicKey, MsgExecuteContract } from "@terra-money/terra.js";
+import {
+  isTxError,
+  MnemonicKey,
+  MsgExecuteContract,
+} from "@terra-money/terra.js";
 import pool from "@ricokahler/pool";
 import {
   getMAssetQuoteQueries,
@@ -120,7 +124,7 @@ async function run_pipeline() {
   parser.add_argument("-hbs", "--hive_batch_size", {
     help: "Number of positions to query against Terra Hive.",
     required: false,
-    default: 200,
+    default: 100,
     type: "int",
   });
 
@@ -298,7 +302,6 @@ async function run_pipeline() {
 
   var num_included_positions = 0;
   var msgs_acc = [];
-  var memos = [];
   var position_ids = [];
   var position_addrs = [];
   for (const [index, rebalance_info] of rebalance_infos.entries()) {
@@ -306,7 +309,6 @@ async function run_pipeline() {
       rebalance_info;
     num_included_positions++;
     msgs_acc.push(msg);
-    memos.push(`p:${position_id},a:${asset_name},r:${reason}`);
     position_ids.push(position_id);
     position_addrs.push(position_addr);
 
@@ -334,7 +336,6 @@ async function run_pipeline() {
       try {
         tx = await wallet.createAndSignTx({
           msgs: msgs_acc,
-          memo: memos.join(";"),
           sequence: await wallet.sequence(),
         });
       } catch (error) {
@@ -355,7 +356,6 @@ async function run_pipeline() {
         console.log("\n");
         // Clear states.
         num_included_positions = 0;
-        memos = [];
         msgs_acc = [];
         position_ids = [];
         position_addrs = [];
@@ -401,7 +401,6 @@ async function run_pipeline() {
       } finally {
         // Clear states.
         num_included_positions = 0;
-        memos = [];
         msgs_acc = [];
         position_ids = [];
         position_addrs = [];
