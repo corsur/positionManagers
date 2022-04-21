@@ -123,6 +123,7 @@ async function run_pipeline() {
   metrics[DB_POSITION_TICKS_WRITE_SUCCESS] = 0;
   metrics[DB_STRATEGY_TVL_WRITE_FAILURE] = 0;
   metrics[DB_STRATEGY_TVL_WRITE_SUCCESS] = 0;
+  metrics[DB_LATEST_STRATEGY_TVL_WRITE_SUCCESS] = 0;
 
   // Signal run status.
   metrics[DATA_COLLECTOR_START] = 1;
@@ -354,7 +355,7 @@ async function publishMetrics(metrics_and_count) {
   try {
     await cw_client.send(new PutMetricDataCommand(metrics_to_publish));
   } catch (error) {
-    console.error("FATAL: Failed to send metrics to CloudWatch.");
+    console.error(`FATAL: Failed to send metrics to CloudWatch with error ${error}.`);
   }
 }
 
