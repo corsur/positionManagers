@@ -17,9 +17,11 @@ use aperture_common::mirror_util::{
 use aperture_common::terra_manager::TERRA_CHAIN_ID;
 use aperture_common::{delta_neutral_position, terra_manager};
 use cosmwasm_std::{
-    entry_point, from_binary, to_binary, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut, Env,
-    MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128, WasmMsg,
+    entry_point, from_binary, to_binary, Addr, Binary, Coin, CosmosMsg, Decimal, Deps, DepsMut,
+    Env, MessageInfo, Reply, ReplyOn, Response, StdError, StdResult, Storage, SubMsg, Uint128,
+    WasmMsg,
 };
+use cw_storage_plus::Item;
 use protobuf::Message;
 use terraswap::asset::{Asset, AssetInfo};
 
@@ -273,30 +275,40 @@ fn update_context(
 fn migrate_position_contracts(
     deps: Deps,
     positions: Vec<Position>,
-    position_contracts: Vec<String>,
+    mut position_contracts: Vec<String>,
 ) -> StdResult<Response> {
     let new_code_id = ADMIN_CONFIG
         .load(deps.storage)?
         .delta_neutral_position_code_id;
-    let msg = to_binary(&delta_neutral_position::MigrateMsg {})?;
-    Ok(Response::new()
-        .add_messages(positions.iter().map(|position| {
-            let contract = POSITION_TO_CONTRACT_ADDR
-                .load(deps.storage, get_position_key(position))
-                .unwrap();
-            CosmosMsg::Wasm(WasmMsg::Migrate {
+
+    // This code-id item is used to query code ids stored under position contracts in a type-safe way.
+    const CODE_ID: Item<u64> = Item::new("ci");
+
+    // Position contracts being requested to migrate.
+    position_contracts.extend(positions.iter().map(|position| {
+        POSITION_TO_CONTRACT_ADDR
+            .load(deps.storage, get_position_key(position))
+            .unwrap()
+            .to_string()
+    }));
+
+    // Generate messages for positions that need to be migrated.
+    let msg = to_binary(&delta_neutral_position::MigrateMsg { new_code_id })?;
+    let mut response = Response::new();
+    for contract in position_contracts {
+        // `Addr::unchecked` is used here to avoid the gas cost of address validation.
+        let needs_migration = CODE_ID
+            .query(&deps.querier, Addr::unchecked(&contract))
+            .map_or(true, |current_code_id| current_code_id != new_code_id);
+        if needs_migration {
+            response = response.add_message(CosmosMsg::Wasm(WasmMsg::Migrate {
                 contract_addr: contract.to_string(),
                 new_code_id,
                 msg: msg.clone(),
-            })
-        }))
-        .add_messages(position_contracts.iter().map(|contract| {
-            CosmosMsg::Wasm(WasmMsg::Migrate {
-                contract_addr: contract.to_string(),
-                new_code_id,
-                msg: msg.clone(),
-            })
-        })))
+            }));
+        }
+    }
+    Ok(response)
 }
 
 fn send_execute_message_to_position_contract(
@@ -1094,25 +1106,25 @@ fn test_contract() {
     assert_eq!(
         response.messages[0].msg,
         CosmosMsg::Wasm(WasmMsg::Migrate {
-            contract_addr: String::from("position_contract"),
+            contract_addr: String::from("terra1pos345"),
             new_code_id: 165,
-            msg: to_binary(&delta_neutral_position::MigrateMsg {}).unwrap(),
+            msg: to_binary(&delta_neutral_position::MigrateMsg { new_code_id: 165 }).unwrap(),
         })
     );
     assert_eq!(
         response.messages[1].msg,
         CosmosMsg::Wasm(WasmMsg::Migrate {
-            contract_addr: String::from("terra1pos345"),
+            contract_addr: String::from("terra1pos456"),
             new_code_id: 165,
-            msg: to_binary(&delta_neutral_position::MigrateMsg {}).unwrap(),
+            msg: to_binary(&delta_neutral_position::MigrateMsg { new_code_id: 165 }).unwrap(),
         })
     );
     assert_eq!(
         response.messages[2].msg,
         CosmosMsg::Wasm(WasmMsg::Migrate {
-            contract_addr: String::from("terra1pos456"),
+            contract_addr: String::from("position_contract"),
             new_code_id: 165,
-            msg: to_binary(&delta_neutral_position::MigrateMsg {}).unwrap(),
+            msg: to_binary(&delta_neutral_position::MigrateMsg { new_code_id: 165 }).unwrap(),
         })
     );
 }

@@ -7,7 +7,7 @@ use crate::open::delta_neutral_invest;
 use crate::rebalance::achieve_delta_neutral;
 use crate::spectrum_util::check_spectrum_mirror_farm_existence;
 use crate::state::{
-    CDP_IDX, CDP_PREEMPTIVELY_CLOSED, LAST_FEE_COLLECTION_POSITION_UUSD_VALUE, MANAGER,
+    CDP_IDX, CDP_PREEMPTIVELY_CLOSED, CODE_ID, LAST_FEE_COLLECTION_POSITION_UUSD_VALUE, MANAGER,
     MIRROR_ASSET_CW20_ADDR, POSITION_CLOSE_INFO, POSITION_OPEN_INFO, TARGET_COLLATERAL_RATIO_RANGE,
 };
 use crate::util::{
@@ -794,6 +794,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(_deps: DepsMut, _env: Env, _msg: MigrateMsg) -> StdResult<Response> {
+pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> StdResult<Response> {
+    CODE_ID.save(deps.storage, &msg.new_code_id)?;
     Ok(Response::default())
 }
