@@ -15,8 +15,16 @@ export function getPositionInfoQueries(position_ids, addr) {
   return (
     "{" +
     position_ids
-      .map((position_id) =>
-        wasmQuery(`q${position_id}`, addr, {
+      .map((position_id) => {
+        if (
+          position_id == 905 ||
+          position_id == 1104 ||
+          position_id == 1953 ||
+          position_id == 2613
+        ) {
+          return;
+        }
+        return wasmQuery(`q${position_id}`, addr, {
           batch_get_position_info: {
             positions: [
               {
@@ -25,8 +33,8 @@ export function getPositionInfoQueries(position_ids, addr) {
               },
             ],
           },
-        })
-      )
+        });
+      })
       .join(",") +
     "}"
   );
