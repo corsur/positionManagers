@@ -1,5 +1,18 @@
 use crate::delta_neutral_position_manager::Context;
-use cosmwasm_std::{Addr, Decimal, QuerierWrapper, StdResult};
+use cosmwasm_std::{Addr, Decimal, QuerierWrapper, StdResult, Uint128};
+
+pub fn get_mirror_cdp_response(
+    querier: &QuerierWrapper,
+    context: &Context,
+    cdp_idx: Uint128,
+) -> StdResult<mirror_protocol::mint::PositionResponse> {
+    querier.query_wasm_smart(
+        &context.mirror_mint_addr,
+        &mirror_protocol::mint::QueryMsg::Position {
+            position_idx: cdp_idx,
+        },
+    )
+}
 
 pub fn get_mirror_asset_oracle_uusd_price_response(
     querier: &QuerierWrapper,

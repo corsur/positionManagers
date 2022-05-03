@@ -12,7 +12,7 @@ use aperture_common::delta_neutral_position_manager::{
 };
 use aperture_common::mirror_util::{
     get_mirror_asset_config_response, get_mirror_asset_fresh_oracle_uusd_rate,
-    is_mirror_asset_delisted,
+    get_mirror_cdp_response, is_mirror_asset_delisted,
 };
 use aperture_common::terra_manager::TERRA_CHAIN_ID;
 use aperture_common::{delta_neutral_position, terra_manager};
@@ -527,6 +527,16 @@ fn query_should_call_rebalance_and_reinvest(
     }
 
     let context = CONTEXT.load(deps.storage)?;
+    if let Some(cdp_idx) = position_info.cdp_idx {
+        if get_mirror_cdp_response(&deps.querier, &context, cdp_idx).is_err() {
+            return to_binary(&ShouldCallRebalanceAndReinvestResponse {
+                position_contract,
+                should_call: true,
+                reason: Some(String::from("LIKELY_FULL_LIQUIDATION")),
+            });
+        }
+    }
+
     let fresh_oracle_uusd_rate = get_mirror_asset_fresh_oracle_uusd_rate(
         &deps.querier,
         &context,

@@ -8,7 +8,7 @@ use aperture_common::{
     delta_neutral_position_manager::{Context, FeeCollectionConfig},
     mirror_util::{
         get_mirror_asset_config_response, get_mirror_asset_oracle_uusd_price_response,
-        is_mirror_asset_delisted,
+        get_mirror_cdp_response, is_mirror_asset_delisted,
     },
 };
 use cosmwasm_std::{
@@ -67,13 +67,7 @@ pub fn get_cdp_uusd_lock_info_result(
 }
 
 pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult<PositionState> {
-    let position_response: mirror_protocol::mint::PositionResponse =
-        deps.querier.query_wasm_smart(
-            &context.mirror_mint_addr,
-            &mirror_protocol::mint::QueryMsg::Position {
-                position_idx: CDP_IDX.load(deps.storage)?,
-            },
-        )?;
+    let cdp_response = get_mirror_cdp_response(&deps.querier, context, CDP_IDX.load(deps.storage)?);
     let collateral_price_response: CollateralPriceResponse = deps.querier.query_wasm_smart(
         context.mirror_collateral_oracle_addr.clone(),
         &mirror_protocol::collateral_oracle::QueryMsg::CollateralPrice {
@@ -133,12 +127,22 @@ pub fn get_position_state(deps: Deps, env: &Env, context: &Context) -> StdResult
         )?,
         uusd_long_farm: lp_token_amount
             .multiply_ratio(terraswap_pool_uusd_amount, lp_token_total_supply),
-        mirror_asset_short_amount: position_response.asset.amount,
+        mirror_asset_short_amount: cdp_response
+            .as_ref()
+            .map_or(Uint128::zero(), |cdp_response| cdp_response.asset.amount),
         mirror_asset_balance,
         mirror_asset_long_farm,
         mirror_asset_long_amount: mirror_asset_balance.checked_add(mirror_asset_long_farm)?,
-        collateral_anchor_ust_amount: position_response.collateral.amount,
-        collateral_uusd_value: position_response.collateral.amount * collateral_price_response.rate,
+        collateral_anchor_ust_amount: cdp_response
+            .as_ref()
+            .map_or(Uint128::zero(), |cdp_response| {
+                cdp_response.collateral.amount
+            }),
+        collateral_uusd_value: cdp_response
+            .as_ref()
+            .map_or(Uint128::zero(), |cdp_response| {
+                cdp_response.collateral.amount * collateral_price_response.rate
+            }),
         mirror_asset_oracle_price: get_mirror_asset_oracle_uusd_price_response(
             &deps.querier,
             context,

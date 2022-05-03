@@ -26,6 +26,7 @@ use aperture_common::delta_neutral_position_manager::QueryMsg as ManagerQueryMsg
 use aperture_common::delta_neutral_position_manager::{self, Context, DeltaNeutralParams};
 use aperture_common::mirror_util::{
     get_mirror_asset_config_response, get_mirror_asset_fresh_oracle_uusd_rate,
+    get_mirror_cdp_response,
 };
 use aperture_common::terra_manager;
 use cosmwasm_std::{
@@ -203,8 +204,18 @@ pub fn rebalance_and_reinvest(deps: DepsMut, env: Env, context: Context) -> StdR
     }
 
     let cdp_idx = CDP_IDX.may_load(deps.storage)?;
-    if cdp_idx.is_some() {
+    if let Some(cdp_idx) = cdp_idx {
+        // The CDP was active at the time of the previous `rebalance_and_reinvest` execution.
         response = response.add_messages(achieve_delta_neutral(deps.as_ref(), &env, &context)?);
+
+        if get_mirror_cdp_response(&deps.querier, &context, cdp_idx).is_err() {
+            // The CDP most likely has been fully closed due to liquidation, so we degenerate this position into pure Anchor Earn.
+            CDP_PREEMPTIVELY_CLOSED.save(deps.storage, &true)?;
+            return Ok(response.add_message(create_internal_execute_message(
+                &env,
+                InternalExecuteMsg::CloseCdpAndDepositToAnchorEarn {},
+            )));
+        }
     }
 
     let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
@@ -593,33 +604,36 @@ fn close_cdp_and_collect_fees(
     let fee_amount = gain * fee_collection_config.performance_rate;
     let mut messages = vec![];
 
-    // Reduce mAsset short position.
-    let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
-    messages.extend(increase_mirror_asset_balance_from_long_farm(
-        &state,
-        &context.spectrum_mirror_farms_addr,
-        &mirror_asset_cw20_addr,
-        state.mirror_asset_short_amount,
-    ));
-    messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
-        contract_addr: mirror_asset_cw20_addr.to_string(),
-        msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
-            contract: context.mirror_mint_addr.to_string(),
-            amount: state.mirror_asset_short_amount,
-            msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
-                position_idx: CDP_IDX.load(deps.storage)?,
+    // If the CDP has been fully liquidated, `mirror_asset_short_amount` will be zero, and we skip CDP closure in such cases.
+    if !state.mirror_asset_short_amount.is_zero() {
+        // Reduce CDP liability to zero.
+        let mirror_asset_cw20_addr = MIRROR_ASSET_CW20_ADDR.load(deps.storage)?;
+        messages.extend(increase_mirror_asset_balance_from_long_farm(
+            &state,
+            &context.spectrum_mirror_farms_addr,
+            &mirror_asset_cw20_addr,
+            state.mirror_asset_short_amount,
+        ));
+        messages.push(CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: mirror_asset_cw20_addr.to_string(),
+            msg: to_binary(&cw20::Cw20ExecuteMsg::Send {
+                contract: context.mirror_mint_addr.to_string(),
+                amount: state.mirror_asset_short_amount,
+                msg: to_binary(&mirror_protocol::mint::Cw20HookMsg::Burn {
+                    position_idx: CDP_IDX.load(deps.storage)?,
+                })?,
             })?,
-        })?,
-        funds: vec![],
-    }));
+            funds: vec![],
+        }));
 
-    // Withdraw aUST collateral and redeem for uusd.
-    messages.push(create_internal_execute_message(
-        env,
-        InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd {
-            proportion: Decimal::one(),
-        },
-    ));
+        // Withdraw aUST collateral and redeem for uusd.
+        messages.push(create_internal_execute_message(
+            env,
+            InternalExecuteMsg::WithdrawCollateralAndRedeemForUusd {
+                proportion: Decimal::one(),
+            },
+        ));
+    }
 
     // Send protocol fees to fee collector.
     if !fee_amount.is_zero() {
