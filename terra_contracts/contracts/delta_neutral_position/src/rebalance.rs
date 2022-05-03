@@ -199,8 +199,16 @@ pub fn achieve_delta_neutral_from_state(
                     &mirror_asset_cw20_addr,
                     withdraw_lp_token_amount,
                 ));
-                let withdrawn_mirror_asset_amount = info.terraswap_pool_mirror_asset_amount
-                    * Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
+                let withdraw_lp_ratio =
+                    Decimal::from_ratio(withdraw_lp_token_amount, info.lp_token_total_supply);
+                let withdrawn_mirror_asset_amount =
+                    info.terraswap_pool_mirror_asset_amount * withdraw_lp_ratio;
+                let withdrawn_uusd_amount = info.terraswap_pool_uusd_amount * withdraw_lp_ratio;
+                if withdrawn_mirror_asset_amount.is_zero() || withdrawn_uusd_amount.is_zero() {
+                    // Strip the `terraswap::pair::Cw20HookMsg::WithdrawLiquidity` message since this would fail due to attempting to transfer a zero amount.
+                    messages.truncate(messages.len() - 1);
+                }
+
                 current_mirror_asset_balance += withdrawn_mirror_asset_amount;
                 current_pool_mirror_asset_amount -= withdrawn_mirror_asset_amount;
                 current_lp_token_amount = simulate_spectrum_mirror_farm_unbond(
