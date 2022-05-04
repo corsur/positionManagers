@@ -485,16 +485,20 @@ pub fn query_position_info(
         Ordering::Equal => {}
     }
     // Current collateral ratio.
-    let collateral_ratio = Decimal::from_ratio(
-        state.collateral_uusd_value,
-        state.mirror_asset_short_amount * state.mirror_asset_oracle_price,
-    );
+    let collateral_ratio = if state.mirror_asset_short_amount.is_zero() {
+        None
+    } else {
+        Some(Decimal::from_ratio(
+            state.collateral_uusd_value,
+            state.mirror_asset_short_amount * state.mirror_asset_oracle_price,
+        ))
+    };
 
     response.detailed_info = Some(DetailedPositionInfo {
         cdp_preemptively_closed,
         state: Some(state),
         target_collateral_ratio_range: TARGET_COLLATERAL_RATIO_RANGE.load(deps.storage)?,
-        collateral_ratio: Some(collateral_ratio),
+        collateral_ratio,
         unclaimed_short_proceeds_uusd_amount,
         claimable_short_proceeds_uusd_amount,
         claimable_mir_reward_uusd_value: mir_uusd_value,

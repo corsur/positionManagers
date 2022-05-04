@@ -447,10 +447,75 @@ async function upload_and_migrate_contract(contract_addr) {
   console.log("contract migrated.");
 }
 
+/*
 const terra_manager_addr = await deploy();
 console.log(
   `Successfully deployed TerraManager at address: ${terra_manager_addr}`
 );
+*/
+
+async function may_3_2022_testnet_migration() {
+  await initializeSequence(test_wallet);
+  const terra_manager_addr = "terra1pzmq3sacc2z3pk8el3rk0q584qtuuhnv4fwp8n";
+  const dn_manager_addr = "terra1qycrwtsmxnnklc42yzexveyhjls657qhuwhmlw";
+  const tx = await test_wallet.createAndSignTx({
+    msgs: [
+      new MsgMigrateContract(
+        test_wallet.key.accAddress,
+        terra_manager_addr,
+        69423,
+        {}
+      ),
+      new MsgMigrateContract(
+        test_wallet.key.accAddress,
+        dn_manager_addr,
+        69424,
+        {
+          fee_collection_config: {
+            performance_rate: "0.1",
+            off_market_position_open_service_fee_uusd: "2000000",
+            collector_addr: test_wallet.key.accAddress
+          },
+          position_open_allowed_mirror_assets: ["terra16vfxm98rxlc8erj4g0sj5932dvylgmdufnugk0",
+          "terra1qg9ugndl25567u03jrr79xur2yk9d632fke3h2",
+          "terra1nslem9lgwx53rvgqwd8hgq7pepsry6yr3wsen4",
+          "terra1djnlav60utj06kk9dl7defsv8xql5qpryzvm3h",
+          "terra18yx7ff8knc98p07pdkhm3u36wufaeacv47fuha",
+          "terra1ax7mhqahj6vcqnnl675nqq2g9wghzuecy923vy",
+          "terra12s2h8vlztjwu440khpc0063p34vm7nhu25w4p9",
+          "terra12saaecsqwxj04fn0jsv4jmdyp6gylptf5tksge",
+          "terra15dr4ah3kha68kam7a907pje9w6z2lpjpnrkd06",
+          "terra1fdkfhgk433tar72t4edh6p6y9rmjulzc83ljuw",
+          "terra1fucmfp8x4mpzsydjaxyv26hrkdg4vpdzdvf647",
+          "terra18gphn8r437p2xmjpw7a79hgsglf5y4t0x7s5ee",
+          "terra14gq9wj0tt6vu0m4ec2tkkv4ln3qrtl58lgdl2c",
+          "terra1qre9crlfnulcg0m68qqywqqstplgvrzywsg3am",
+          "terra179na3xcvjastpptnh9g6lnf75hqqjnsv9mqm3j",
+          "terra1avryzxnsn2denq7p2d7ukm6nkck9s0rz2llgnc",
+          "terra1fs6c6y65c65kkjanjwvmnrfvnm2s58ph88t9ky",
+          "terra13myzfjdmvqkama2tt3v5f7quh75rv78w8kq6u6",
+          "terra1csr22xvxs6r3gkjsl7pmjkmpt39mwjsrm0e2r8",
+          "terra1ys4dwwzaenjg2gy02mslmc96f267xvpsjat7gx"]
+        }
+      ),
+      new MsgExecuteContract(
+        test_wallet.key.accAddress,
+        dn_manager_addr,
+        {
+          update_admin_config: {
+            delta_neutral_position_code_id: 69425
+          }
+        }
+      )
+    ],
+    sequence: getAndIncrementSequence(),
+  });
+
+  const response = await testnet.tx.broadcast(tx);
+  console.log(response);
+}
+
+await may_3_2022_testnet_migration();
 
 // Sample function call to open a delta-neutral position:
 // await open_delta_neutral_position(terra_manager_addr, 1000);
