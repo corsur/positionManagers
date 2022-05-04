@@ -363,9 +363,11 @@ pub fn achieve_safe_collateral_ratios(
         }));
     } else if collateral_ratio > target_collateral_ratio_range.max {
         // If there is short proceeds pending unlock in the CDP, we do not withdraw aUST collateral from the CDP.
-        let cdp_uusd_lock_info = get_cdp_uusd_lock_info_result(deps.as_ref(), &context)?;
-        if !cdp_uusd_lock_info.locked_amount.is_zero() {
-            return Ok(response);
+        let cdp_uusd_lock_info = get_cdp_uusd_lock_info_result(deps.as_ref(), &context);
+        if let Ok(cdp_uusd_lock_info) = cdp_uusd_lock_info {
+            if !cdp_uusd_lock_info.locked_amount.is_zero() {
+                return Ok(response);
+            }
         }
 
         let target_anchor_ust_collateral_amount = state.mirror_asset_short_amount
