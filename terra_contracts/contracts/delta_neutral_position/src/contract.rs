@@ -594,7 +594,13 @@ fn close_cdp_and_collect_fees(
     context: Context,
 ) -> StdResult<Vec<CosmosMsg>> {
     let state = get_position_state(deps.as_ref(), env, &context)?;
-    let position_value = state.collateral_uusd_value + state.uusd_balance + state.uusd_long_farm;
+    let mut position_value =
+        state.collateral_uusd_value + state.uusd_balance + state.uusd_long_farm;
+    if let Ok(lock_info_response) = get_cdp_uusd_lock_info_result(deps.as_ref(), &context) {
+        // There may still be uusd short sale proceeds locked in the CDP, so we add this amount to position value.
+        position_value += lock_info_response.locked_amount;
+    }
+
     let last_fee_collection_position_uusd_value =
         LAST_FEE_COLLECTION_POSITION_UUSD_VALUE.load(deps.storage)?;
     let gain = if last_fee_collection_position_uusd_value < position_value {
