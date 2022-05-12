@@ -66,6 +66,7 @@ async function publishMetrics(metrics_and_count) {
   await client.send(new PutMetricDataCommand(metrics_to_publish));
 }
 
+const HIVE_ENDPOINT = "http://hive-lb-1253409394.us-west-2.elb.amazonaws.com:8085/graphql";
 const client = new CloudWatchClient({ region: "us-west-2" });
 var metrics = {};
 const CONTRACT_QUERY_ERROR = "CONTRACT_QUERY_ERROR";
@@ -117,7 +118,7 @@ async function run_pipeline() {
   parser.add_argument("-q", "--qps", {
     help: "Number of rebalance per second.",
     required: false,
-    default: 10,
+    default: 2,
     type: "int",
   });
   parser.add_argument("-bs", "--batch_size", {
@@ -338,25 +339,72 @@ async function run_pipeline() {
       msgs_acc = [migrate_msg, ...msgs_acc];
 
       var tx = undefined;
-      try {
-        tx = await wallet.createAndSignTx({
-          msgs: msgs_acc,
-          sequence: await wallet.sequence(),
-        });
-      } catch (error) {
-        if (error.response && error.response.data) {
+      var attempts = 0;
+      var simulationStatus = false;
+      const maxAttempts = 3;
+      var seq = await wallet.sequence();
+      while (attempts < maxAttempts) {
+        try {
+          tx = await wallet.createAndSignTx({
+            msgs: msgs_acc,
+            sequence: seq,
+          });
           console.log(
-            `Failed to createAndSignTx with error: ${
-              error.response.data.message
-            } for position ids: ${position_ids.join(",")}`
-          );
-        } else {
-          console.log(
-            `Failed to createAndSignTx with ${error} for position ids: ${position_ids.join(
+            `Succeeded to createAndSignTx for position ids: ${position_ids.join(
               ","
             )}`
           );
+          // Mark simulation as successful.
+          simulationStatus = true;
+          break;
+        } catch (error) {
+          if (error.response && error.response.data) {
+            const errorPrefix = "account sequence mismatch, expected ";
+            const errorSuffix = ": incorrect account sequence: invalid request";
+            const errorLog = `Failed to createAndSignTx with error: ${
+              error.response.data.message
+            } for position ids: ${position_ids.join(",")}`;
+            // Only retry sequence mismatch for now.
+            if (error.response.data.message.includes(errorPrefix)) {
+              console.log(
+                `Simulation failed due to sequence mismatch for position ids: ${position_ids.join(
+                  ","
+                )}. Retrying it again.`
+              );
+              attempts++;
+              // Update seq.
+              const e = error.response.data.message;
+              for (const strToken of e
+                .substring(0, e.indexOf(errorSuffix))
+                .substr(errorPrefix.length)
+                .split(",")) {
+                // The first element is the expected sequence number.
+                seq = parseInt(strToken);
+                console.log(`Parsed expected sequence: ${seq}.`);
+                // Delay some time to avoid continuous spamming.
+                await delay(1000);
+                break;
+              }
+              console.log(errorLog);
+              continue;
+            }
+            console.log(errorLog);
+            break;
+          } else {
+            console.log(
+              `Failed to createAndSignTx with ${error} for position ids: ${position_ids.join(
+                ","
+              )}`
+            );
+            break;
+          }
         }
+      }
+
+      if (!simulationStatus) {
+        console.log(
+          `Simulation failed. Skipping position ids: ${position_ids.join(",")}.`
+        );
         metrics[REBALANCE_CREATE_AND_SIGN_FAILURE]++;
         console.log("\n");
         // Clear states.
@@ -367,18 +415,16 @@ async function run_pipeline() {
         continue;
       }
 
-      console.log(
-        `Succeeded to createAndSignTx for position ids: ${position_ids.join(
-          ","
-        )}`
-      );
-
       try {
         const response = await connection.tx.broadcast(tx);
         if (isTxError(response)) {
           metrics[REBALANCE_FAILURE]++;
           console.log(
-            `Rebalance broadcast failed. code: ${response.code}, codespace: ${response.codespace}, raw_log: ${response.raw_log}`
+            `Rebalance broadcast failed for position ids: ${position_ids.join(
+              ","
+            )}. code: ${response.code}, codespace: ${
+              response.codespace
+            }, raw_log: ${response.raw_log}`
           );
         } else {
           metrics[REBALANCE_SUCCESS]++;
@@ -441,7 +487,7 @@ async function getPositionInfos(
 
           let hive_response = await axios({
             method: "post",
-            url: "https://hive.terra.dev/graphql",
+            url: HIVE_ENDPOINT,
             data: {
               query: hive_query,
             },
@@ -678,7 +724,7 @@ async function getAssetTimestamp(connection, qps, mirror_oracle_addr) {
     );
     let hive_response = await axios({
       method: "post",
-      url: "https://hive.terra.dev/graphql",
+      url: HIVE_ENDPOINT,
       data: {
         query: hive_query,
       },
@@ -747,7 +793,7 @@ async function getAssetRequiredCR(connection, qps, mirror_mint_addr) {
     );
     let hive_response = await axios({
       method: "post",
-      url: "https://hive.terra.dev/graphql",
+      url: HIVE_ENDPOINT,
       data: {
         query: hive_query,
       },
@@ -810,13 +856,15 @@ async function getAssetRequiredCR(connection, qps, mirror_mint_addr) {
 try {
   await run_pipeline();
 } catch (error) {
-  console.log(`[Unknown Failure] Some part of the operations failed with error: ${error}`);
+  console.log(
+    `[Unknown Failure] Some part of the operations failed with error: ${error}`
+  );
 } finally {
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === "production") {
     await publishMetrics(metrics);
   } else {
     console.log("Skip publishing metrics for dev env. See metrics below.");
-    console.dir(metrics, {depth: null});
+    console.dir(metrics, { depth: null });
   }
   console.log("Rebalance script execution completed.");
 }

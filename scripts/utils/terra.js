@@ -62,7 +62,8 @@ export const DYNAMODB_BATCH_WRITE_ITEM_LIMIT = 25;
 
 export const mainnetTerraController = new LCDClient({
   // URL: "https://lcd.terra.dev",
-  URL: "https://columbus-5--lcd--full.datahub.figment.io/apikey/df60f3698c291c5e528c2e603931c73e/",
+  // URL: "https://columbus-5--lcd--full.datahub.figment.io/apikey/df60f3698c291c5e528c2e603931c73e/",
+  URL: "http://node.hyperfocal.tech:1317",
   chainID: "columbus-5",
   gasPrices: gasPrices,
   gasAdjustment: gasAdjustment,
