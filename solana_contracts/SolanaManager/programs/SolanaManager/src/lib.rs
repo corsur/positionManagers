@@ -49,7 +49,7 @@ pub mod solana_manager {
     //     instructions::user::swapTokenAndExecuteStrategy(ctx, fromToken, toToken, amount, minAmountOUt, positionId, encodedPositionOpenData)
     // }
 
-    pub fn get_positions(ctx: Context<GetPositions>, address: Pubkey) -> Result<PositionInfo> {
+    pub fn get_positions(ctx: Context<GetPositions>, address: Pubkey) -> Result<Vec<PositionInfo>> {
         instructions::get_positions::get_positions(ctx, address)
     }
 }
