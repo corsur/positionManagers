@@ -30,13 +30,15 @@ contract LendingOptimizer {
         // approve and transfer tokens from investor wallet to this contract
         token.safeTransferFrom(msg.sender, address(this), amount);
 
-        // transfer tokens to compound
+        // approve compound contract to mint from this contract
         token.safeApprove(cAddr, amount);
 
         return cToken.mint(amount);
     }
 
-    function supplyTokenToAave(address token, uint256 amount) external {}
+    function supplyTokenToAave(address token, uint256 amount) external {
+        address addr = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48; // USDC address
+    }
 
     function supply(address token, uint256 amount) external {}
 }

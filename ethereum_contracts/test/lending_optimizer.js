@@ -45,26 +45,26 @@ async function testSupplyTokenToCompound(signer, lendingOptimizer) {
 
   await tokenContract.approve(lendingOptimizer.address, supplyAmount);
 
-  const prevNegDelta = await tokenContract.balanceOf(signer.address);
-  const prevPosDelta = await tokenContract.balanceOf(CUSDC_ADDR);
-  const prevCDelta = await cTokenContract.callStatic.balanceOf(lendingOptimizer.address);
+  const prevSignerBalance = await tokenContract.balanceOf(signer.address);
+  const prevCompoundBalance = await tokenContract.balanceOf(CUSDC_ADDR);
+  const prevCBalance = await cTokenContract.balanceOf(lendingOptimizer.address);
 
   await lendingOptimizer.supplyTokenToCompound(supplyAmount);
 
-  const afterNegDelta = await tokenContract.balanceOf(signer.address);
-  const afterPosDelta = await tokenContract.balanceOf(CUSDC_ADDR);
-  const afterCDelta = await cTokenContract.callStatic.balanceOf(lendingOptimizer.address);
+  const afterSignerBalance = await tokenContract.balanceOf(signer.address);
+  const afterCompoundBalance = await tokenContract.balanceOf(CUSDC_ADDR);
+  const afterCBalance = await cTokenContract.balanceOf(lendingOptimizer.address);
 
-  const negDelta = (afterNegDelta - prevNegDelta) / 1e6;
-  const posDelta = (afterPosDelta - prevPosDelta) / 1e6;
+  const signerBalanceDelta = (afterSignerBalance - prevSignerBalance) / 1e6;
+  const compoundBalanceDelta = (afterCompoundBalance - prevCompoundBalance) / 1e6;
   const exchangeRate = await cTokenContract.callStatic.exchangeRateCurrent();
-  const cDelta = (afterCDelta - prevCDelta) * exchangeRate / 1e24;
+  const cDelta = (afterCBalance - prevCBalance) * exchangeRate / 1e24;
 
   console.log("supplyTokenToCompound(supplyAmount) completed.");
-  return [negDelta, posDelta, cDelta];
+  return [signerBalanceDelta, compoundBalanceDelta, cDelta];
 }
 
-describe("Lending optimizer supply to compound unit tests", function () {
+describe.only("Lending optimizer supply to compound unit tests", function () {
   var signer = undefined;
   var lendingOptimizer = undefined;
 
@@ -74,9 +74,9 @@ describe("Lending optimizer supply to compound unit tests", function () {
   });
 
   it("Supply to compound balance check", async function () {
-    const deltas = await testSupplyTokenToCompound(signer, lendingOptimizer);
-    expect(deltas[0]).to.equal(-20);
-    expect(deltas[1]).to.equal(20);
-    expect(Math.ceil(deltas[2])).to.equal(20);
+    const [signerBalanceDelta, compoundBalanceDelta, cDelta] = await testSupplyTokenToCompound(signer, lendingOptimizer);
+    expect(signerBalanceDelta).to.equal(-20);
+    expect(compoundBalanceDelta).to.equal(20);
+    expect(Math.ceil(cDelta)).to.equal(20); // ceil because some decimals are lost with exchange rate multiplication
   });
 });
