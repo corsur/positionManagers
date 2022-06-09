@@ -30,7 +30,7 @@ contract LendingOptimizer {
         // approve and transfer tokens from investor wallet to this contract
         token.safeTransferFrom(msg.sender, address(this), amount);
 
-        // approve compound contract to mint from this contract
+        // approve compound contract to transfer from this contract
         token.safeApprove(cAddr, amount);
 
         return cToken.mint(amount);
