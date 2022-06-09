@@ -33,7 +33,7 @@ module.exports = {
       optimizer: {
         enabled: true,
         // See https://docs.soliditylang.org/en/v0.8.12/internals/optimizer.html#optimizer-parameter-runs.
-        runs: 2**32-1,
+        runs: 2 ** 32 - 1,
       },
     },
   },
@@ -56,7 +56,7 @@ module.exports = {
   },
   paths: {
     sources: "./contracts",
-    tests: "./test/",
+    tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts",
   },

@@ -33,6 +33,7 @@ const erc20ABI = [
   // Authenticated Functions
   "function approve(address spender, uint256 value) returns (bool)",
 ];
+
 const curvePoolABI = [
   "function exchange_underlying(int128 i, int128 j, uint256 dx, uint256 min_dy) returns (uint256)",
 ];
