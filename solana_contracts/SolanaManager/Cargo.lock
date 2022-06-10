@@ -9,6 +9,7 @@ dependencies = [
  "anchor-lang",
  "num-derive",
  "num-traits",
+ "solana-program",
 ]
 
 [[package]]
