@@ -36,8 +36,6 @@ contract LendingOptimizer {
         IERC20 token = IERC20(addr);
         CErc20 cToken = CErc20(cAddr);
 
-        require(amount <= token.allowance(msg.sender, address(this)));
-
         // approve and transfer tokens from investor wallet to this contract
         token.safeTransferFrom(msg.sender, address(this), amount);
 
@@ -54,15 +52,19 @@ contract LendingOptimizer {
         IERC20 token = IERC20(addr);
         ILendingPool pool = ILendingPool(aaveLendingPoolAddr);
 
-        require(amount <= token.allowance(msg.sender, address(this)));
-
         // approve and transfer tokens from investor wallet to this contract
         token.safeTransferFrom(msg.sender, address(this), amount);
 
         // approve AAVE LendingPool contract to make a deposit
         token.safeApprove(aaveLendingPoolAddr, amount);
 
-        pool.deposit(addr, amount, address(this), 0);
+        pool.deposit(
+            addr,
+            amount,
+            address(this),
+            /*referralCode=*/
+            0
+        );
     }
 
     function supply(address token, uint256 amount) external {}
