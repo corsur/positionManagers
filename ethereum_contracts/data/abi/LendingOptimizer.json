@@ -1,5 +1,5 @@
 [
   "function supply(address,uint256)",
-  "function supplyTokenToAave(address,uint256)",
-  "function supplyTokenToCompound(uint256) returns (uint256)"
+  "function supplyTokenToAave(uint256)",
+  "function supplyTokenToCompound(uint256)"
 ]
