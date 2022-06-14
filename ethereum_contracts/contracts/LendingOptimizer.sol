@@ -70,7 +70,6 @@ interface WETHGateway {
         address onBehalfOf,
         uint16 referralCode
     ) external payable;
-}
 
 contract LendingOptimizer {
     using SafeERC20 for IERC20;
