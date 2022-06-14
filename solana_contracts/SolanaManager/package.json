@@ -4,16 +4,22 @@
         "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
     },
     "dependencies": {
-        "@project-serum/anchor": "^0.24.2"
+        "@project-serum/anchor": "^0.24.2",
+        "loupe": "^2.3.4",
+        "no-case": "^3.0.4",
+        "pathval": "^1.1.1",
+        "superstruct": "^0.16.0",
+        "text-encoding-utf-8": "^1.0.2",
+        "type-detect": "^4.0.8"
     },
     "devDependencies": {
-        "chai": "^4.3.4",
-        "mocha": "^9.0.3",
-        "ts-mocha": "^8.0.0",
         "@types/bn.js": "^5.1.0",
         "@types/chai": "^4.3.0",
         "@types/mocha": "^9.0.0",
-        "typescript": "^4.3.5",
-        "prettier": "^2.6.2"
+        "chai": "^4.3.4",
+        "mocha": "^9.2.2",
+        "prettier": "^2.6.2",
+        "ts-mocha": "^9.0.2",
+        "typescript": "^4.3.5"
     }
 }
