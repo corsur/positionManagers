@@ -1,3 +1,4 @@
 [
-  "function deposit(address,uint256,address,uint16)"
+  "function deposit(address,uint256,address,uint16)",
+  "function getReserveData(address) view returns (tuple(tuple(uint256),uint128,uint128,uint128,uint128,uint128,uint40,address,address,address,address,uint8))"
 ]

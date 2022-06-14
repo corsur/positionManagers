@@ -1,5 +1,4 @@
 [
-  "function supply(address,uint256)",
-  "function supplyTokenToAave(uint256)",
-  "function supplyTokenToCompound(uint256)"
+  "function supply(address,uint256) returns (uint256)",
+  "function supplyEth() payable"
 ]
