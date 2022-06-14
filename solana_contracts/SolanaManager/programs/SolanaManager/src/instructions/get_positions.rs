@@ -1,5 +1,5 @@
-use crate::state::position::*;
 use anchor_lang::prelude::*;
+use crate::state::position::*;
 
 pub fn get_positions(ctx: Context<GetPositions>) -> Result<Vec<PositionInfo>> {
 
@@ -11,7 +11,7 @@ pub fn get_positions(ctx: Context<GetPositions>) -> Result<Vec<PositionInfo>> {
 pub struct GetPositions<'info> {
     #[account(mut)]
     pub positions: Account<'info, Position>,
-    pub get_account: GetAccount<'info>
+    pub get_account: GetPositionsPDAs<'info>
 }
 
 

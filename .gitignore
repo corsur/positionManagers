@@ -18,5 +18,6 @@ target/
 # Environment variables.
 .env
 
-# Anchor Node Modules
+# Anchor 
 solana_contracts/SolanaManager/node_modules/
+solana_contracts/SolanaManager/.anchor

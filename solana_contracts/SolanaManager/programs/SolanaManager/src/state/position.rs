@@ -9,7 +9,9 @@ pub struct PositionInfo {
     chain_id: u16 // Chain id, following Wormhole's design.
 }
 
-#[account]
+#[derive(
+    AnchorSerialize, AnchorDeserialize, Copy, Clone, PartialEq, Eq,
+)]
 pub struct StoredPositionInfo {
     owner_addr: Pubkey,
     strategy_chain_id: u16,
@@ -46,7 +48,7 @@ pub struct CreatePosition<'info> {
 }
 
 #[derive(Accounts)]
-pub struct GetAccount<'info> {
+pub struct GetPositionsPDAs<'info> {
     pub user: Signer<'info>,
     #[account(mut, seeds = [b"position", user.key().as_ref()], bump = position.bump)]
     pub position: Account<'info, Position>,
@@ -62,10 +64,10 @@ impl Position {
     pub fn create_position(ctx: Context<CreatePosition>, address: Pubkey) -> Result<()> {
         let position = &mut ctx.accounts.position;
         position.stored_position_info.owner_addr = address;
-        position.stored_position_info.strategy_chain_id = 0;
-        position.stored_position_info.strategy_id = 0;
-        position.position_info.position_id = 0;
-        position.position_info.chain_id = 0;
+        position.stored_position_info.strategy_chain_id = 1;
+        position.stored_position_info.strategy_id = 1;
+        position.position_info.position_id = 1;
+        position.position_info.chain_id = 1;
 
         position.bump = *ctx.bumps.get("position").unwrap();
         Ok(())

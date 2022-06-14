@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use instructions::*;
-use state::position::PositionInfo;
+use crate::state::position::*;
+
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
@@ -51,5 +52,9 @@ pub mod solana_manager {
 
     pub fn get_positions(ctx: Context<GetPositions>) -> Result<Vec<PositionInfo>> {
         instructions::get_positions::get_positions(ctx)
+    }
+
+    pub fn get_position_pdas(ctx: Context<GetPositionsPDAs>, user: Pubkey) -> Result<Vec<Pubkey>> {
+         instructions::get_positions_pdas::get_positions_pdas(ctx, user)
     }
 }
