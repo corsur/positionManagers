@@ -41,7 +41,7 @@ module.exports = {
     hardhat: {
       forking: {
         url: ALCHEMY_URL_MAINNET,
-        blockNumber: 14247160,
+        blockNumber: 14957690, // previously 14247160, modified to have block with known interest rate
       }
     },
     ropsten: {

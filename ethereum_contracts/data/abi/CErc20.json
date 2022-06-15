@@ -2,6 +2,6 @@
   "function exchangeRateCurrent() returns (uint256)",
   "function mint(uint256) returns (uint256)",
   "function redeem(uint256) returns (uint256)",
-  "function redeemUnderlying(uint256) returns (uint256)",
+  "function redeemUnderlying(uint256) returns (uint256, uint128, uint128, uint128, uint128, uint128, uint40, address, address, address, address, uint8)",
   "function supplyRatePerBlock() returns (uint256)"
 ]
