@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: agpl-3.0
 pragma solidity ^0.8.13;
 
-library DataTypes {
+library AaveV2DataTypes {
     // refer to the whitepaper, section 1.1 basic concepts for a formal description of these properties.
     struct ReserveData {
         //stores the reserve configuration

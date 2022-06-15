@@ -9,71 +9,13 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "./libraries/DataTypes.sol";
+import "contracts/interfaces/CErc20.sol";
+import "contracts/interfaces/IERC20Metadata.sol";
+import "contracts/interfaces/ILendingPool.sol";
+import "contracts/interfaces/CEth.sol";
+import "contracts/interfaces/WETHGateway.sol";
 
-interface IERC20Metadata {
-    function decimals() external view returns (uint8);
-}
-
-interface CErc20 {
-    function mint(uint256) external returns (uint256);
-
-    function exchangeRateCurrent() external returns (uint256);
-
-    function supplyRatePerBlock() external returns (uint256);
-
-    function redeem(uint256) external returns (uint256);
-
-    function redeemUnderlying(uint256)
-        external
-        returns (
-            uint256,
-            uint128,
-            uint128,
-            uint128,
-            uint128,
-            uint128,
-            uint40,
-            address,
-            address,
-            address,
-            address,
-            uint8
-        );
-}
-
-interface ILendingPool {
-    function deposit(
-        address asset,
-        uint256 amount,
-        address onBehalfOf,
-        uint16 referralCode
-    ) external;
-
-    function getReserveData(address asset)
-        external
-        view
-        returns (DataTypes.ReserveData memory);
-}
-
-interface CEth {
-    function mint() external payable;
-
-    function exchangeRateCurrent() external returns (uint256);
-
-    function supplyRatePerBlock() external returns (uint256);
-
-    function redeem(uint256) external returns (uint256);
-
-    function redeemUnderlying(uint256) external returns (uint256);
-}
-
-interface WETHGateway {
-    function depositETH(
-        address lendingPool,
-        address onBehalfOf,
-        uint16 referralCode
-    ) external payable;
+import "./libraries/AaveV2DataTypes.sol";
 
 contract LendingOptimizer is
     Initializable,
@@ -106,7 +48,10 @@ contract LendingOptimizer is
     // Only owner of this logic contract can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    function mapToC(address tokenAddr, address cTokenAddr) external onlyOwner {
+    function addCompoundTokenMapping(address tokenAddr, address cTokenAddr)
+        external
+        onlyOwner
+    {
         toC[tokenAddr] = cTokenAddr;
     }
 
