@@ -17,7 +17,6 @@ const USDC_ADDR = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const CUSDC_ADDR = "0x39AA39c021dfbaE8faC545936693aC917d5E7563";
 const AUSDC_ADDR = "0xBcca60bB61934080951369a648Fb03DF4F96263C";
 
-
 async function getImpersonatedSigner() {
   const accountToImpersonate = IMPERSONATE_ADDR;
   await hre.network.provider.request({
