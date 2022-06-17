@@ -28,9 +28,10 @@ pub struct AssetInfo {
 
 #[account]
 pub struct Position {
-    stored_position_info: StoredPositionInfo,
+    pub stored_position_info: StoredPositionInfo,
     pub position_info: PositionInfo,
-    bump: u8
+    pub asset_info: AssetInfo,
+    pub bump: u8
 }
 
 #[derive(Accounts)]

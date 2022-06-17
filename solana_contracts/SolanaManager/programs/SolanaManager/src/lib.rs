@@ -30,9 +30,6 @@ pub mod solana_manager {
     // }
 
     // // user instructions
-    // pub fn createPosition(ctx: Context<Strategy>, strategyChainId: u16, chain: u16, assetInfo: AssetInfo, encodedPositionOpenData: EncodedPositionOpenData) -> Result<()> {
-    //     instructions::user::createPosition(ctx, strategyChainId, chain, assetInfo, encodedPositionOpenData)
-    // }
 
     // pub fn swapTokenAndCreatePosition(
     //     ctx: Context<Strategy>, fromToken: Pubkey, toToken: Pubkey, amount: u256, minAmountOut: u256, 
@@ -49,12 +46,16 @@ pub mod solana_manager {
     //     positionId: u128, encodedPositionOpenData: EncodedPositionOpenData) -> Result<()> {
     //     instructions::user::swapTokenAndExecuteStrategy(ctx, fromToken, toToken, amount, minAmountOUt, positionId, encodedPositionOpenData)
     // }
+    
+    pub fn create_position(ctx: Context<CreatePosition>) -> Result<()> {
+        instructions::create_position::create_position(ctx)
+    }
 
     pub fn get_positions(ctx: Context<GetPositions>) -> Result<Vec<PositionInfo>> {
         instructions::get_positions::get_positions(ctx)
     }
 
-    pub fn get_position_pdas(ctx: Context<GetPositionsPDAs>, user: Pubkey) -> Result<Vec<Pubkey>> {
+    pub fn get_position_pdas(ctx: Context<GetPositionsPDAs>, user: Pubkey) -> Result<u8> {
          instructions::get_positions_pdas::get_positions_pdas(ctx, user)
     }
 }
