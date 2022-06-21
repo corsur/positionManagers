@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: agpl-3.0
 pragma solidity ^0.8.13;
 
 interface WETHGateway {
@@ -5,5 +6,11 @@ interface WETHGateway {
         address lendingPool,
         address onBehalfOf,
         uint16 referralCode
+    ) external payable;
+
+    function withdrawETH(
+        address lendingPool,
+        uint256 amount,
+        address to
     ) external payable;
 }

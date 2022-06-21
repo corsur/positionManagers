@@ -1,4 +1,6 @@
 [
+  "function balanceOf(address) view returns (uint256)",
+  "function balanceOfUnderlying(address) returns (uint256)",
   "function exchangeRateCurrent() returns (uint256)",
   "function mint() payable",
   "function redeem(uint256) returns (uint256)",
