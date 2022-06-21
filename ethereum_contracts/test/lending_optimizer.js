@@ -106,10 +106,10 @@ async function testWithdrawErc20(addr, signer, lendingOptimizer) {
 
   await tokenContract.approve(lendingOptimizer.address, 1e6);
   await lendingOptimizer.connect(signer).supply(addr, 1e6);
-  await lendingOptimizer.connect(signer).withdraw(addr, 80);
+  await lendingOptimizer.connect(signer).withdraw(addr, 80, 15);
 
   const userDelta = (prevUserBalance - (await tokenContract.balanceOf(signer.address))) / 1e6;
-  expect(userDelta).to.equal(0.2);
+  expect(userDelta).to.equal(0.1985);
 }
 
 describe.only("LendingOptimizer tests", function () {
@@ -189,7 +189,7 @@ describe.only("LendingOptimizer tests", function () {
     const prevUserBalance = await user.getBalance();
 
     await lendingOptimizer.connect(user).supplyEth({ value: ethers.utils.parseUnits('1', 'ether') });
-    await lendingOptimizer.connect(user).withdrawEth(80);
+    await lendingOptimizer.connect(user).withdrawEth(80, 0);
 
     const afterUserBalance = await user.getBalance();
 

@@ -136,10 +136,7 @@ contract LendingOptimizer is
     }
 
     function supply(address tokenAddr, uint256 amount) external {
-        require(
-            toC[tokenAddr] != 0x0000000000000000000000000000000000000000 &&
-                toC[tokenAddr] != address(0)
-        );
+        require(toC[tokenAddr] != address(0));
 
         /*
           Compound interest rate APY:
@@ -169,16 +166,24 @@ contract LendingOptimizer is
         }
     }
 
-    function withdrawEth(uint8 percent) external payable {
-        require(percent >= 0 && percent <= 100);
+    function withdrawEth(uint8 percent, uint8 basisPoint) external payable {
+        require(
+            percent >= 0 &&
+                percent <= 100 &&
+                basisPoint >= 0 &&
+                basisPoint < 100
+        );
         CEth cToken = CEth(CETH_ADDR);
 
         if (cToken.balanceOf(address(this)) > 0) {
-            uint256 redeemAmount = (cToken.balanceOf(address(this)) * percent) /
-                100;
-            uint256 redeemAmountUnderlying = (cToken.balanceOfUnderlying(
+            uint256 redeemAmount = ((cToken.balanceOf(address(this)) *
+                percent) / 100) +
+                ((cToken.balanceOf(address(this)) * basisPoint) / 10000);
+            uint256 redeemAmountUnderlying = ((cToken.balanceOfUnderlying(
                 address(this)
-            ) * percent) / 100;
+            ) * percent) / 100) +
+                ((cToken.balanceOfUnderlying(address(this)) * basisPoint) /
+                    10000);
 
             cToken.redeem(redeemAmount);
             payable(msg.sender).transfer(redeemAmountUnderlying);
@@ -188,7 +193,8 @@ contract LendingOptimizer is
                     .getReserveData(WETH_ADDR)
                     .aTokenAddress
             );
-            uint256 amount = (aToken.balanceOf(address(this)) * percent) / 100;
+            uint256 amount = ((aToken.balanceOf(address(this)) * percent) /
+                100) + ((aToken.balanceOf(address(this)) * basisPoint) / 10000);
 
             aToken.safeApprove(WETHGATEWAY_ADDR, amount);
             WETHGateway(WETHGATEWAY_ADDR).withdrawETH(
@@ -202,22 +208,30 @@ contract LendingOptimizer is
     // Needed to receive ETH
     receive() external payable {}
 
-    function withdraw(address tokenAddr, uint8 percent) external {
+    function withdraw(
+        address tokenAddr,
+        uint8 percent,
+        uint8 basisPoint
+    ) external {
         require(
-            toC[tokenAddr] != 0x0000000000000000000000000000000000000000 &&
-                toC[tokenAddr] != address(0) &&
+            toC[tokenAddr] != address(0) &&
                 percent >= 0 &&
-                percent <= 100
+                percent <= 100 &&
+                basisPoint >= 0 &&
+                basisPoint < 100
         );
 
         CErc20 cToken = CErc20(toC[tokenAddr]);
 
         if (cToken.balanceOf(address(this)) > 0) {
-            uint256 redeemAmount = (cToken.balanceOf(address(this)) * percent) /
-                100;
-            uint256 redeemAmountUnderlying = (cToken.balanceOfUnderlying(
+            uint256 redeemAmount = ((cToken.balanceOf(address(this)) *
+                percent) / 100) +
+                ((cToken.balanceOf(address(this)) * basisPoint) / 10000);
+            uint256 redeemAmountUnderlying = ((cToken.balanceOfUnderlying(
                 address(this)
-            ) * percent) / 100;
+            ) * percent) / 100) +
+                ((cToken.balanceOfUnderlying(address(this)) * basisPoint) /
+                    10000);
 
             cToken.redeem(redeemAmount);
             IERC20(tokenAddr).safeTransfer(msg.sender, redeemAmountUnderlying);
@@ -226,7 +240,8 @@ contract LendingOptimizer is
             IERC20 aToken = IERC20(
                 pool.getReserveData(tokenAddr).aTokenAddress
             );
-            uint256 amount = (aToken.balanceOf(address(this)) * percent) / 100;
+            uint256 amount = ((aToken.balanceOf(address(this)) * percent) /
+                100) + ((aToken.balanceOf(address(this)) * basisPoint) / 10000);
             pool.withdraw(tokenAddr, amount, msg.sender);
         }
     }
