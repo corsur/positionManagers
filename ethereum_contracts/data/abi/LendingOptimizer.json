@@ -8,8 +8,8 @@
   "function WETHGATEWAY_ADDR() view returns (address)",
   "function WETH_ADDR() view returns (address)",
   "function addCompoundTokenMapping(address,address)",
-  "function balanceErc20(address) returns (uint256)",
-  "function balanceEth() returns (uint256)",
+  "function balanceErc20(address) view returns (uint256)",
+  "function balanceEth() view returns (uint256)",
   "function initialize(address,address,address,address)",
   "function owner() view returns (address)",
   "function proxiableUUID() view returns (bytes32)",
@@ -19,6 +19,6 @@
   "function transferOwnership(address)",
   "function upgradeTo(address)",
   "function upgradeToAndCall(address,bytes) payable",
-  "function withdraw(address,uint8,uint8)",
-  "function withdrawEth(uint8,uint8) payable"
+  "function withdraw(address,uint16)",
+  "function withdrawEth(uint16) payable"
 ]

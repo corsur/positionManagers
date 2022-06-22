@@ -11,6 +11,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "contracts/interfaces/CErc20.sol";
+import "contracts/interfaces/IERC20Metadata.sol";
 import "contracts/interfaces/ILendingPool.sol";
 import "contracts/interfaces/CEth.sol";
 import "contracts/interfaces/WETHGateway.sol";
@@ -55,10 +56,12 @@ contract LendingOptimizer is
         toC[tokenAddr] = cTokenAddr;
     }
 
-    function balanceErc20(address tokenAddr) external returns (uint256) {
-        uint256 compoundBalance = CErc20(toC[tokenAddr]).balanceOfUnderlying(
-            address(this)
-        );
+    function balanceErc20(address tokenAddr) external view returns (uint256) {
+        CErc20 cToken = CErc20(toC[tokenAddr]);
+        // there might be a little discrepancy between real and calculated value
+        // due to exchange rate multiplication
+        uint256 compoundBalance = (cToken.balanceOf(address(this)) *
+            cToken.exchangeRateStored()) / (10**18);
         IERC20 aToken = IERC20(
             ILendingPool(ILENDINGPOOL_ADDR)
                 .getReserveData(tokenAddr)
@@ -66,10 +69,12 @@ contract LendingOptimizer is
         );
         uint256 aaveBalance = aToken.balanceOf(address(this));
 
+        // console.log(compoundBalance + aaveBalance);
+
         return compoundBalance + aaveBalance;
     }
 
-    function balanceEth() external returns (uint256) {
+    function balanceEth() external view returns (uint256) {
         CEth cToken = CEth(CETH_ADDR);
         IERC20 aToken = IERC20(
             ILendingPool(ILENDINGPOOL_ADDR)
@@ -77,9 +82,12 @@ contract LendingOptimizer is
                 .aTokenAddress
         );
 
-        return
-            cToken.balanceOfUnderlying(address(this)) +
-            aToken.balanceOf(address(this));
+        uint256 compoundBalance = (cToken.balanceOf(address(this)) *
+            cToken.exchangeRateStored()) / (10**18);
+
+        // console.log(compoundBalance + aToken.balanceOf(address(this)));
+
+        return compoundBalance + aToken.balanceOf(address(this));
     }
 
     function supplyTokenToCompound(address tokenAddr, uint256 amount) private {
@@ -166,24 +174,16 @@ contract LendingOptimizer is
         }
     }
 
-    function withdrawEth(uint8 percent, uint8 basisPoint) external payable {
-        require(
-            percent >= 0 &&
-                percent <= 100 &&
-                basisPoint >= 0 &&
-                basisPoint < 100
-        );
+    function withdrawEth(uint16 basisPoint) external payable {
+        require(basisPoint >= 0 && basisPoint <= 10000);
         CEth cToken = CEth(CETH_ADDR);
 
         if (cToken.balanceOf(address(this)) > 0) {
-            uint256 redeemAmount = ((cToken.balanceOf(address(this)) *
-                percent) / 100) +
-                ((cToken.balanceOf(address(this)) * basisPoint) / 10000);
-            uint256 redeemAmountUnderlying = ((cToken.balanceOfUnderlying(
+            uint256 redeemAmount = (cToken.balanceOf(address(this)) *
+                basisPoint) / 10000;
+            uint256 redeemAmountUnderlying = (cToken.balanceOfUnderlying(
                 address(this)
-            ) * percent) / 100) +
-                ((cToken.balanceOfUnderlying(address(this)) * basisPoint) /
-                    10000);
+            ) * basisPoint) / 10000;
 
             cToken.redeem(redeemAmount);
             payable(msg.sender).transfer(redeemAmountUnderlying);
@@ -193,8 +193,8 @@ contract LendingOptimizer is
                     .getReserveData(WETH_ADDR)
                     .aTokenAddress
             );
-            uint256 amount = ((aToken.balanceOf(address(this)) * percent) /
-                100) + ((aToken.balanceOf(address(this)) * basisPoint) / 10000);
+            uint256 amount = (aToken.balanceOf(address(this)) * basisPoint) /
+                10000;
 
             aToken.safeApprove(WETHGATEWAY_ADDR, amount);
             WETHGateway(WETHGATEWAY_ADDR).withdrawETH(
@@ -208,30 +208,21 @@ contract LendingOptimizer is
     // Needed to receive ETH
     receive() external payable {}
 
-    function withdraw(
-        address tokenAddr,
-        uint8 percent,
-        uint8 basisPoint
-    ) external {
+    function withdraw(address tokenAddr, uint16 basisPoint) external {
         require(
             toC[tokenAddr] != address(0) &&
-                percent >= 0 &&
-                percent <= 100 &&
                 basisPoint >= 0 &&
-                basisPoint < 100
+                basisPoint <= 10000
         );
 
         CErc20 cToken = CErc20(toC[tokenAddr]);
 
         if (cToken.balanceOf(address(this)) > 0) {
-            uint256 redeemAmount = ((cToken.balanceOf(address(this)) *
-                percent) / 100) +
-                ((cToken.balanceOf(address(this)) * basisPoint) / 10000);
-            uint256 redeemAmountUnderlying = ((cToken.balanceOfUnderlying(
+            uint256 redeemAmount = (cToken.balanceOf(address(this)) *
+                basisPoint) / 10000;
+            uint256 redeemAmountUnderlying = (cToken.balanceOfUnderlying(
                 address(this)
-            ) * percent) / 100) +
-                ((cToken.balanceOfUnderlying(address(this)) * basisPoint) /
-                    10000);
+            ) * basisPoint) / 10000;
 
             cToken.redeem(redeemAmount);
             IERC20(tokenAddr).safeTransfer(msg.sender, redeemAmountUnderlying);
@@ -240,8 +231,8 @@ contract LendingOptimizer is
             IERC20 aToken = IERC20(
                 pool.getReserveData(tokenAddr).aTokenAddress
             );
-            uint256 amount = ((aToken.balanceOf(address(this)) * percent) /
-                100) + ((aToken.balanceOf(address(this)) * basisPoint) / 10000);
+            uint256 amount = (aToken.balanceOf(address(this)) * basisPoint) /
+                10000;
             pool.withdraw(tokenAddr, amount, msg.sender);
         }
     }
