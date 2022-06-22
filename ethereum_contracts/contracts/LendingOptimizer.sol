@@ -1,3 +1,4 @@
+//SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.13;
 
 import "hardhat/console.sol";
@@ -26,10 +27,10 @@ contract LendingOptimizer is
 
     mapping(address => address) toC;
 
-    address public CETH_ADDR; // 0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5 on ethereum
-    address public ILENDINGPOOL_ADDR; // 0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9 on ethereum
-    address public WETH_ADDR; // 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 on ethereum
-    address public WETHGATEWAY_ADDR; // 0xcc9a0B7c43DC2a5F023Bb9b738E45B0Ef6B06E04 on ethereum
+    address public CETH_ADDR;
+    address public ILENDINGPOOL_ADDR;
+    address public WETH_ADDR;
+    address public WETHGATEWAY_ADDR;
 
     function initialize(
         address _cETHAddr,
@@ -55,9 +56,42 @@ contract LendingOptimizer is
         toC[tokenAddr] = cTokenAddr;
     }
 
+    function balanceErc20(address tokenAddr) external view returns (uint256) {
+        CErc20 cToken = CErc20(toC[tokenAddr]);
+        // there might be a little discrepancy between real and calculated value
+        // due to exchange rate multiplication
+        uint256 compoundBalance = (cToken.balanceOf(address(this)) *
+            cToken.exchangeRateStored()) / (10**18);
+        IERC20 aToken = IERC20(
+            ILendingPool(ILENDINGPOOL_ADDR)
+                .getReserveData(tokenAddr)
+                .aTokenAddress
+        );
+        uint256 aaveBalance = aToken.balanceOf(address(this));
+
+        // console.log(compoundBalance + aaveBalance);
+
+        return compoundBalance + aaveBalance;
+    }
+
+    function balanceEth() external view returns (uint256) {
+        CEth cToken = CEth(CETH_ADDR);
+        IERC20 aToken = IERC20(
+            ILendingPool(ILENDINGPOOL_ADDR)
+                .getReserveData(WETH_ADDR)
+                .aTokenAddress
+        );
+
+        uint256 compoundBalance = (cToken.balanceOf(address(this)) *
+            cToken.exchangeRateStored()) / (10**18);
+
+        // console.log(compoundBalance + aToken.balanceOf(address(this)));
+
+        return compoundBalance + aToken.balanceOf(address(this));
+    }
+
     function supplyTokenToCompound(address tokenAddr, uint256 amount) private {
         IERC20 token = IERC20(tokenAddr);
-        CErc20 cToken = CErc20(toC[tokenAddr]);
 
         // approve and transfer tokens from investor wallet to this contract
         token.safeTransferFrom(msg.sender, address(this), amount);
@@ -65,12 +99,11 @@ contract LendingOptimizer is
         // approve compound contract to transfer from this contract
         token.safeApprove(toC[tokenAddr], amount);
 
-        cToken.mint(amount);
+        CErc20(toC[tokenAddr]).mint(amount);
     }
 
     function supplyTokenToAave(address tokenAddr, uint256 amount) private {
         IERC20 token = IERC20(tokenAddr);
-        ILendingPool pool = ILendingPool(ILENDINGPOOL_ADDR); // address is AAVE LendingPool
 
         // approve and transfer tokens from investor wallet to this contract
         token.safeTransferFrom(msg.sender, address(this), amount);
@@ -78,7 +111,7 @@ contract LendingOptimizer is
         // approve AAVE LendingPool contract to make a deposit
         token.safeApprove(ILENDINGPOOL_ADDR, amount);
 
-        pool.deposit(
+        ILendingPool(ILENDINGPOOL_ADDR).deposit(
             tokenAddr,
             amount,
             address(this),
@@ -94,20 +127,14 @@ contract LendingOptimizer is
             365 *
             (10**9);
 
-        ILendingPool pool = ILendingPool(ILENDINGPOOL_ADDR);
-        uint256 aInterestAdj = pool
+        uint256 aInterestAdj = ILendingPool(ILENDINGPOOL_ADDR)
             .getReserveData(WETH_ADDR)
             .currentLiquidityRate;
-
-        WETHGateway wETH = WETHGateway(WETHGATEWAY_ADDR);
-
-        // console.log(cInterestAdj);
-        // console.log(aInterestAdj);
 
         if (cInterestAdj >= aInterestAdj) {
             cToken.mint{value: msg.value}();
         } else {
-            wETH.depositETH{value: msg.value}(
+            WETHGateway(WETHGATEWAY_ADDR).depositETH{value: msg.value}(
                 ILENDINGPOOL_ADDR,
                 address(this),
                 /* referralCode = */
@@ -116,49 +143,94 @@ contract LendingOptimizer is
         }
     }
 
-    // handle error when compound or aave does not support token
-    function supply(address tokenAddr, uint256 amount)
-        external
-        returns (uint256)
-    {
-        require(
-            toC[tokenAddr] != 0x0000000000000000000000000000000000000000 &&
-                toC[tokenAddr] != address(0) &&
-                toC[tokenAddr] != address(0x0)
-        );
+    function supply(address tokenAddr, uint256 amount) external {
+        require(toC[tokenAddr] != address(0));
 
-        IERC20 token = IERC20(tokenAddr);
-        IERC20Metadata tokenMetadata = IERC20Metadata(tokenAddr);
-        CErc20 cToken = CErc20(toC[tokenAddr]);
-        ILendingPool pool = ILendingPool(ILENDINGPOOL_ADDR); // AAVE LendingPool address
-
-        // Interest rate formula adjusted to directly compare compound vs aave
         /*
-          In Compound, interest rate APY is calculated with the formula
-          ((((Rate / ETH Mantissa * Blocks Per Day + 1) ^ Days Per Year)) - 1).
-          In AAVE, the formula is
+          Compound interest rate APY:
+          (((Rate / ETH Mantissa * Blocks Per Day + 1) ^ Days Per Year)) - 1.
+
+          AAVE:
           ((1 + ((liquidityRate / RAY) / SECONDS_PER_YEAR)) ^ SECONDS_PER_YEAR) - 1.
+
           We simplify the inequality between the two formula by altering 
           the compounding term, making days per year to seconds per year 
           or vice versa. This affects the final APY trivially. This allows
           the terms in both sides to cancel, eventually becoming
           compoundSupplyRate * 6570 * 365 * (10 ** 9) ? aaveLiquidityRate.
         */
-        uint256 cInterestAdj = cToken.supplyRatePerBlock() *
+        uint256 cInterestAdj = CErc20(toC[tokenAddr]).supplyRatePerBlock() *
             6570 *
             365 *
             (10**9);
-        uint256 aInterestAdj = pool
+        uint256 aInterestAdj = ILendingPool(ILENDINGPOOL_ADDR)
             .getReserveData(tokenAddr)
             .currentLiquidityRate;
-
-        // console.log(cInterestAdj);
-        // console.log(aInterestAdj);
 
         if (cInterestAdj >= aInterestAdj) {
             supplyTokenToCompound(tokenAddr, amount);
         } else {
             supplyTokenToAave(tokenAddr, amount);
+        }
+    }
+
+    function withdrawEth(uint16 basisPoint) external payable {
+        require(basisPoint >= 0 && basisPoint <= 10000);
+        CEth cToken = CEth(CETH_ADDR);
+
+        if (cToken.balanceOf(address(this)) > 0) {
+            uint256 redeemAmount = (cToken.balanceOf(address(this)) *
+                basisPoint) / 10000;
+            uint256 redeemAmountUnderlying = (cToken.balanceOfUnderlying(
+                address(this)
+            ) * basisPoint) / 10000;
+
+            cToken.redeem(redeemAmount);
+            payable(msg.sender).transfer(redeemAmountUnderlying);
+        } else {
+            IERC20 aToken = IERC20(
+                ILendingPool(ILENDINGPOOL_ADDR)
+                    .getReserveData(WETH_ADDR)
+                    .aTokenAddress
+            );
+            uint256 amount = (aToken.balanceOf(address(this)) * basisPoint) /
+                10000;
+
+            aToken.safeApprove(WETHGATEWAY_ADDR, amount);
+            WETHGateway(WETHGATEWAY_ADDR).withdrawETH(
+                ILENDINGPOOL_ADDR,
+                amount,
+                msg.sender
+            );
+        }
+    }
+
+    function withdraw(address tokenAddr, uint16 basisPoint) external {
+        require(
+            toC[tokenAddr] != address(0) &&
+                basisPoint >= 0 &&
+                basisPoint <= 10000
+        );
+
+        CErc20 cToken = CErc20(toC[tokenAddr]);
+
+        if (cToken.balanceOf(address(this)) > 0) {
+            uint256 redeemAmount = (cToken.balanceOf(address(this)) *
+                basisPoint) / 10000;
+            uint256 redeemAmountUnderlying = (cToken.balanceOfUnderlying(
+                address(this)
+            ) * basisPoint) / 10000;
+
+            cToken.redeem(redeemAmount);
+            IERC20(tokenAddr).safeTransfer(msg.sender, redeemAmountUnderlying);
+        } else {
+            ILendingPool pool = ILendingPool(ILENDINGPOOL_ADDR);
+            IERC20 aToken = IERC20(
+                pool.getReserveData(tokenAddr).aTokenAddress
+            );
+            uint256 amount = (aToken.balanceOf(address(this)) * basisPoint) /
+                10000;
+            pool.withdraw(tokenAddr, amount, msg.sender);
         }
     }
 }

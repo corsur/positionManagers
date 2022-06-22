@@ -10,22 +10,29 @@ const erc20ABI = [
 
 const IMPERSONATE_OWNER_ADDR = "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8";
 const IMPERSONATE_USER_ADDR = "0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2"; // FTX Exchange
+
 const USDC_ADDR = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const CUSDC_ADDR = "0x39AA39c021dfbaE8faC545936693aC917d5E7563";
 const AUSDC_ADDR = "0xBcca60bB61934080951369a648Fb03DF4F96263C";
 
+const USDT_ADDR = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+const CUSDT_ADDR = "0xf650C3d88D12dB855b8bf7D11Be6C55A4e07dCC9";
+const AUSDT_ADDR = "0x3Ed3B47Dd13EC9a98b44e6204A523E766B225811";
+
 async function getImpersonatedSigner(addr) {
   const accountToImpersonate = addr;
+
   await hre.network.provider.request({
     method: "hardhat_impersonateAccount",
     params: [accountToImpersonate],
   });
+
   return await ethers.getSigner(accountToImpersonate);
 }
 
 async function deployLendingOptimizer(signer) {
   const address = await signer.getAddress();
-  console.log("Using impersonated wallet address:", address);
+  // console.log("Using impersonated wallet address:", address);
 
   const LendingOptimizer = await ethers.getContractFactory(
     "LendingOptimizer",
@@ -47,47 +54,65 @@ async function deployLendingOptimizer(signer) {
   return lendingOptimizer;
 }
 
-async function testSupplyUSDC(signer, lendingOptimizer) {
-  const amount = 20 * 1e6; // $20
-  const tokenContract = new ethers.Contract(USDC_ADDR, erc20ABI, signer);
-  const cTokenContract = new ethers.Contract(CUSDC_ADDR, cTokenAbi, signer);
-  const aTokenContract = new ethers.Contract(AUSDC_ADDR, aTokenAbi, signer);
+async function testSupplyUsdcUsdt(addr, cAddr, aAddr, signer, lendingOptimizer) {
+  const amount = 1e6; // $1
+
+  const tokenContract = new ethers.Contract(addr, erc20ABI, signer);
+  const cTokenContract = new ethers.Contract(cAddr, cTokenAbi, signer);
+  const aTokenContract = new ethers.Contract(aAddr, aTokenAbi, signer);
+
+  const prevUserBalance = await tokenContract.balanceOf(signer.address);
+  const prevCompoundBalance = await tokenContract.balanceOf(CUSDC_ADDR);
+  const prevCTokenBalance = await cTokenContract.balanceOf(lendingOptimizer.address);
+  const prevAaveBalance = await tokenContract.balanceOf(AUSDC_ADDR);
+  const prevATokenBalance = await aTokenContract.balanceOf(lendingOptimizer.address);
 
   await tokenContract.approve(lendingOptimizer.address, amount);
+  await lendingOptimizer.connect(signer).supply(addr, amount);
 
-  const prevSignerBalance = await tokenContract.balanceOf(signer.address);
-  const prevCompoundBalance = await tokenContract.balanceOf(CUSDC_ADDR);
-  const prevCBalance = await cTokenContract.balanceOf(lendingOptimizer.address);
-  const prevAaveBalance = await tokenContract.balanceOf(AUSDC_ADDR);
-  const prevABalance = await aTokenContract.balanceOf(lendingOptimizer.address);
+  const userDelta = ((await tokenContract.balanceOf(signer.address)) - prevUserBalance) / 1e6;
+  expect(userDelta).to.equal(-1);
 
-  await lendingOptimizer.connect(signer).supply(USDC_ADDR, amount);
+  const compoundDelta = ((await tokenContract.balanceOf(CUSDC_ADDR)) - prevCompoundBalance) / 1e6;
+  const cTokenDelta = ((await cTokenContract.balanceOf(lendingOptimizer.address)) - prevCTokenBalance) * (await cTokenContract.callStatic.exchangeRateCurrent()) / 1e24;
+  const aaveDelta = ((await tokenContract.balanceOf(AUSDC_ADDR)) - prevAaveBalance) / 1e6;
+  const aTokenDelta = ((await aTokenContract.balanceOf(lendingOptimizer.address)) - prevATokenBalance) / 1e6;
 
-  const afterSignerBalance = await tokenContract.balanceOf(signer.address);
-  const afterCompoundBalance = await tokenContract.balanceOf(CUSDC_ADDR);
-  const afterCBalance = await cTokenContract.balanceOf(lendingOptimizer.address);
-  const afterAaveBalance = await tokenContract.balanceOf(AUSDC_ADDR);
-  const afterABalance = await aTokenContract.balanceOf(lendingOptimizer.address);
-
-  const signerBalanceDelta = (afterSignerBalance - prevSignerBalance) / 1e6;
-  const compoundBalanceDelta = (afterCompoundBalance - prevCompoundBalance) / 1e6;
-  const exchangeRate = await cTokenContract.callStatic.exchangeRateCurrent();
-  const cDelta = (afterCBalance - prevCBalance) * exchangeRate / 1e24;
-  const aaveBalanceDelta = (afterAaveBalance - prevAaveBalance) / 1e6;
-  const aDelta = (afterABalance - prevABalance) / 1e6;
-
-  console.log("supply(tokenAddr, amount) completed.");
-  return [signerBalanceDelta, compoundBalanceDelta, cDelta, aaveBalanceDelta, aDelta];
+  if (signer.address == USDC_ADDR) {
+    // at block 14957690, compound interst rate was around 0.60% APY, aave was around 1.34% APY, date 6/13/2022
+    expect(compoundDelta).to.equal(0);
+    expect(cTokenDelta).to.equal(0);
+    expect(aaveDelta).to.equal(1);
+    expect(aTokenDelta).to.equal(1);
+  } else if (signer.address == /* USDT */ "0xdAC17F958D2ee523a2206206994597C13D831ec7") {
+    // at block 14957690, compound had higher APY than aave for USDT
+    expect(compoundDelta).to.equal(1);
+    expect(cTokenDelta).to.equal(1);
+    expect(aaveDelta).to.equal(0);
+    expect(aTokenDelta).to.equal(0);
+  }
 }
 
-async function testSupplyOthers(addr, signer, lendingOptimizer) {
+async function testSupplyOtherErc20(addr, signer, lendingOptimizer) {
   const tokenContract = new ethers.Contract(addr, erc20ABI, signer);
   await tokenContract.approve(lendingOptimizer.address, 1e8);
   await lendingOptimizer.connect(signer).supply(addr, 1e8);
-  console.log("test completed for " + addr);
 }
 
-describe.only("LendingOptimizer supply unit tests", function () {
+async function testWithdrawErc20(addr, signer, lendingOptimizer) {
+  const tokenContract = new ethers.Contract(addr, erc20ABI, signer);
+
+  const prevUserBalance = await tokenContract.balanceOf(signer.address);
+
+  await tokenContract.approve(lendingOptimizer.address, 1e6);
+  await lendingOptimizer.connect(signer).supply(addr, 1e6);
+  await lendingOptimizer.connect(signer).withdraw(addr, 8015);
+
+  const userDelta = (prevUserBalance - (await tokenContract.balanceOf(signer.address))) / 1e6;
+  expect(userDelta).to.equal(0.1985);
+}
+
+describe.only("LendingOptimizer tests", function () {
   var owner = undefined;
   var user = undefined;
   var lendingOptimizer = undefined;
@@ -113,63 +138,28 @@ describe.only("LendingOptimizer supply unit tests", function () {
     await lendingOptimizer.addCompoundTokenMapping("0xE41d2489571d322189246DaFA5ebDe1F4699F498", "0xB3319f5D18Bc0D84dD1b4825Dcde5d5f7266d407"); // ZRX
   });
 
-  it("Supply optimize between Compound and Aave, USDC", async function () {
-    // at block 14957690, compound interst rate was around 0.60% APY, aave was around 1.34% APY, date 6/13/2022
-    // the calculated interest rate is quite accurate, good enough and can't test for other dates as historical interset rate data cannot be found
-    const [signerBalanceDelta, compoundBalanceDelta, cDelta, aaveBalanceDelta, aDelta] = await testSupplyUSDC(user, lendingOptimizer);
-    expect(signerBalanceDelta).to.equal(-20);
-    expect(compoundBalanceDelta).to.equal(0);
-    expect(cDelta).to.equal(0);
-    expect(aaveBalanceDelta).to.equal(20);
-    expect(aDelta).to.equal(20);
-  });
-
-  it("Supply optimize between Compound and Aave, USDT", async function () {
-    // at block 14957690, compound had higher APY than aave for USDT
-    const amount = 20 * 1e6; // $20
-    const tokenContract = new ethers.Contract("0xdAC17F958D2ee523a2206206994597C13D831ec7", erc20ABI, user);
-    const cTokenContract = new ethers.Contract("0xf650C3d88D12dB855b8bf7D11Be6C55A4e07dCC9", cTokenAbi, user);
-
-    await tokenContract.approve(lendingOptimizer.address, amount);
-
-    const prevSignerBalance = await tokenContract.balanceOf(user.address);
-    const prevCBalance = await cTokenContract.balanceOf(lendingOptimizer.address);
-
-    await lendingOptimizer.connect(user).supply("0xdAC17F958D2ee523a2206206994597C13D831ec7", amount);
-
-    const afterSignerBalance = await tokenContract.balanceOf(user.address);
-    const afterCBalance = await cTokenContract.balanceOf(lendingOptimizer.address);
-
-    const signerBalanceDelta = (afterSignerBalance - prevSignerBalance) / 1e6;
-    const exchangeRate = await cTokenContract.callStatic.exchangeRateCurrent();
-    const cDelta = (afterCBalance - prevCBalance) * exchangeRate / 1e24;
-
-    expect(signerBalanceDelta).to.equal(-20);
-    expect(Math.ceil(cDelta)).to.equal(20);
-  });
-
-  it("Supply rest of the tokens", async function () {
-    await testSupplyOthers("0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", user, lendingOptimizer); // WBTC
-    await testSupplyOthers("0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", user, lendingOptimizer); // AAVE
-    await testSupplyOthers("0x0D8775F648430679A709E98d2b0Cb6250d2887EF", user, lendingOptimizer); // BAT
-    await testSupplyOthers("0x6B175474E89094C44Da98b954EedeAC495271d0F", user, lendingOptimizer); // DAI
+  it.skip("Test supply ERC-20", async function () {
+    await testSupplyUsdcUsdt(USDC_ADDR, CUSDC_ADDR, AUSDC_ADDR, user, lendingOptimizer);
+    await testSupplyUsdcUsdt(USDT_ADDR, CUSDT_ADDR, AUSDT_ADDR, user, lendingOptimizer);
+    await testSupplyOtherErc20("0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", user, lendingOptimizer); // WBTC
+    await testSupplyOtherErc20("0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", user, lendingOptimizer); // AAVE
+    await testSupplyOtherErc20("0x0D8775F648430679A709E98d2b0Cb6250d2887EF", user, lendingOptimizer); // BAT
+    await testSupplyOtherErc20("0x6B175474E89094C44Da98b954EedeAC495271d0F", user, lendingOptimizer); // DAI
     // no FEI balance in impersonating account yet
-    // await testSupplyOthers("0x956F47F50A910163D8BF957Cf5846D573E7f87CA", user, lendingOptimizer); // FEI
-    await testSupplyOthers("0x514910771AF9Ca656af840dff83E8264EcF986CA", user, lendingOptimizer); // LINK
-    await testSupplyOthers("0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2", user, lendingOptimizer); // MKR
-    await testSupplyOthers("0x0000000000085d4780B73119b644AE5ecd22b376", user, lendingOptimizer); // TUSD
-    await testSupplyOthers("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", user, lendingOptimizer); // UNI
-    await testSupplyOthers("0x8E870D67F660D95d5be530380D0eC0bd388289E1", user, lendingOptimizer); // USDP
-    await testSupplyOthers("0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e", user, lendingOptimizer); // YFI
-    await testSupplyOthers("0xE41d2489571d322189246DaFA5ebDe1F4699F498", user, lendingOptimizer); // ZRX
+    // await testSupplyOtherErc20("0x956F47F50A910163D8BF957Cf5846D573E7f87CA", user, lendingOptimizer); // FEI
+    await testSupplyOtherErc20("0x514910771AF9Ca656af840dff83E8264EcF986CA", user, lendingOptimizer); // LINK
+    await testSupplyOtherErc20("0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2", user, lendingOptimizer); // MKR
+    await testSupplyOtherErc20("0x0000000000085d4780B73119b644AE5ecd22b376", user, lendingOptimizer); // TUSD
+    await testSupplyOtherErc20("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", user, lendingOptimizer); // UNI
+    await testSupplyOtherErc20("0x8E870D67F660D95d5be530380D0eC0bd388289E1", user, lendingOptimizer); // USDP
+    await testSupplyOtherErc20("0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e", user, lendingOptimizer); // YFI
+    await testSupplyOtherErc20("0xE41d2489571d322189246DaFA5ebDe1F4699F498", user, lendingOptimizer); // ZRX
+
+    // Invalid address: should throw error
+    // await testSupplyOtherErc20("0xe65cdB6479BaC1e22340E4E755fAE7E509EcD06c", user, lendingOptimizer);
   });
 
-  it.skip("Supply: invalid address", async function () {
-    await testSupplyOthers("0x0", user, lendingOptimizer);
-    // await testSupplyOthers("0xe65cdB6479BaC1e22340E4E755fAE7E509EcD06c", user, lendingOptimizer);
-  });
-
-  it("Supply ETH", async function () {
+  it.skip("Test supply ETH", async function () {
     const cETHContract = new ethers.Contract("0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5", cTokenAbi, user);
     const aWETHContract = new ethers.Contract("0x030bA81f1c18d280636F32af80b9AAd02Cf0854e", aTokenAbi, user);
 
@@ -186,8 +176,39 @@ describe.only("LendingOptimizer supply unit tests", function () {
     const exchangeRate = await cETHContract.callStatic.exchangeRateCurrent();
     // actual user balance delta: 1.0130437946831012
     expect(Math.ceil((afterSignerBalance - prevSignerBalance) / 1e18)).to.equal(-1);
-    expect((afterCEthBalance - prevCEthBalance) * exchangeRate / 1e36).to.equal(0);
+    expect(Math.ceil((afterCEthBalance - prevCEthBalance) * exchangeRate / 1e36)).to.equal(0);
     expect((afterAaveBalance - prevAaveBalance) / 1e18).to.equal(1);
+  });
+
+  it.skip("Test withdraw ERC-20", async function () {
+    await testWithdrawErc20(USDC_ADDR, user, lendingOptimizer);
+    await testWithdrawErc20(USDT_ADDR, user, lendingOptimizer);
+  });
+
+  it.skip("Test withdraw ETH", async function () {
+    const prevUserBalance = await user.getBalance();
+
+    await lendingOptimizer.connect(user).supplyEth({ value: ethers.utils.parseUnits('1', 'ether') });
+    await lendingOptimizer.connect(user).withdrawEth(8000);
+
+    const afterUserBalance = await user.getBalance();
+
+    expect(Math.round(10 * (prevUserBalance - afterUserBalance) / 1e18) / 10).to.equal(0.2);
+  });
+
+  it.skip("Test view balance", async function () {
+    // tested on block 15004700, uni has greater interest rate in compound
+    const amount = 1e6;
+
+    const tokenContract = new ethers.Contract(USDT_ADDR, erc20ABI, user);
+
+    await tokenContract.approve(lendingOptimizer.address, amount);
+    await lendingOptimizer.connect(user).supply(USDT_ADDR, amount);
+
+    await lendingOptimizer.balanceErc20(USDT_ADDR);
+
+    await lendingOptimizer.connect(user).supplyEth({ value: ethers.utils.parseUnits('1', 'ether') });
+    await lendingOptimizer.balanceEth();
   });
 
 });
