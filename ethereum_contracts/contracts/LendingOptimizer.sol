@@ -205,9 +205,6 @@ contract LendingOptimizer is
         }
     }
 
-    // Needed to receive ETH
-    receive() external payable {}
-
     function withdraw(address tokenAddr, uint16 basisPoint) external {
         require(
             toC[tokenAddr] != address(0) &&
