@@ -21,14 +21,6 @@ pub mod solana_manager {
     //     instructions::governance::updateFeeSink(ctx, address)
     // }
 
-    // pub fn updateApertureManager(ctx: Context<Aperture>, chain: u16, address: Pubkey) -> Result<()> {
-    //     instructions::governance::updateApertureManager(ctx, chain, address)
-    // }
-
-    // pub fn updateTokenWhitelist(ctx: Context<Aperture>, chain: u16, strategy: u64, tokenAddress: Pubkey, whitelisted: bool) -> Result<()> {
-    //     instructions::governance::updateTokenWhitelist(ctx, chain, strategy, tokenAddress, whitelisted)
-    // }
-
     // // user instructions
 
     // pub fn swapTokenAndCreatePosition(
@@ -46,16 +38,28 @@ pub mod solana_manager {
     //     positionId: u128, encodedPositionOpenData: EncodedPositionOpenData) -> Result<()> {
     //     instructions::user::swapTokenAndExecuteStrategy(ctx, fromToken, toToken, amount, minAmountOUt, positionId, encodedPositionOpenData)
     // }
+
+    // governance instructions
+
+    // pub fn updateApertureManager(ctx: Context<Aperture>, chain: u16, address: Pubkey) -> Result<()> {
+    //     instructions::governance::updateApertureManager(ctx, chain, address)
+    // }
+
+    // pub fn updateTokenWhitelist(ctx: Context<Aperture>, chain: u16, strategy: u64, tokenAddress: Pubkey, whitelisted: bool) -> Result<()> {
+    //     instructions::governance::updateTokenWhitelist(ctx, chain, strategy, tokenAddress, whitelisted)
+    // }
+
+    // user instructions
     
-    pub fn create_position(ctx: Context<CreatePosition>) -> Result<()> {
-        instructions::create_position::create_position(ctx)
+    pub fn create_position(ctx: Context<CreatePosition>, extra_seed: u8) -> Result<()> {
+        instructions::create_position::create_position(ctx, extra_seed)
     }
 
     pub fn get_positions(ctx: Context<GetPositions>) -> Result<Vec<PositionInfo>> {
         instructions::get_positions::get_positions(ctx)
     }
 
-    pub fn get_position_pdas(ctx: Context<GetPositionsPDAs>, user: Pubkey) -> Result<u8> {
+    pub fn get_position_pdas(ctx: Context<GetPositionsPDAs>, user: Pubkey) -> Result<VectorPubkey> {
          instructions::get_positions_pdas::get_positions_pdas(ctx, user)
     }
 }

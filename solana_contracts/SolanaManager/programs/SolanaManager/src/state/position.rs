@@ -31,10 +31,12 @@ pub struct Position {
     pub stored_position_info: StoredPositionInfo,
     pub position_info: PositionInfo,
     pub asset_info: AssetInfo,
-    pub bump: u8
+    pub bump: u8,
+    pub extra_seed: u8
 }
 
 #[derive(Accounts)]
+#[instruction(extra_seed: u8)]
 pub struct CreatePosition<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
@@ -42,11 +44,12 @@ pub struct CreatePosition<'info> {
     #[account(
         init,
         payer = user,
-        space = 8 + 2 + 4 + 200 + 1, seeds = [b"position", user.key().as_ref()], bump
+        space = 8 + 2 + 4 + 200 + 1, seeds = [b"position", user.key().as_ref(), &[extra_seed as u8]], bump
     )]
     pub position: Account<'info, Position>,
-    pub system_program: Program<'info, System>
+    pub system_program: Program<'info, System>,
 }
+
 
 #[derive(Accounts)]
 pub struct GetPositionsPDAs<'info> {
