@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: agpl-3.0
 pragma solidity ^0.8.13;
 
-import "../libraries/AaveV2DataTypes.sol";
+import "../libraries/AaveV3DataTypes.sol";
 
-interface ILendingPool {
-    function deposit(
+interface Pool {
+    function supply(
         address asset,
         uint256 amount,
         address onBehalfOf,
@@ -17,8 +17,7 @@ interface ILendingPool {
         address to
     ) external;
 
-    function getReserveData(address asset)
+    function getReserveData(address)
         external
-        view
-        returns (AaveV2DataTypes.ReserveData memory);
+        returns (AaveV3DataTypes.ReserveData memory);
 }

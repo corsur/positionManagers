@@ -112,7 +112,7 @@ async function testWithdrawErc20(addr, signer, lendingOptimizer) {
   expect(userDelta).to.equal(0.1985);
 }
 
-describe.only("LendingOptimizer tests", function () {
+describe("LendingOptimizer ETH tests", function () {
   var owner = undefined;
   var user = undefined;
   var lendingOptimizer = undefined;
@@ -138,7 +138,7 @@ describe.only("LendingOptimizer tests", function () {
     await lendingOptimizer.addCompoundTokenMapping("0xE41d2489571d322189246DaFA5ebDe1F4699F498", "0xB3319f5D18Bc0D84dD1b4825Dcde5d5f7266d407"); // ZRX
   });
 
-  it.skip("Test supply ERC-20", async function () {
+  it("Test supply ERC-20", async function () {
     await testSupplyUsdcUsdt(USDC_ADDR, CUSDC_ADDR, AUSDC_ADDR, user, lendingOptimizer);
     await testSupplyUsdcUsdt(USDT_ADDR, CUSDT_ADDR, AUSDT_ADDR, user, lendingOptimizer);
     await testSupplyOtherErc20("0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", user, lendingOptimizer); // WBTC
@@ -159,7 +159,7 @@ describe.only("LendingOptimizer tests", function () {
     // await testSupplyOtherErc20("0xe65cdB6479BaC1e22340E4E755fAE7E509EcD06c", user, lendingOptimizer);
   });
 
-  it.skip("Test supply ETH", async function () {
+  it("Test supply ETH", async function () {
     const cETHContract = new ethers.Contract("0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5", cTokenAbi, user);
     const aWETHContract = new ethers.Contract("0x030bA81f1c18d280636F32af80b9AAd02Cf0854e", aTokenAbi, user);
 
@@ -180,12 +180,12 @@ describe.only("LendingOptimizer tests", function () {
     expect((afterAaveBalance - prevAaveBalance) / 1e18).to.equal(1);
   });
 
-  it.skip("Test withdraw ERC-20", async function () {
+  it("Test withdraw ERC-20", async function () {
     await testWithdrawErc20(USDC_ADDR, user, lendingOptimizer);
     await testWithdrawErc20(USDT_ADDR, user, lendingOptimizer);
   });
 
-  it.skip("Test withdraw ETH", async function () {
+  it("Test withdraw ETH", async function () {
     const prevUserBalance = await user.getBalance();
 
     await lendingOptimizer.connect(user).supplyEth({ value: ethers.utils.parseUnits('1', 'ether') });
@@ -196,7 +196,7 @@ describe.only("LendingOptimizer tests", function () {
     expect(Math.round(10 * (prevUserBalance - afterUserBalance) / 1e18) / 10).to.equal(0.2);
   });
 
-  it.skip("Test view balance", async function () {
+  it("Test view balance", async function () {
     // tested on block 15004700, uni has greater interest rate in compound
     const amount = 1e6;
 

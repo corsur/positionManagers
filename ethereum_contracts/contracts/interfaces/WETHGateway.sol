@@ -3,13 +3,13 @@ pragma solidity ^0.8.13;
 
 interface WETHGateway {
     function depositETH(
-        address lendingPool,
+        address pool,
         address onBehalfOf,
         uint16 referralCode
     ) external payable;
 
     function withdrawETH(
-        address lendingPool,
+        address pool,
         uint256 amount,
         address to
     ) external payable;

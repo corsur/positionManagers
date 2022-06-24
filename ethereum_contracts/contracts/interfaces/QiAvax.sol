@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.13;
 
-interface CErc20 {
-    function mint(uint256) external returns (uint256);
+interface QiAvax {
+    function mint() external payable;
 
     function exchangeRateCurrent() external returns (uint256);
 
@@ -12,22 +12,7 @@ interface CErc20 {
 
     function redeem(uint256) external returns (uint256);
 
-    function redeemUnderlying(uint256)
-        external
-        returns (
-            uint256,
-            uint128,
-            uint128,
-            uint128,
-            uint128,
-            uint128,
-            uint40,
-            address,
-            address,
-            address,
-            address,
-            uint8
-        );
+    function redeemUnderlying(uint256) external returns (uint256);
 
     function balanceOf(address) external view returns (uint256);
 
