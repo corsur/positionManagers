@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use instructions::*;
 use crate::state::position::*;
-
+use crate::state::governance::*;
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
@@ -45,9 +45,9 @@ pub mod solana_manager {
     //     instructions::governance::updateApertureManager(ctx, chain, address)
     // }
 
-    // pub fn updateTokenWhitelist(ctx: Context<Aperture>, chain: u16, strategy: u64, tokenAddress: Pubkey, whitelisted: bool) -> Result<()> {
-    //     instructions::governance::updateTokenWhitelist(ctx, chain, strategy, tokenAddress, whitelisted)
-    // }
+    pub fn update_token_whitelist(ctx: Context<UpdateTokenWhitelist>, token_address: Pubkey) -> Result<()> {
+        instructions::update_token_whitelist::update_token_whitelist(ctx, token_address)
+    }
 
     // user instructions
     
