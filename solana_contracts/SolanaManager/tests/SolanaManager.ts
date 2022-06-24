@@ -11,30 +11,81 @@ describe("SolanaManager", () => {
   const program = anchor.workspace.SolanaManager as Program<SolanaManager>;
   const provider = program.provider as anchor.AnchorProvider;
 
-  // it("Is initialized!", async () => {
-  //   // Add your test here.
-  //   const tx = await program.methods.initialize().rpc();
-  //   console.log("Your transaction signature", tx);
-  // });
+  it('Creates and gets a position', async () => {
+    const byte = new anchor.BN(0).toArrayLike(Buffer);
 
-  it('creates and gets a position', async () => {
-    const [positionPDA, _] = await PublicKey
+    const [positionPDA, originalBump] = await PublicKey
       .findProgramAddress(
         [
           anchor.utils.bytes.utf8.encode("position"),
-          provider.wallet.publicKey.toBuffer()
+          provider.wallet.publicKey.toBuffer(),
+          byte
         ],
         program.programId
       );
 
+    console.log(originalBump);
+
     await program.methods
-      .getPositions()
+      .createPosition(0)
       .accounts({
         user: provider.wallet.publicKey,
         position: positionPDA
       })
       .rpc();
+  
+    console.log((await program.account.position.fetch(positionPDA)).bump);
+    
+    expect((await program.account.position.fetch(positionPDA)).bump).to.equal(originalBump);
 
-    expect((await program.account.position.fetch(positionPDA)).name).to.equal("set");
+  });
+
+  it('Creates and gets different positions', async () => {
+    const byte1 = new anchor.BN(1).toArrayLike(Buffer);
+
+    const [positionPDA1, originalBump] = await PublicKey
+      .findProgramAddress(
+        [
+          anchor.utils.bytes.utf8.encode("position"),
+          provider.wallet.publicKey.toBuffer(),
+          byte1
+        ],
+        program.programId
+      );
+
+    await program.methods
+      .createPosition(1)
+      .accounts({
+        user: provider.wallet.publicKey,
+        position: positionPDA1
+      })
+      .rpc();
+
+    console.log((await program.account.position.fetch(positionPDA1)).bump);
+      
+    const byte2 = new anchor.BN(2).toArrayLike(Buffer);
+
+    const [positionPDA2, secondBump] = await PublicKey
+      .findProgramAddress(
+        [
+          anchor.utils.bytes.utf8.encode("position"),
+          provider.wallet.publicKey.toBuffer(),
+          byte2
+        ],
+        program.programId
+      );
+
+    await program.methods
+      .createPosition(2)
+      .accounts({
+        user: provider.wallet.publicKey,
+        position: positionPDA2
+      })
+      .rpc();
+
+      console.log((await program.account.position.fetch(positionPDA2)).bump);
+      
+    expect(originalBump != secondBump);
+
   });
 });
