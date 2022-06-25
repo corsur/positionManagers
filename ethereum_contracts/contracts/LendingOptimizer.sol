@@ -12,9 +12,10 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 // import "contracts/interfaces/IERC20Metadata.sol";
 
 import "contracts/interfaces/Pool.sol";
-import "contracts/interfaces/QiErc20.sol";
-import "contracts/interfaces/QiAvax.sol";
 import "contracts/interfaces/WETHGateway.sol";
+import "contracts/interfaces/CErc20.sol";
+import "contracts/interfaces/QiAvax.sol";
+import "contracts/interfaces/JAvax.sol";
 
 import "./libraries/AaveV3DataTypes.sol";
 
@@ -26,17 +27,21 @@ contract LendingOptimizer is
     using SafeERC20 for IERC20;
 
     mapping(address => address) mapBenqi;
+    mapping(address => address) mapIron;
+    mapping(address => address) mapJoe;
 
     address public AAVE_POOL_ADDR;
     address public WETH_GATEWAY_ADDR;
     address public WAVAX_ADDR;
     address public QIAVAX_ADDR;
+    address public JAVAX_ADDR;
 
     function initialize(
         address _aavePoolAddr,
         address _wethGateAddr,
         address _wavaxAddr,
-        address _qiAvaxAddr
+        address _qiAvaxAddr,
+        address _jAvaxAddr
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
@@ -44,6 +49,7 @@ contract LendingOptimizer is
         WETH_GATEWAY_ADDR = _wethGateAddr;
         WAVAX_ADDR = _wavaxAddr;
         QIAVAX_ADDR = _qiAvaxAddr;
+        JAVAX_ADDR = _jAvaxAddr;
     }
 
     // Only owner of this logic contract can upgrade.
@@ -56,6 +62,21 @@ contract LendingOptimizer is
         mapBenqi[tokenAddr] = qiTokenAddr;
     }
 
+    function addJoeTokenMapping(address tokenAddr, address jTokenAddr)
+        external
+        onlyOwner
+    {
+        mapJoe[tokenAddr] = jTokenAddr;
+    }
+
+    function addIronTokenMapping(address tokenAddr, address iTokenAddr)
+        external
+        onlyOwner
+    {
+        mapIron[tokenAddr] = iTokenAddr;
+    }
+
+    // ERC-20 functions
     function supplyTokenAave(address tokenAddr, uint256 amount) external {
         IERC20 token = IERC20(tokenAddr);
         token.safeTransferFrom(msg.sender, address(this), amount);
@@ -78,6 +99,55 @@ contract LendingOptimizer is
         pool.withdraw(tokenAddr, amount, msg.sender);
     }
 
+    function supplyTokenBenqi(address tokenAddr, uint256 amount) external {
+        IERC20 token = IERC20(tokenAddr);
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        token.safeApprove(mapBenqi[tokenAddr], amount);
+        CErc20(mapBenqi[tokenAddr]).mint(amount);
+    }
+
+    function withdrawTokenBenqi(address tokenAddr, uint16 basisPoint) external {
+        require(basisPoint <= 10000);
+        CErc20 cToken = CErc20(mapBenqi[tokenAddr]);
+        uint256 amountUnderlying = (cToken.balanceOfUnderlying(address(this)) *
+            basisPoint) / 10000;
+        cToken.redeemUnderlying(amountUnderlying);
+        IERC20(tokenAddr).safeTransfer(msg.sender, amountUnderlying);
+    }
+
+    function supplyTokenIron(address tokenAddr, uint256 amount) external {
+        IERC20 token = IERC20(tokenAddr);
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        token.safeApprove(mapIron[tokenAddr], amount);
+        CErc20(mapIron[tokenAddr]).mint(amount);
+    }
+
+    function withdrawTokenIron(address tokenAddr, uint16 basisPoint) external {
+        require(basisPoint <= 10000);
+        CErc20 cToken = CErc20(mapIron[tokenAddr]);
+        uint256 amountUnderlying = (cToken.balanceOfUnderlying(address(this)) *
+            basisPoint) / 10000;
+        cToken.redeemUnderlying(amountUnderlying);
+        IERC20(tokenAddr).safeTransfer(msg.sender, amountUnderlying);
+    }
+
+    function supplyTokenJoe(address tokenAddr, uint256 amount) external {
+        IERC20 token = IERC20(tokenAddr);
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        token.safeApprove(mapJoe[tokenAddr], amount);
+        JErc20(mapJoe[tokenAddr]).mint(amount);
+    }
+
+    function withdrawTokenJoe(address tokenAddr, uint16 basisPoint) external {
+        require(basisPoint <= 10000);
+        CErc20 cToken = CErc20(mapJoe[tokenAddr]);
+        uint256 amountUnderlying = (cToken.balanceOfUnderlying(address(this)) *
+            basisPoint) / 10000;
+        cToken.redeemUnderlying(amountUnderlying);
+        IERC20(tokenAddr).safeTransfer(msg.sender, amountUnderlying);
+    }
+
+    // AVAX functions
     function supplyAvaxAave() external payable {
         WETHGateway(WETH_GATEWAY_ADDR).depositETH{value: msg.value}(
             AAVE_POOL_ADDR,
@@ -102,25 +172,6 @@ contract LendingOptimizer is
         );
     }
 
-    function supplyTokenBenqi(address tokenAddr, uint256 amount) external {
-        IERC20 token = IERC20(tokenAddr);
-        token.safeTransferFrom(msg.sender, address(this), amount);
-        token.safeApprove(mapBenqi[tokenAddr], amount);
-        QiErc20(mapBenqi[tokenAddr]).mint(amount);
-    }
-
-    function withdrawTokenBenqi(address tokenAddr, uint16 basisPoint) external {
-        QiErc20 qiToken = QiErc20(mapBenqi[tokenAddr]);
-        uint256 redeemAmount = (qiToken.balanceOf(address(this)) * basisPoint) /
-            10000;
-        uint256 redeemAmountUnderlying = (qiToken.balanceOfUnderlying(
-            address(this)
-        ) * basisPoint) / 10000;
-
-        qiToken.redeem(redeemAmount);
-        IERC20(tokenAddr).safeTransfer(msg.sender, redeemAmountUnderlying);
-    }
-
     function supplyAvaxBenqi() external payable {
         QiAvax(QIAVAX_ADDR).mint{value: msg.value}();
     }
@@ -135,6 +186,21 @@ contract LendingOptimizer is
         qiToken.redeemUnderlying(redeemAmountUnderlying);
         payable(msg.sender).transfer(redeemAmountUnderlying);
     }
+
+    // function supplyAvaxJoe() external payable {
+    //     JAvax(JAVAX_ADDR).mint{value: msg.value}();
+    // }
+
+    // function withdrawAvaxJoe(uint16 basisPoint) external payable {
+    //     require(basisPoint >= 0 && basisPoint <= 10000);
+
+    //     JAvax jToken = JAvax(JAVAX_ADDR);
+    //     uint256 redeemAmountUnderlying = (jToken.balanceOfUnderlying(
+    //         address(this)
+    //     ) * basisPoint) / 10000;
+    //     jToken.redeemUnderlying(redeemAmountUnderlying);
+    //     payable(msg.sender).transfer(redeemAmountUnderlying);
+    // }
 
     receive() external payable {}
 

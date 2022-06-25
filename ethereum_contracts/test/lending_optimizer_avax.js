@@ -45,15 +45,21 @@ describe.only("LendingOptimizer tests", function () {
         "0xa938d8536aEed1Bd48f548380394Ab30Aa11B00E", // _wethGateAddr
         "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", // _wavaxAddr
         "0x5C0401e81Bc07Ca70fAD469b451682c0d747Ef1c", // _qiAvaxAddr
+        "0xC22F01ddc8010Ee05574028528614634684EC29e", // _jAvaxAddr
       ], { unsafeAllow: ["delegatecall"], kind: "uups" }
     );
     await lendingOptimizer.deployed();
 
     lendingOptimizer.addBenqiTokenMapping(USDC_ADDR, "0xB715808a78F6041E46d61Cb123C9B4A27056AE9C");
-    lendingOptimizer.addBenqiTokenMapping(USDCE_ADDR, "0xBEb5d47A3f720Ec0a390d04b4d41ED7d9688bC7F"); // qiUSDC address
+    lendingOptimizer.addBenqiTokenMapping(USDCE_ADDR, "0xBEb5d47A3f720Ec0a390d04b4d41ED7d9688bC7F");
+
+    lendingOptimizer.addJoeTokenMapping(USDC_ADDR, "0x29472D511808Ce925F501D25F9Ee9efFd2328db2");
+    lendingOptimizer.addJoeTokenMapping(USDCE_ADDR, "0xEd6AaF91a2B084bd594DBd1245be3691F9f637aC");
+
+    lendingOptimizer.addIronTokenMapping(USDC_ADDR, "0xEc5Aa19566Aa442C8C50f3C6734b6Bb23fF21CD7");
   });
 
-  it.skip("Supply and withdraw token: Aave, Benqi", async function () {
+  it("Supply and withdraw token: Aave, Benqi, Iron Bank, Trader Joe", async function () {
     const amount = 1e6;
     const tokenAddr = USDC_ADDR;
     const token = new ethers.Contract(tokenAddr, erc20ABI, user);
@@ -67,9 +73,19 @@ describe.only("LendingOptimizer tests", function () {
     await lendingOptimizer.connect(user).supplyTokenBenqi(tokenAddr, amount);
     await lendingOptimizer.connect(user).withdrawTokenBenqi(tokenAddr, 8000);
     console.log("Benqi token complete.");
+
+    await token.approve(lendingOptimizer.address, amount);
+    await lendingOptimizer.connect(user).supplyTokenIron(tokenAddr, amount);
+    await lendingOptimizer.connect(user).withdrawTokenIron(tokenAddr, 8000);
+    console.log("Iron Bank token complete.");
+
+    await token.approve(lendingOptimizer.address, amount);
+    await lendingOptimizer.connect(user).supplyTokenJoe(tokenAddr, amount);
+    await lendingOptimizer.connect(user).withdrawTokenJoe(tokenAddr, 8000);
+    console.log("Trader Joe token complete.");
   });
 
-  it("Supply and withdraw AVAX: Aave, Benqi", async function () {
+  it.skip("Supply and withdraw AVAX: Aave, Benqi", async function () {
     var prevBalance;
     var afterBalance;
 
@@ -86,6 +102,13 @@ describe.only("LendingOptimizer tests", function () {
     afterBalance = await user.getBalance();
     console.log(afterBalance - prevBalance);
     console.log("Benqi avax complete.");
+
+    // prevBalance = await user.getBalance();
+    // await lendingOptimizer.connect(user).supplyAvaxJoe({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
+    // await lendingOptimizer.connect(user).withdrawAvaxJoe(8000);
+    // afterBalance = await user.getBalance();
+    // console.log(afterBalance - prevBalance);
+    // console.log("Trader Joe avax complete.");
   });
 
 });
