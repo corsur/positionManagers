@@ -16,6 +16,7 @@ import "contracts/interfaces/WETHGateway.sol";
 import "contracts/interfaces/CErc20.sol";
 import "contracts/interfaces/QiAvax.sol";
 import "contracts/interfaces/JAvax.sol";
+import "contracts/interfaces/JWrappedNative.sol";
 
 import "./libraries/AaveV3DataTypes.sol";
 
@@ -109,10 +110,10 @@ contract LendingOptimizer is
     function withdrawTokenBenqi(address tokenAddr, uint16 basisPoint) external {
         require(basisPoint <= 10000);
         CErc20 cToken = CErc20(mapBenqi[tokenAddr]);
-        uint256 amountUnderlying = (cToken.balanceOfUnderlying(address(this)) *
+        uint256 amount = (cToken.balanceOfUnderlying(address(this)) *
             basisPoint) / 10000;
-        cToken.redeemUnderlying(amountUnderlying);
-        IERC20(tokenAddr).safeTransfer(msg.sender, amountUnderlying);
+        cToken.redeemUnderlying(amount);
+        IERC20(tokenAddr).safeTransfer(msg.sender, amount);
     }
 
     function supplyTokenIron(address tokenAddr, uint256 amount) external {
@@ -125,26 +126,26 @@ contract LendingOptimizer is
     function withdrawTokenIron(address tokenAddr, uint16 basisPoint) external {
         require(basisPoint <= 10000);
         CErc20 cToken = CErc20(mapIron[tokenAddr]);
-        uint256 amountUnderlying = (cToken.balanceOfUnderlying(address(this)) *
+        uint256 amount = (cToken.balanceOfUnderlying(address(this)) *
             basisPoint) / 10000;
-        cToken.redeemUnderlying(amountUnderlying);
-        IERC20(tokenAddr).safeTransfer(msg.sender, amountUnderlying);
+        cToken.redeemUnderlying(amount);
+        IERC20(tokenAddr).safeTransfer(msg.sender, amount);
     }
 
     function supplyTokenJoe(address tokenAddr, uint256 amount) external {
         IERC20 token = IERC20(tokenAddr);
         token.safeTransferFrom(msg.sender, address(this), amount);
         token.safeApprove(mapJoe[tokenAddr], amount);
-        JErc20(mapJoe[tokenAddr]).mint(amount);
+        CErc20(mapJoe[tokenAddr]).mint(amount);
     }
 
     function withdrawTokenJoe(address tokenAddr, uint16 basisPoint) external {
         require(basisPoint <= 10000);
         CErc20 cToken = CErc20(mapJoe[tokenAddr]);
-        uint256 amountUnderlying = (cToken.balanceOfUnderlying(address(this)) *
+        uint256 amount = (cToken.balanceOfUnderlying(address(this)) *
             basisPoint) / 10000;
-        cToken.redeemUnderlying(amountUnderlying);
-        IERC20(tokenAddr).safeTransfer(msg.sender, amountUnderlying);
+        cToken.redeemUnderlying(amount);
+        IERC20(tokenAddr).safeTransfer(msg.sender, amount);
     }
 
     // AVAX functions
@@ -177,30 +178,26 @@ contract LendingOptimizer is
     }
 
     function withdrawAvaxBenqi(uint16 basisPoint) external payable {
-        require(basisPoint >= 0 && basisPoint <= 10000);
-
+        require(basisPoint <= 10000);
         QiAvax qiToken = QiAvax(QIAVAX_ADDR);
-        uint256 redeemAmountUnderlying = (qiToken.balanceOfUnderlying(
-            address(this)
-        ) * basisPoint) / 10000;
-        qiToken.redeemUnderlying(redeemAmountUnderlying);
-        payable(msg.sender).transfer(redeemAmountUnderlying);
+        uint256 amount = (qiToken.balanceOfUnderlying(address(this)) *
+            basisPoint) / 10000;
+        qiToken.redeemUnderlying(amount);
+        payable(msg.sender).transfer(amount);
     }
 
-    // function supplyAvaxJoe() external payable {
-    //     JAvax(JAVAX_ADDR).mint{value: msg.value}();
-    // }
+    function supplyAvaxJoe() external payable {
+        JWrappedNative(JAVAX_ADDR).mintNative{value: msg.value}();
+    }
 
-    // function withdrawAvaxJoe(uint16 basisPoint) external payable {
-    //     require(basisPoint >= 0 && basisPoint <= 10000);
-
-    //     JAvax jToken = JAvax(JAVAX_ADDR);
-    //     uint256 redeemAmountUnderlying = (jToken.balanceOfUnderlying(
-    //         address(this)
-    //     ) * basisPoint) / 10000;
-    //     jToken.redeemUnderlying(redeemAmountUnderlying);
-    //     payable(msg.sender).transfer(redeemAmountUnderlying);
-    // }
+    function withdrawAvaxJoe(uint16 basisPoint) external payable {
+        require(basisPoint <= 10000);
+        JWrappedNative jToken = JWrappedNative(JAVAX_ADDR);
+        uint256 amount = (jToken.balanceOfUnderlying(address(this)) *
+            basisPoint) / 10000;
+        jToken.redeemUnderlyingNative(amount);
+        payable(msg.sender).transfer(amount);
+    }
 
     receive() external payable {}
 
@@ -238,29 +235,6 @@ contract LendingOptimizer is
     //     return compoundBalance + aToken.balanceOf(address(this));
     // }
 
-    // function supplyEth() external payable {
-    //     CEth cToken = CEth(CETH_ADDR); // cETH
-    //     uint256 cInterestAdj = cToken.supplyRatePerBlock() *
-    //         6570 *
-    //         365 *
-    //         (10**9);
-
-    //     uint256 aInterestAdj = ILendingPool(ILENDINGPOOL_ADDR)
-    //         .getReserveData(WETH_ADDR)
-    //         .currentLiquidityRate;
-
-    //     if (cInterestAdj >= aInterestAdj) {
-    //         cToken.mint{value: msg.value}();
-    //     } else {
-    //         WETHGateway(WETHGATEWAY_ADDR).depositETH{value: msg.value}(
-    //             ILENDINGPOOL_ADDR,
-    //             address(this),
-    //             /* referralCode = */
-    //             0
-    //         );
-    //     }
-    // }
-
     // function supply(address tokenAddr, uint256 amount) external {
     //     require(tokenMap[tokenAddr] != address(0));
 
@@ -290,37 +264,6 @@ contract LendingOptimizer is
     //         supplyTokentoCompound(tokenAddr, amount);
     //     } else {
     //         supplyTokenToAave(tokenAddr, amount);
-    //     }
-    // }
-
-    // function withdrawEth(uint16 basisPoint) external payable {
-    //     require(basisPoint >= 0 && basisPoint <= 10000);
-    //     CEth cToken = CEth(CETH_ADDR);
-
-    //     if (cToken.balanceOf(address(this)) > 0) {
-    //         uint256 redeemAmount = (cToken.balanceOf(address(this)) *
-    //             basisPoint) / 10000;
-    //         uint256 redeemAmountUnderlying = (cToken.balanceOfUnderlying(
-    //             address(this)
-    //         ) * basisPoint) / 10000;
-
-    //         cToken.redeem(redeemAmount);
-    //         payable(msg.sender).transfer(redeemAmountUnderlying);
-    //     } else {
-    //         IERC20 aToken = IERC20(
-    //             ILendingPool(ILENDINGPOOL_ADDR)
-    //                 .getReserveData(WETH_ADDR)
-    //                 .aTokenAddress
-    //         );
-    //         uint256 amount = (aToken.balanceOf(address(this)) * basisPoint) /
-    //             10000;
-
-    //         aToken.safeApprove(WETHGATEWAY_ADDR, amount);
-    //         WETHGateway(WETHGATEWAY_ADDR).withdrawETH(
-    //             ILENDINGPOOL_ADDR,
-    //             amount,
-    //             msg.sender
-    //         );
     //     }
     // }
 

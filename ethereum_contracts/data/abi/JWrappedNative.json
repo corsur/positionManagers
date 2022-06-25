@@ -4,7 +4,10 @@
   "function exchangeRateCurrent() returns (uint256)",
   "function exchangeRateStored() view returns (uint256)",
   "function mint(uint256) returns (uint256)",
+  "function mintNative() payable returns (uint256)",
   "function redeem(uint256) returns (uint256)",
-  "function redeemUnderlying(uint256) returns (uint256, uint128, uint128, uint128, uint128, uint128, uint40, address, address, address, address, uint8)",
+  "function redeemNative(uint256) returns (uint256)",
+  "function redeemUnderlying(uint256) returns (uint256)",
+  "function redeemUnderlyingNative(uint256) returns (uint256)",
   "function supplyRatePerBlock() returns (uint256)"
 ]
