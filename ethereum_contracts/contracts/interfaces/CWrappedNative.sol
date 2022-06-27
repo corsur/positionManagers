@@ -1,8 +1,10 @@
-// SPDX-License-Identifier: BSD-3-Clause
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-interface QiAvax {
-    function mint() external payable;
+interface CWrappedNative {
+    function mint(uint256) external returns (uint256);
+
+    function mintNative() external payable returns (uint256);
 
     function exchangeRateCurrent() external returns (uint256);
 
@@ -12,7 +14,11 @@ interface QiAvax {
 
     function redeem(uint256) external returns (uint256);
 
+    function redeemNative(uint256) external returns (uint256);
+
     function redeemUnderlying(uint256) external returns (uint256);
+
+    function redeemUnderlyingNative(uint256) external returns (uint256);
 
     function balanceOf(address) external view returns (uint256);
 

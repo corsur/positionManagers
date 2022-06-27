@@ -46,6 +46,8 @@ describe.only("LendingOptimizer tests", function () {
         "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7", // _wavaxAddr
         "0x5C0401e81Bc07Ca70fAD469b451682c0d747Ef1c", // _qiAvaxAddr
         "0xC22F01ddc8010Ee05574028528614634684EC29e", // _jAvaxAddr
+        "0xb3c68d69E95B095ab4b33B4cB67dBc0fbF3Edf56", // _iAvaxAddr
+        "0x21C630B7824D15BcDFeefA73CBd4e49cAfe9F836", // _sbAvaxAddr
       ], { unsafeAllow: ["delegatecall"], kind: "uups" }
     );
     await lendingOptimizer.deployed();
@@ -58,12 +60,15 @@ describe.only("LendingOptimizer tests", function () {
 
     lendingOptimizer.addIronTokenMapping(USDC_ADDR, "0xEc5Aa19566Aa442C8C50f3C6734b6Bb23fF21CD7");
     lendingOptimizer.addIronTokenMapping(USDCE_ADDR, "0xe28965073C49a02923882B8329D3E8C1D805E832");
+
+    lendingOptimizer.addHomoraTokenMapping(USDCE_ADDR, "0xD3843b60e69f958eF93BeC299467e6Ed301CbEeB");
   });
 
-  it("Supply and withdraw token: Aave, Benqi, Iron Bank, Trader Joe", async function () {
+  it("Supply and withdraw tokens", async function () {
     const amount = 1e6;
     const tokenAddr = USDC_ADDR;
     const token = new ethers.Contract(tokenAddr, erc20ABI, user);
+    const tokenUSDCE = new ethers.Contract(USDCE_ADDR, erc20ABI, user);
 
     await token.approve(lendingOptimizer.address, amount);
     await lendingOptimizer.connect(user).supplyTokenAave(tokenAddr, amount);
@@ -84,9 +89,14 @@ describe.only("LendingOptimizer tests", function () {
     await lendingOptimizer.connect(user).supplyTokenJoe(tokenAddr, amount);
     await lendingOptimizer.connect(user).withdrawTokenJoe(tokenAddr, 8000);
     console.log("Trader Joe token complete.");
+
+    await tokenUSDCE.approve(lendingOptimizer.address, amount);
+    await lendingOptimizer.connect(user).supplyTokenHomora(USDCE_ADDR, amount);
+    await lendingOptimizer.connect(user).withdrawTokenHomora(USDCE_ADDR, 8000);
+    console.log("Homora token complete.");
   });
 
-  it("Supply and withdraw AVAX: Aave, Benqi", async function () {
+  it("Supply and withdraw AVAX", async function () {
     var prevBalance;
     var afterBalance;
 
@@ -94,22 +104,36 @@ describe.only("LendingOptimizer tests", function () {
     await lendingOptimizer.connect(user).supplyAvaxAave({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
     await lendingOptimizer.connect(user).withdrawAvaxAave(8000);
     afterBalance = await user.getBalance();
-    console.log(afterBalance - prevBalance);
-    console.log("Aave avax complete.");
+    expect(Math.round((afterBalance - prevBalance) / 1e17) / 10).to.equal(-0.2);
+    console.log("Aave AVAX complete.");
 
     prevBalance = await user.getBalance();
     await lendingOptimizer.connect(user).supplyAvaxBenqi({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
     await lendingOptimizer.connect(user).withdrawAvaxBenqi(8000);
     afterBalance = await user.getBalance();
-    console.log(afterBalance - prevBalance);
-    console.log("Benqi avax complete.");
+    expect(Math.round((afterBalance - prevBalance) / 1e17) / 10).to.equal(-0.2);
+    console.log("Benqi AVAX complete.");
+
+    prevBalance = await user.getBalance();
+    await lendingOptimizer.connect(user).supplyAvaxIron({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
+    await lendingOptimizer.connect(user).withdrawAvaxIron(8000);
+    afterBalance = await user.getBalance();
+    expect(Math.round((afterBalance - prevBalance) / 1e17) / 10).to.equal(-0.2);
+    console.log("Iron Bank AVAX complete.");
 
     prevBalance = await user.getBalance();
     await lendingOptimizer.connect(user).supplyAvaxJoe({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
     await lendingOptimizer.connect(user).withdrawAvaxJoe(8000);
     afterBalance = await user.getBalance();
-    console.log(afterBalance - prevBalance);
-    console.log("Trader Joe avax complete.");
+    expect(Math.round((afterBalance - prevBalance) / 1e17) / 10).to.equal(-0.2);
+    console.log("Trader Joe AVAX complete.");
+
+    prevBalance = await user.getBalance();
+    await lendingOptimizer.connect(user).supplyAvaxHomora({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
+    await lendingOptimizer.connect(user).withdrawAvaxHomora(8000);
+    afterBalance = await user.getBalance();
+    expect(Math.round((afterBalance - prevBalance) / 1e17) / 10).to.equal(-0.2);
+    console.log("Homora AVAX complete.");
   });
 
 });

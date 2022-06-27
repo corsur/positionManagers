@@ -9,14 +9,13 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-// import "contracts/interfaces/IERC20Metadata.sol";
-
 import "contracts/interfaces/Pool.sol";
 import "contracts/interfaces/WETHGateway.sol";
 import "contracts/interfaces/CErc20.sol";
-import "contracts/interfaces/QiAvax.sol";
-import "contracts/interfaces/JAvax.sol";
-import "contracts/interfaces/JWrappedNative.sol";
+import "contracts/interfaces/CAvax.sol";
+import "contracts/interfaces/CWrappedNative.sol";
+import "contracts/interfaces/SafeBox.sol";
+import "contracts/interfaces/SafeBoxAvax.sol";
 
 import "./libraries/AaveV3DataTypes.sol";
 
@@ -30,19 +29,24 @@ contract LendingOptimizer is
     mapping(address => address) mapBenqi;
     mapping(address => address) mapIron;
     mapping(address => address) mapJoe;
+    mapping(address => address) mapHomora;
 
     address public AAVE_POOL_ADDR;
     address public WETH_GATEWAY_ADDR;
     address public WAVAX_ADDR;
     address public QIAVAX_ADDR;
     address public JAVAX_ADDR;
+    address public IWAVAX_ADDR;
+    address public SAFEBOX_AVAX_ADDR;
 
     function initialize(
         address _aavePoolAddr,
         address _wethGateAddr,
         address _wavaxAddr,
         address _qiAvaxAddr,
-        address _jAvaxAddr
+        address _jAvaxAddr,
+        address _iAvaxAddr,
+        address _sbAvaxAddr
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
@@ -51,11 +55,14 @@ contract LendingOptimizer is
         WAVAX_ADDR = _wavaxAddr;
         QIAVAX_ADDR = _qiAvaxAddr;
         JAVAX_ADDR = _jAvaxAddr;
+        IWAVAX_ADDR = _iAvaxAddr;
+        SAFEBOX_AVAX_ADDR = _sbAvaxAddr;
     }
 
     // Only owner of this logic contract can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
+    // Map tokens to compound tokens
     function addBenqiTokenMapping(address tokenAddr, address qiTokenAddr)
         external
         onlyOwner
@@ -75,6 +82,13 @@ contract LendingOptimizer is
         onlyOwner
     {
         mapIron[tokenAddr] = iTokenAddr;
+    }
+
+    function addHomoraTokenMapping(address tokenAddr, address ibTokenAddr)
+        external
+        onlyOwner
+    {
+        mapHomora[tokenAddr] = ibTokenAddr;
     }
 
     // ERC-20 functions
@@ -148,6 +162,29 @@ contract LendingOptimizer is
         IERC20(tokenAddr).safeTransfer(msg.sender, amount);
     }
 
+    function supplyTokenHomora(address tokenAddr, uint256 amount) external {
+        IERC20 token = IERC20(tokenAddr);
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        token.safeApprove(mapHomora[tokenAddr], amount);
+
+        SafeBox ibToken = SafeBox(mapHomora[tokenAddr]);
+        ibToken.deposit(amount);
+    }
+
+    function withdrawTokenHomora(address tokenAddr, uint16 basisPoint)
+        external
+    {
+        require(basisPoint <= 10000);
+        SafeBox ibToken = SafeBox(mapHomora[tokenAddr]);
+        uint256 amount = (ibToken.balanceOf(address(this)) * basisPoint) /
+            10000;
+        ibToken.withdraw(amount);
+
+        IERC20 token = IERC20(tokenAddr);
+        uint256 amountUnderlying = token.balanceOf(address(this));
+        token.safeTransfer(msg.sender, amountUnderlying);
+    }
+
     // AVAX functions
     function supplyAvaxAave() external payable {
         WETHGateway(WETH_GATEWAY_ADDR).depositETH{value: msg.value}(
@@ -174,31 +211,58 @@ contract LendingOptimizer is
     }
 
     function supplyAvaxBenqi() external payable {
-        QiAvax(QIAVAX_ADDR).mint{value: msg.value}();
+        CAvax(QIAVAX_ADDR).mint{value: msg.value}();
     }
 
     function withdrawAvaxBenqi(uint16 basisPoint) external payable {
         require(basisPoint <= 10000);
-        QiAvax qiToken = QiAvax(QIAVAX_ADDR);
-        uint256 amount = (qiToken.balanceOfUnderlying(address(this)) *
+        CAvax cToken = CAvax(QIAVAX_ADDR);
+        uint256 amount = (cToken.balanceOfUnderlying(address(this)) *
             basisPoint) / 10000;
-        qiToken.redeemUnderlying(amount);
+        cToken.redeemUnderlying(amount);
+        payable(msg.sender).transfer(amount);
+    }
+
+    function supplyAvaxIron() external payable {
+        CWrappedNative(IWAVAX_ADDR).mintNative{value: msg.value}();
+    }
+
+    function withdrawAvaxIron(uint16 basisPoint) external payable {
+        require(basisPoint <= 10000);
+        CWrappedNative cToken = CWrappedNative(IWAVAX_ADDR);
+        uint256 amount = (cToken.balanceOfUnderlying(address(this)) *
+            basisPoint) / 10000;
+        cToken.redeemUnderlyingNative(amount);
         payable(msg.sender).transfer(amount);
     }
 
     function supplyAvaxJoe() external payable {
-        JWrappedNative(JAVAX_ADDR).mintNative{value: msg.value}();
+        CWrappedNative(JAVAX_ADDR).mintNative{value: msg.value}();
     }
 
     function withdrawAvaxJoe(uint16 basisPoint) external payable {
         require(basisPoint <= 10000);
-        JWrappedNative jToken = JWrappedNative(JAVAX_ADDR);
-        uint256 amount = (jToken.balanceOfUnderlying(address(this)) *
+        CWrappedNative cToken = CWrappedNative(JAVAX_ADDR);
+        uint256 amount = (cToken.balanceOfUnderlying(address(this)) *
             basisPoint) / 10000;
-        jToken.redeemUnderlyingNative(amount);
+        cToken.redeemUnderlyingNative(amount);
         payable(msg.sender).transfer(amount);
     }
 
+    function supplyAvaxHomora() external payable {
+        SafeBoxAvax(SAFEBOX_AVAX_ADDR).deposit{value: msg.value}();
+    }
+
+    function withdrawAvaxHomora(uint16 basisPoint) external payable {
+        require(basisPoint <= 10000);
+        SafeBoxAvax ibToken = SafeBoxAvax(SAFEBOX_AVAX_ADDR);
+        uint256 amount = (ibToken.balanceOf(address(this)) * basisPoint) /
+            10000;
+        ibToken.withdraw(amount);
+        payable(msg.sender).transfer(address(this).balance);
+    }
+
+    // necessary, otherwise "function selector was not recognized and there's no fallback nor receive function"
     receive() external payable {}
 
     // function balanceErc20(address tokenAddr) external view returns (uint256) {
