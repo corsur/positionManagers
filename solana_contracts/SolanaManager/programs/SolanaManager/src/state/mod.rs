@@ -1,5 +1,7 @@
 pub use position::*;
-pub use governance::*;
+pub use whitelist::*;
+pub use manager::*;
 
 pub mod position;
-pub mod governance;
+pub mod whitelist;
+pub mod manager;
