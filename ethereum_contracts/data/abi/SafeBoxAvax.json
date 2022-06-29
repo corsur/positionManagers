@@ -1,5 +1,0 @@
-[
-  "function balanceOf(address) returns (uint256)",
-  "function deposit() payable",
-  "function withdraw(uint256)"
-]

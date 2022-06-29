@@ -1,0 +1,7 @@
+[
+  "function depositETH(address,address,uint16) payable",
+  "function getReserveData(address) view returns (tuple(tuple(uint256),uint128,uint128,uint128,uint128,uint128,uint40,uint16,address,address,address,address,uint128,uint128,uint128))",
+  "function supply(address,uint256,address,uint16)",
+  "function withdraw(address,uint256,address)",
+  "function withdrawETH(address,uint256,address) payable"
+]

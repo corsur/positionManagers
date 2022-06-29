@@ -43,7 +43,7 @@ module.exports = {
       // for avax
       forking: {
         url: AVAX_MAINNET_FORK,
-        blockNumber: 16424563,
+        blockNumber: 16681756,
       },
       // for ethereum
       // forking: {
