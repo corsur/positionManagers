@@ -126,6 +126,10 @@ contract LendingOptimizer is
             address cTokenAddr = mapCompound[market][tokenAddr];
             token.safeApprove(cTokenAddr, amount);
             ICompound(cTokenAddr).mint(amount);
+            uint256 mintedBalance = ICompound(cTokenAddr).balanceOfUnderlying(
+                address(this)
+            );
+            require(mintedBalance > 0);
         }
     }
 
@@ -137,17 +141,27 @@ contract LendingOptimizer is
         ICompound tjToken = ICompound(mapCompound[Market.TRADERJOE][tokenAddr]);
 
         Market market;
-        if (qiToken.balanceOf(address(this)) > 0) market = Market.BENQI;
-        else if (ibToken.balanceOf(address(this)) > 0) market = Market.IRONBANK;
-        else if (tjToken.balanceOf(address(this)) > 0)
-            market = Market.TRADERJOE;
+        if (
+            mapCompound[Market.BENQI][tokenAddr] != address(0) &&
+            qiToken.balanceOf(address(this)) > 0
+        ) market = Market.BENQI;
+        else if (
+            mapCompound[Market.IRONBANK][tokenAddr] != address(0) &&
+            ibToken.balanceOf(address(this)) > 0
+        ) market = Market.IRONBANK;
+        else if (
+            mapCompound[Market.TRADERJOE][tokenAddr] != address(0) &&
+            tjToken.balanceOf(address(this)) > 0
+        ) market = Market.TRADERJOE;
         else market = Market.AAVE;
 
         if (market == Market.AAVE) {
             IAave pool = IAave(AAVE_POOL);
-            IERC20 aToken = IERC20(
-                pool.getReserveData(tokenAddr).aTokenAddress
-            );
+            address aTokenAddress = pool
+                .getReserveData(tokenAddr)
+                .aTokenAddress;
+            require(aTokenAddress != address(0));
+            IERC20 aToken = IERC20(aTokenAddress);
             uint256 amount = (aToken.balanceOf(address(this)) * basisPoint) /
                 10000;
             pool.withdraw(tokenAddr, amount, msg.sender);
@@ -241,6 +255,7 @@ contract LendingOptimizer is
         view
         returns (uint256)
     {
+        if (cTokenAddr == address(0)) return 0;
         ICompound cToken = ICompound(cTokenAddr);
         // there might be a little discrepancy between real and calculated value
         // due to exchange rate multiplication
@@ -250,17 +265,17 @@ contract LendingOptimizer is
     }
 
     function tokenBalance(address tokenAddr) external view returns (uint256) {
+        uint256 aaveBalance;
         address aTokenAddress = IAave(AAVE_POOL)
             .getReserveData(tokenAddr)
             .aTokenAddress;
-        uint256 aaveBalance;
         if (aTokenAddress != address(0))
             aaveBalance = IERC20(aTokenAddress).balanceOf(address(this));
 
-        console.log(aaveBalance);
-        console.log(compoundBalance(mapCompound[Market.BENQI][tokenAddr]));
-        console.log(compoundBalance(mapCompound[Market.IRONBANK][tokenAddr]));
-        console.log(compoundBalance(mapCompound[Market.TRADERJOE][tokenAddr]));
+        // console.log(aaveBalance);
+        // console.log(compoundBalance(mapCompound[Market.BENQI][tokenAddr]));
+        // console.log(compoundBalance(mapCompound[Market.IRONBANK][tokenAddr]));
+        // console.log(compoundBalance(mapCompound[Market.TRADERJOE][tokenAddr]));
 
         return
             aaveBalance +
