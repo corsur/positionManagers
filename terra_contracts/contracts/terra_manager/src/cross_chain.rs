@@ -36,7 +36,7 @@ pub fn initiate_outgoing_token_transfer(
     recipient: Recipient,
 ) -> StdResult<Response> {
     let mut response = Response::new().add_messages(validate_and_accept_incoming_asset_transfer(
-        env, info, &assets,
+        deps, env, info, &assets,
     )?);
     match recipient {
         Recipient::TerraChain { recipient } => {
@@ -397,9 +397,9 @@ pub fn register_external_chain_manager(
     chain_id: ChainId,
     aperture_manager_addr: Binary,
 ) -> StdResult<Response> {
-    if info.sender != ADMIN.load(deps.storage)? {
-        return Err(StdError::generic_err("unauthorized"));
-    }
+    ADMIN
+        .assert_admin(deps.as_ref(), &info.sender)
+        .map_err(|err| StdError::generic_err(err.to_string()))?;
     CHAIN_ID_TO_APERTURE_MANAGER_ADDRESS_MAP.save(
         deps.storage,
         U16Key::from(chain_id),
@@ -415,7 +415,7 @@ fn test_register_external_chain_manager() {
 
     let mut deps = mock_dependencies(&[]);
     ADMIN
-        .save(deps.as_mut().storage, &Addr::unchecked("admin"))
+        .set(deps.as_mut(), Some(Addr::unchecked("admin")))
         .unwrap();
 
     // Unauthorized call.
@@ -427,7 +427,7 @@ fn test_register_external_chain_manager() {
             Binary::from(vec![3, 2, 1])
         )
         .unwrap_err(),
-        StdError::generic_err("unauthorized")
+        StdError::generic_err("Caller is not admin")
     );
 
     // Authorized call but incorrect length.
