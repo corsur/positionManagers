@@ -12,6 +12,8 @@
   "function addCompoundMapping(uint8,address,address)",
   "function avaxBalance() view returns (uint256)",
   "function initialize(address,address,address,address,address,address)",
+  "function optimizeAvax() payable",
+  "function optimizeToken(address)",
   "function owner() view returns (address)",
   "function proxiableUUID() view returns (bytes32)",
   "function renounceOwnership()",

@@ -20,7 +20,7 @@ async function getImpersonatedSigner(addr) {
 describe.only("LendingOptimizer tests", function () {
   var owner = undefined;
   var user = undefined;
-  var lendingOptimizer = undefined;
+  var optimizer = undefined;
 
   const USDC = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E";
   const USDCE = "0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664";
@@ -32,7 +32,7 @@ describe.only("LendingOptimizer tests", function () {
     user = await getImpersonatedSigner("0x9f8c163cBA728e99993ABe7495F06c0A3c8Ac8b9"); // Binance C-Chain Hot Wallet
 
     const LendingOptimizer = await ethers.getContractFactory("LendingOptimizer", owner);
-    lendingOptimizer = await upgrades.deployProxy(
+    optimizer = await upgrades.deployProxy(
       LendingOptimizer,
       [
         "0x794a61358D6845594F94dc1DB02A252b5b4814aD", // _aavePoolAddr
@@ -43,17 +43,17 @@ describe.only("LendingOptimizer tests", function () {
         "0xC22F01ddc8010Ee05574028528614634684EC29e", // _tjAvaxAddr
       ], { unsafeAllow: ["delegatecall"], kind: "uups" }
     );
-    await lendingOptimizer.deployed();
+    await optimizer.deployed();
 
-    lendingOptimizer.addCompoundMapping(1, USDC, "0xB715808a78F6041E46d61Cb123C9B4A27056AE9C");
-    lendingOptimizer.addCompoundMapping(2, USDC, "0xEc5Aa19566Aa442C8C50f3C6734b6Bb23fF21CD7");
-    lendingOptimizer.addCompoundMapping(3, USDC, "0x29472D511808Ce925F501D25F9Ee9efFd2328db2");
-    lendingOptimizer.addCompoundMapping(1, USDCE, "0xBEb5d47A3f720Ec0a390d04b4d41ED7d9688bC7F");
-    lendingOptimizer.addCompoundMapping(2, USDCE, "0xe28965073C49a02923882B8329D3E8C1D805E832");
-    lendingOptimizer.addCompoundMapping(3, USDCE, "0xEd6AaF91a2B084bd594DBd1245be3691F9f637aC");
-    lendingOptimizer.addCompoundMapping(1, USDT, "0xd8fcDa6ec4Bdc547C0827B8804e89aCd817d56EF");
-    lendingOptimizer.addCompoundMapping(2, MIM, "0xbf1430d9eC170b7E97223C7F321782471C587b29");
-    lendingOptimizer.addCompoundMapping(3, MIM, "0xcE095A9657A02025081E0607c8D8b081c76A75ea");
+    optimizer.addCompoundMapping(1, USDC, "0xB715808a78F6041E46d61Cb123C9B4A27056AE9C");
+    optimizer.addCompoundMapping(2, USDC, "0xEc5Aa19566Aa442C8C50f3C6734b6Bb23fF21CD7");
+    optimizer.addCompoundMapping(3, USDC, "0x29472D511808Ce925F501D25F9Ee9efFd2328db2");
+    optimizer.addCompoundMapping(1, USDCE, "0xBEb5d47A3f720Ec0a390d04b4d41ED7d9688bC7F");
+    optimizer.addCompoundMapping(2, USDCE, "0xe28965073C49a02923882B8329D3E8C1D805E832");
+    optimizer.addCompoundMapping(3, USDCE, "0xEd6AaF91a2B084bd594DBd1245be3691F9f637aC");
+    optimizer.addCompoundMapping(1, USDT, "0xd8fcDa6ec4Bdc547C0827B8804e89aCd817d56EF");
+    optimizer.addCompoundMapping(2, MIM, "0xbf1430d9eC170b7E97223C7F321782471C587b29");
+    optimizer.addCompoundMapping(3, MIM, "0xcE095A9657A02025081E0607c8D8b081c76A75ea");
   });
 
   it("ERC-20", async function () {
@@ -64,32 +64,33 @@ describe.only("LendingOptimizer tests", function () {
     for (let i = 0; i < tokens.length; i++) {
       if (tokens[i] == MIM) amount = BigInt(1000000000000000000);
       const token = new ethers.Contract(tokens[i], erc20ABI, user);
-      await token.approve(lendingOptimizer.address, amount);
-      const prevBalance = await token.balanceOf(user.address);
-      await lendingOptimizer.connect(user).supplyToken(tokens[i], amount);
-      const contractBalance = await lendingOptimizer.connect(user).tokenBalance(tokens[i]);
-      await lendingOptimizer.connect(user).withdrawToken(tokens[i], 10000);
-      await lendingOptimizer.connect(user).tokenBalance(tokens[i]);
-      const afterBalance = await token.balanceOf(user.address);
-      // expect(Math.round(contractBalance / 10) * 10).to.equal(1e6);
-      // expect((afterBalance - prevBalance) / 1e6).to.equal(-0.2);
-      console.log(tokenString[i] + " test complete.");
+      await token.approve(optimizer.address, amount);
 
-      // await lendingOptimizer.optimizeToken(tokens[i]);
-      // await lendingOptimizer.connect(user).tokenBalance(tokens[i]);
+      await optimizer.connect(user).supplyToken(tokens[i], amount);
+      await optimizer.connect(user).tokenBalance(tokens[i]);
+
+      await optimizer.optimizeToken(tokens[i]);
+      await optimizer.connect(user).tokenBalance(tokens[i]);
+
+      await optimizer.connect(user).withdrawToken(tokens[i], 8000);
+      await optimizer.connect(user).tokenBalance(tokens[i]);
+
+      console.log(tokenString[i] + " test complete.");
     }
   });
 
   it("AVAX", async function () {
     const prevBalance = await user.getBalance();
-    await lendingOptimizer.connect(user).supplyAvax({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
-    await lendingOptimizer.connect(user).avaxBalance();
-    await lendingOptimizer.connect(user).withdrawAvax(10000);
-    await lendingOptimizer.connect(user).avaxBalance();
-    const afterBalance = await user.getBalance();
-    // expect(Math.round((afterBalance - prevBalance) / 1e17) / 10).to.equal(-0.2);
+    await optimizer.connect(user).supplyAvax({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
+    await optimizer.connect(user).avaxBalance();
 
-    // await lendingOptimizer.connect(user).optimizeAvax();
+    await optimizer.optimizeAvax();
+    await optimizer.connect(user).avaxBalance();
+
+    await optimizer.connect(user).withdrawAvax(8000);
+    await optimizer.connect(user).avaxBalance();
+    const afterBalance = await user.getBalance();
+    expect(Math.round((afterBalance - prevBalance) / 1e17) / 10).to.equal(-0.2);
   });
 
 });
