@@ -3,7 +3,7 @@ pragma solidity ^0.8.13;
 
 import "../libraries/AaveV3DataTypes.sol";
 
-interface IAave {
+interface IAaveV3 {
     function supply(
         address asset,
         uint256 amount,
