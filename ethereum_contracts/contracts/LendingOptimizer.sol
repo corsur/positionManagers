@@ -212,7 +212,8 @@ contract LendingOptimizer is
                 10000;
             cToken.redeem(amount);
             amount = IERC20(tokenAddr).balanceOf(address(this));
-            IERC20(tokenAddr).safeTransfer(receiver, amount);
+            if (receiver != address(this))
+                IERC20(tokenAddr).safeTransfer(receiver, amount);
             return amount;
         }
     }
