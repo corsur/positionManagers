@@ -1,4 +1,0 @@
-[
-  "function depositETH(address,address,uint16) payable",
-  "function withdrawETH(address,uint256,address) payable"
-]

@@ -26,6 +26,8 @@ module.exports = {
   BSC_TESTNET: "https://data-seed-prebsc-1-s3.binance.org:8545",
   ETH_PRV_KEY_1:
     "0x53f446e52f3cb33084b0c31baee7542392844776ff593f444a480b29ed964ff8",
+  AVAX_MAINNET_FORK: "https://api.avax.network/ext/bc/C/rpc",
+  AVAX_TESTNET_FORK: "https://api.avax-test.network/ext/bc/C/rpc",
   DELTA_NEUTRAL: 0,
   STABLE_YIELD: 1,
 };
