@@ -31,8 +31,8 @@ contract LendingOptimizer is
 
     uint256 constant NUM_MARKETS = 4;
 
-    // Lending Market => (ERC-20 tokenAddr => Compound ERC-20 tokenAddr)
-    mapping(Market => mapping(address => address)) compoundTokenAddr;
+    mapping(Market => mapping(address => address)) compoundTokenAddr; // Lending Market => (ERC-20 tokenAddr => Compound ERC-20 tokenAddr)
+    mapping(address => Market) currentMarket; // Which lending market is the token with tokenAddr currently in
 
     address public AAVE_POOL; // Aave Lending Pool
     address public WETH_GATE; // WETH Gateway
@@ -129,15 +129,6 @@ contract LendingOptimizer is
                     factor;
         }
 
-        // Revert if token not supported by any market
-        uint256 interestRateSum;
-        for (uint256 i = 0; i < NUM_MARKETS; i++)
-            interestRateSum += interestRates[i];
-        require(
-            interestRateSum != 0,
-            "Error: token is not supported by any market."
-        );
-
         // Find market with max interest rate, linear search
         Market bestMarket;
         uint256 bestInterestRate = 0;
@@ -148,42 +139,10 @@ contract LendingOptimizer is
             }
         }
 
+        require(bestInterestRate > 0); // Revert if token not supported by any market
+        currentMarket[tokenAddr] = bestMarket;
+
         return bestMarket;
-    }
-
-    // Which lending market is the token with tokenAddr currently in
-    function currentMarket(address tokenAddr) internal view returns (Market) {
-        if (tokenAddr == WAVAX) {
-            address[NUM_MARKETS] memory mintTokenAddr = [
-                IAaveV3(AAVE_POOL).getReserveData(tokenAddr).aTokenAddress,
-                QIAVAX,
-                IBAVAX,
-                TJAVAX
-            ];
-
-            // Find market with positive balance
-            for (uint256 i = 0; i < NUM_MARKETS; i++)
-                if (IERC20(mintTokenAddr[i]).balanceOf(address(this)) > 0)
-                    return Market(i);
-        } else {
-            address[NUM_MARKETS] memory mintTokenAddr = [
-                IAaveV3(AAVE_POOL).getReserveData(tokenAddr).aTokenAddress,
-                compoundTokenAddr[Market.BENQI][tokenAddr],
-                compoundTokenAddr[Market.IRONBANK][tokenAddr],
-                compoundTokenAddr[Market.TRADERJOE][tokenAddr]
-            ];
-
-            // Find market with positive balance
-            for (uint256 i = 0; i < NUM_MARKETS; i++)
-                if (
-                    mintTokenAddr[i] != address(0) &&
-                    IERC20(mintTokenAddr[i]).balanceOf(address(this)) > 0
-                ) return Market(i);
-
-            require(false, "Error: token is not supported by any market."); // Revert if reached
-        }
-
-        return Market.NONE;
     }
 
     // Compound token balance converted to underlying amount
@@ -237,7 +196,7 @@ contract LendingOptimizer is
         bool optimizeCall
     ) internal returns (uint256) {
         address receiver = optimizeCall ? address(this) : msg.sender;
-        Market market = currentMarket(tokenAddr);
+        Market market = currentMarket[tokenAddr];
         if (market == Market.AAVE) {
             IAaveV3 pool = IAaveV3(AAVE_POOL);
             IERC20 aToken = IERC20(
@@ -280,7 +239,7 @@ contract LendingOptimizer is
         returns (uint256)
     {
         address receiver = optimizeCall ? address(this) : msg.sender;
-        Market market = currentMarket(WAVAX);
+        Market market = currentMarket[WAVAX];
         if (market == Market.AAVE) {
             IERC20 aToken = IERC20(
                 IAaveV3(AAVE_POOL).getReserveData(WAVAX).aTokenAddress
