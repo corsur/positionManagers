@@ -7,19 +7,21 @@ pub struct TokenIdentifier {
     pub strategy: u64,
     pub token_address: Pubkey,
     pub whitelisted: bool,
-    pub bump: u8
+    pub bump: u8,
+    pub admin: Pubkey
 }
 
 #[derive(Accounts)]
 #[instruction(token_address: Pubkey)]
 pub struct UpdateTokenWhitelist<'info> {
     #[account(mut)]
-    pub solana_manager: Signer<'info>,
+    pub admin: Signer<'info>,
     // space: TBD
     #[account(
         init,
-        payer = solana_manager,
-        space = 8 + 2 + 4 + 200 + 1, seeds = [b"token_identifier", solana_manager.key().as_ref()], bump
+        has_one = admin,
+        payer = admin,
+        space = 8 + 2 + 4 + 200 + 1, seeds = [b"token_identifier", admin.key().as_ref()], bump
     )]
     pub token_identifier: Account<'info, TokenIdentifier>,
     pub system_program: Program<'info, System>,

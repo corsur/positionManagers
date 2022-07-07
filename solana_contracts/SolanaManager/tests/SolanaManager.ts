@@ -27,6 +27,7 @@ describe("SolanaManager", () => {
       );
 
     console.log(canonicalBump);
+    console.log(wallet.publicKey);
 
     let keypair1 = Keypair.generate();
 

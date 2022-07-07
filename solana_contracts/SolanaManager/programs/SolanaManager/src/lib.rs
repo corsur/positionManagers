@@ -13,15 +13,6 @@ pub mod state;
 pub mod solana_manager {
     use super::*;
 
-    // governance instructions
-    // pub fn updateCrossChainFeeBPS(ctx: Context<Wormhole>, bps: u32) -> Result<()> {
-    //     instructions::governance::updateCrossChainFeeBPS(ctx, bps)
-    // }
-
-    // pub fn updateFeeSink(ctx: Context<Worhmhole>, address: Pubkey) -> Result<()> {
-    //     instructions::governance::updateFeeSink(ctx, address)
-    // }
-
     // // user instructions
 
     // pub fn swapTokenAndCreatePosition(
@@ -41,6 +32,14 @@ pub mod solana_manager {
     // }
 
     // governance instructions
+
+    // pub fn updateCrossChainFeeBPS(ctx: Context<Wormhole>, bps: u32) -> Result<()> {
+    //     instructions::governance::updateCrossChainFeeBPS(ctx, bps)
+    // }
+
+    // pub fn updateFeeSink(ctx: Context<Worhmhole>, address: Pubkey) -> Result<()> {
+    //     instructions::governance::updateFeeSink(ctx, address)
+    // }
 
     pub fn update_manager(ctx: Context<UpdateManager>, chain: u16, address: Pubkey) -> Result<()> {
         instructions::update_manager::update_manager(ctx, chain, address)
