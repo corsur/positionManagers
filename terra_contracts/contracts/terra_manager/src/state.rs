@@ -2,11 +2,12 @@ use aperture_common::common::{
     PositionId, PositionKey, StrategyId, StrategyLocation, StrategyMetadata,
 };
 use cosmwasm_std::{Addr, Decimal};
+use cw_controllers::Admin;
 use cw_storage_plus::{Item, Map, U128Key, U16Key, U64Key};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub const ADMIN: Item<Addr> = Item::new("admin");
+pub const ADMIN: Admin = Admin::new("admin");
 pub const WORMHOLE_TOKEN_BRIDGE_ADDR: Item<Addr> = Item::new("wormhole_token_bridge_addr");
 pub const WORMHOLE_CORE_BRIDGE_ADDR: Item<Addr> = Item::new("wormhole_core_bridge_addr");
 
