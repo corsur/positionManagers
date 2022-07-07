@@ -7,7 +7,6 @@ pub fn update_manager(ctx: Context<UpdateManager>, chain: u16, address: Pubkey) 
     manager.chain = chain;
     manager.bump = *ctx.bumps.get("manager").unwrap();
     manager.manager_address = address;
-    manager.admin =  ctx.accounts.admin.key();
 
     Ok(())
 

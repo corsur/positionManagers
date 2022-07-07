@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use solana_program::pubkey::Pubkey;
+use crate::state::admin::*;
 
 #[account]
 pub struct ApertureManager {
@@ -14,10 +15,11 @@ pub struct ApertureManager {
 pub struct UpdateManager<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
+    #[account(mut, has_one = admin)]
+    pub admin_info: Account<'info, AdminInfo>,
     // space: TBD
     #[account(
         init,
-        has_one = admin,
         payer = admin,
         space = 8 + 2 + 4 + 200 + 1, seeds = [b"manager", admin.key().as_ref(), &(chain.to_be_bytes())], bump
     )]
