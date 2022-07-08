@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 use instructions::*;
 use crate::state::position::*;
-
+use crate::state::manager::*;
+use crate::state::whitelist::*;
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
@@ -11,15 +12,6 @@ pub mod state;
 #[program]
 pub mod solana_manager {
     use super::*;
-
-    // governance instructions
-    // pub fn updateCrossChainFeeBPS(ctx: Context<Wormhole>, bps: u32) -> Result<()> {
-    //     instructions::governance::updateCrossChainFeeBPS(ctx, bps)
-    // }
-
-    // pub fn updateFeeSink(ctx: Context<Worhmhole>, address: Pubkey) -> Result<()> {
-    //     instructions::governance::updateFeeSink(ctx, address)
-    // }
 
     // // user instructions
 
@@ -41,13 +33,21 @@ pub mod solana_manager {
 
     // governance instructions
 
-    // pub fn updateApertureManager(ctx: Context<Aperture>, chain: u16, address: Pubkey) -> Result<()> {
-    //     instructions::governance::updateApertureManager(ctx, chain, address)
+    // pub fn updateCrossChainFeeBPS(ctx: Context<Wormhole>, bps: u32) -> Result<()> {
+    //     instructions::governance::updateCrossChainFeeBPS(ctx, bps)
     // }
 
-    // pub fn updateTokenWhitelist(ctx: Context<Aperture>, chain: u16, strategy: u64, tokenAddress: Pubkey, whitelisted: bool) -> Result<()> {
-    //     instructions::governance::updateTokenWhitelist(ctx, chain, strategy, tokenAddress, whitelisted)
+    // pub fn updateFeeSink(ctx: Context<Worhmhole>, address: Pubkey) -> Result<()> {
+    //     instructions::governance::updateFeeSink(ctx, address)
     // }
+
+    pub fn update_manager(ctx: Context<UpdateManager>, chain: u16, address: Pubkey) -> Result<()> {
+        instructions::update_manager::update_manager(ctx, chain, address)
+    }
+
+    pub fn update_token_whitelist(ctx: Context<UpdateTokenWhitelist>, token_address: Pubkey) -> Result<()> {
+        instructions::update_token_whitelist::update_token_whitelist(ctx, token_address)
+    }
 
     // user instructions
     

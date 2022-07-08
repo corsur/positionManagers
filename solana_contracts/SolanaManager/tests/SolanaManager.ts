@@ -1,15 +1,49 @@
 import * as anchor from '@project-serum/anchor';
-import { Program } from '@project-serum/anchor';
-import { PublicKey } from '@solana/web3.js';
+import { Program, Wallet } from '@project-serum/anchor';
+import { PublicKey, Keypair } from '@solana/web3.js';
 import { SolanaManager } from "../target/types/solana_manager";
 import { expect } from 'chai';
 
 describe("SolanaManager", () => {
   // Configure the client to use the local cluster.
-  anchor.setProvider(anchor.AnchorProvider.env());
 
+  const provider = anchor.AnchorProvider.env();
+  const wallet = provider.wallet as Wallet;
+  anchor.setProvider(provider);
   const program = anchor.workspace.SolanaManager as Program<SolanaManager>;
-  const provider = program.provider as anchor.AnchorProvider;
+
+  it('Creates and updates an aperture manager', async () => {
+    let sequence = 3;
+    const buffer = new anchor.BN(sequence).toArrayLike(Buffer);
+
+    const [managerPDA, canonicalBump] = await PublicKey
+      .findProgramAddress(
+        [
+          anchor.utils.bytes.utf8.encode("manager"),
+          wallet.publicKey.toBuffer(),
+          buffer
+        ],
+        program.programId
+      );
+
+    console.log(canonicalBump);
+    console.log(wallet.publicKey);
+
+    let keypair1 = Keypair.generate();
+
+    await program.methods
+      .updateManager(sequence, keypair1.publicKey)
+      .accounts({
+        admin: wallet.publicKey,
+        manager: managerPDA
+      })
+      .rpc();
+
+    console.log((await program.account.apertureManager.fetch(managerPDA)).bump);
+    
+    expect((await program.account.apertureManager.fetch(managerPDA)).bump).to.equal(canonicalBump);
+
+  });
 
   it('Creates and gets a position', async () => {
     const byte = new anchor.BN(0).toArrayLike(Buffer);
