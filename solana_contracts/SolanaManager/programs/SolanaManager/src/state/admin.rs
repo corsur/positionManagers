@@ -6,4 +6,8 @@ pub struct AdminInfo {
   pub admin: Pubkey
 }
 
-//TODO add an updateAdmin API
+#[derive(Accounts)]
+pub struct UpdateAdmin<'info> {
+    #[account(mut)]
+    pub admin_info: Account<'info, AdminInfo>
+}

@@ -3,6 +3,7 @@ use instructions::*;
 use crate::state::position::*;
 use crate::state::manager::*;
 use crate::state::whitelist::*;
+use crate::state::feesink::*;
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
@@ -33,13 +34,13 @@ pub mod solana_manager {
 
     // governance instructions
 
-    // pub fn updateCrossChainFeeBPS(ctx: Context<Wormhole>, bps: u32) -> Result<()> {
-    //     instructions::governance::updateCrossChainFeeBPS(ctx, bps)
-    // }
+    pub fn update_cross_chain_fee_bps(ctx: Context<UpdateCrossChainFeeBps>, bps: u32) -> Result<()> {
+        instructions::update_cross_chain_fee_bps::update_cross_chain_fee_bps(ctx, bps)
+    }
 
-    // pub fn updateFeeSink(ctx: Context<Worhmhole>, address: Pubkey) -> Result<()> {
-    //     instructions::governance::updateFeeSink(ctx, address)
-    // }
+    pub fn update_fee_sink(ctx: Context<UpdateFeeSink>, address: Pubkey) -> Result<()> {
+        instructions::update_fee_sink::update_fee_sink(ctx, address)
+    }
 
     pub fn update_manager(ctx: Context<UpdateManager>, chain: u16, address: Pubkey) -> Result<()> {
         instructions::update_manager::update_manager(ctx, chain, address)
