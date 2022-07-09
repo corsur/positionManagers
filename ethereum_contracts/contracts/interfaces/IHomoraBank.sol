@@ -12,14 +12,28 @@ interface IHomoraBank {
         external
         view
         returns (
-            address owner,
-            address collToken,
-            uint256 collId,
-            uint256 collateralSize
+            address,
+            address,
+            uint256,
+            uint256
         );
-    
+
+    function getPositionDebts(uint256 positionId)
+        external
+        view
+        returns (address[] memory, uint256[] memory);
+
     function oracle() external view returns (address);
-    function getCollateralETHValue(uint positionId) external view returns (uint);
-    function getBorrowETHValue(uint positionId) external view returns (uint);
+
+    function getCollateralETHValue(uint256 positionId)
+        external
+        view
+        returns (uint256);
+
+    function getBorrowETHValue(uint256 positionId)
+        external
+        view
+        returns (uint256);
+
     function support(address token) external view returns (bool);
 }
