@@ -243,7 +243,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         //     wstaking
         // );
 
-        uint256 res = IHomoraBank(homoraBank).execute(
+        uint256 res = homoraBank.execute(
             homoraBankPosId,
             spell,
             data0
@@ -367,22 +367,45 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             [collateralSize, 0, stableTokenDebtAmt, assetTokenDebtAmt, 0, 0, 0]
         );
         // withdraw all lp tokens and repay all the debts
-        IHomoraBank(homoraBank).execute(homoraBankPosId, spell, data0);
+        homoraBank.execute(homoraBankPosId, spell, data0);
 
         // reinvest
         _reinvestInternal();
 
-        // emit LogRebalance(equityBefore, equityAfter);
+        (, , , uint256 collateralAfter) = homoraBank.getPositionInfo(
+            homoraBankPosId
+        );
+
+        emit LogRebalance(collateralSize, collateralAfter);
     }
 
     function reinvest() external {
+        (, , , uint256 equityBefore) = homoraBank.getPositionInfo(
+            homoraBankPosId
+        );
         // 1. claim rewards
-        
+        _harvest();
 
         // 2. reinvest with the current balance
         _reinvestInternal();
         
-        // emit LogReinvest(equityBefore, equityAfter);
+        (, , , uint256 equityAfter) = homoraBank.getPositionInfo(
+            homoraBankPosId
+        );
+        emit LogReinvest(equityBefore, equityAfter);
+    }
+
+    /// @notice harvest rewards
+    function _harvest() internal {
+        bytes memory data = abi.encodeWithSelector(
+            bytes4(
+                keccak256(
+                    "harvestWStakingRewards(address)"
+                )
+            ),
+            wstaking
+        );
+        homoraBank.execute(homoraBankPosId, spell, data);
     }
 
     /// @notice reinvest with the current balance
@@ -423,7 +446,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             ]
         );
 
-        IHomoraBank(homoraBank).execute(homoraBankPosId, spell, data0);
+        homoraBank.execute(homoraBankPosId, spell, data0);
 
         // Cancel HomoraBank's allowance.
         IERC20(stableToken).approve(address(homoraBank), 0);
@@ -524,14 +547,5 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             ? currentVal - targetVal
             : targetVal - currentVal;
         return (diff * 10000) / targetVal;
-    }
-
-    function test() public view returns (uint256) {
-        // (uint256 reserve0, uint256 reserve1, ) = pair.getReserves();
-        uint256 balance0 = IERC20(stableToken).balanceOf(address(pair));
-        uint256 balance1 = IERC20(assetToken).balanceOf(address(pair));
-        console.log(balance0);
-        console.log(balance1);
-        return balance0 / balance1;
     }
 }
