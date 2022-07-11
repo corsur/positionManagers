@@ -4,21 +4,37 @@ pragma solidity ^0.8.13;
 interface IHomoraBank {
 
     function execute(
-        uint positionId,
+        uint256 positionId,
         address spell,
         bytes memory data
-    ) external payable returns (uint);
+    ) external payable returns (uint256);
 
-    function getPositionInfo(
-        uint positionId
-    ) external view returns (
-        address,
-        address,
-        uint,
-        uint
-    );
+    function getPositionInfo(uint256 positionId)
+        external
+        view
+        returns (
+            address,
+            address,
+            uint256,
+            uint256
+        );
 
-    function getPositionDebts(
-        uint positionId
-    ) external view returns (address[] memory, uint[] memory);
+    function getPositionDebts(uint256 positionId)
+        external
+        view
+        returns (address[] memory, uint256[] memory);
+
+    function oracle() external view returns (address);
+
+    function getCollateralETHValue(uint256 positionId)
+        external
+        view
+        returns (uint256);
+
+    function getBorrowETHValue(uint256 positionId)
+        external
+        view
+        returns (uint256);
+
+    function support(address token) external view returns (bool);
 }
