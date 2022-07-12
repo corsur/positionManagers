@@ -112,7 +112,7 @@ async function testWithdrawErc20(addr, signer, lendingOptimizer) {
   expect(userDelta).to.equal(0.1985);
 }
 
-describe.only("LendingOptimizer tests", function () {
+describe("LendingOptimizer tests", function () {
   var owner = undefined;
   var user = undefined;
   var lendingOptimizer = undefined;
