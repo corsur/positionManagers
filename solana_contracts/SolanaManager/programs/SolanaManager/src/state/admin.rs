@@ -9,5 +9,7 @@ pub struct AdminInfo {
 #[derive(Accounts)]
 pub struct UpdateAdmin<'info> {
     #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(mut, has_one = admin)]
     pub admin_info: Account<'info, AdminInfo>
 }
