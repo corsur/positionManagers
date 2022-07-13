@@ -250,7 +250,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
                 0,
                 0
             ],
-            0
+            pid
         );
 
         uint256 res = IHomoraBank(homoraBank).execute(
