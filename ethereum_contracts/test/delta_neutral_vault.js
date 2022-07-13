@@ -2,12 +2,9 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 const { homoraBankABI } = require('./abi/homoraBankABI.js');
-const { traderJoeSpellV3ABI } = require('./abi/traderJoeSpellV3ABI.js');
 
 const ERC20ABI = [
-  // Read-Only Functions
   "function balanceOf(address owner) view returns (uint256)",
-  // Authenticated Functions
   "function approve(address spender, uint256 value) returns (bool)",
   "function transfer(address _to, uint256 value) returns(bool)",
 ];
@@ -24,11 +21,8 @@ const {
 const provider = ethers.provider;
 const WAVAX = new ethers.Contract(WAVAX_TOKEN_ADDRESS, ERC20ABI, provider);
 const USDC = new ethers.Contract(USDC_TOKEN_ADDRESS, ERC20ABI, provider);
+const JOE = new ethers.Contract(JOE_TOKEN_ADDRESS, ERC20ABI, provider);
 const homoraBank = new ethers.Contract(HOMORA_BANK_ADDRESS, homoraBankABI, provider);
-
-// const spell = new ethers.Contract(TJ_SPELLV3_WAVAX_USDC_ADDRESS, traderJoeSpellV3ABI, provider);
-// const LP_TOKEN = spell.pairs(USDC_TOKEN, WETH_TOKEN);
-// const LP = new ethers.Contract(LP_TOKEN, ERC20ABI, provider);
 
 const mainWallet = new ethers.Wallet('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80', provider);
 
@@ -70,11 +64,17 @@ async function whitelistContract(contractAddressToWhitelist) {
 async function initialize(contract) {
   // Impersonate USDC holder.
   const signer = await getImpersonatedSigner('0x42d6ce661bb2e5f5cc639e7befe74ff9fd649541');
-  await USDC.connect(signer).transfer(wallets[0].address, 100000, txOptions);
-  await USDC.connect(signer).transfer(wallets[1].address, 100000, txOptions);
 
-  await USDC.connect(wallets[0]).approve(contract.address, 100000, txOptions);
-  await USDC.connect(wallets[1]).approve(contract.address, 100000, txOptions);
+  await USDC.connect(signer).transfer(wallets[0].address, 1000 * 1e6, txOptions);
+  await USDC.connect(signer).transfer(wallets[1].address, 1000 * 1e6, txOptions);
+
+  await USDC.connect(wallets[0]).approve(contract.address, 1000 * 1e6, txOptions);
+  await USDC.connect(wallets[1]).approve(contract.address, 1000 * 1e6, txOptions);
+
+  // JOE holder
+  // const signer = await getImpersonatedSigner('0x1a731b2299e22fbac282e7094eda41046343cb51');
+  // await JOE.connect(signer).transfer(wallets[0].address, 1e12, txOptions);
+  // await JOE.connect(wallets[0]).approve(contract.address, 1e12, txOptions);
 }
 
 describe.only("DeltaNeutralVault Initialization", function() {
@@ -95,15 +95,20 @@ describe.only("DeltaNeutralVault Initialization", function() {
     
     
     await whitelistContract(contract.address);
-    // await initialize(contract);
+    await initialize(contract);
     
-    console.log("*****************");
-    await contract.connect(wallets[0]).test();
-    // await contract.connect(wallets[0]).deposit(1000, 0, txOptions);
-    // await contract.connect(wallets[1]).deposit(500, 0, txOptions);
+    const usdc_deposit_amount_0 = 300 * 1e6;
+    const usdc_deposit_amount_1 = 10000 * 1e6;
 
-    // await contract.connect(wallets[0]).withdraw(50000, txOptions);
-    console.log("*****************");
+    await USDC.connect(wallets[0]).approve(contract.address, usdc_deposit_amount_0*10, txOptions);
+    // await USDC.connect(wallets[1]).approve(contract.address, usdc_deposit_amount_1*10, txOptions);
+    
+    await contract.connect(wallets[0]).deposit(usdc_deposit_amount_0, 0, txOptions);
+    // await contract.connect(wallets[1]).deposit(usdc_deposit_amount_1, 0, txOptions);
+    //await contract.connect(wallets[0]).withdraw(5000000, txOptions);
+
+    await contract.connect(wallets[0]).rebalance(txOptions);
+    await contract.connect(wallets[0]).reinvest(txOptions);
   });
 });
 
