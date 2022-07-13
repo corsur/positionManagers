@@ -44,6 +44,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     address public spell;
     address public wstaking;
     uint256 public leverageLevel;
+    address public lpToken;
     IHomoraBank public homoraBank;
     IUniswapV2Pair public pair;
 
@@ -94,8 +95,9 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         wstaking = _wstaking;
         homoraBankPosId = _NO_ID;
         totalCollShareAmount = 0;
-        address lpToken = ISpell(spell).pairs(stableToken, assetToken);
+        lpToken = ISpell(spell).pairs(stableToken, assetToken);
         require(address(lpToken) != address(0), "Pair does not match the spell.");
+        pair = IUniswapV2Pair(lpToken);
     }
 
     function deltaNeutral(
@@ -163,39 +165,48 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
 
     function withdraw(
         uint256 withdrawShareAmount
-    ) external nonReentrant {
-        
-        require(withdrawShareAmount > 0, 'inccorect withdraw amount.');
-        require(withdrawShareAmount <= positions[msg.sender].collShareAmount, 'not enough share amount to withdraw.');
+    ) external payable nonReentrant {
+        require(withdrawShareAmount > 0, 'inccorect withdraw amount');
+        require(withdrawShareAmount <= positions[msg.sender].collShareAmount, 'not enough share amount to withdraw');
 
+        // Calculate collSize to withdraw.
         (, , , uint256 totalCollSize) = homoraBank.getPositionInfo(homoraBankPosId);
         uint256 collWithdrawSize = withdrawShareAmount.mul(totalCollSize).ceilDiv(totalCollShareAmount);
 
-        bytes memory data1 = abi.encodeWithSelector(
-            bytes4(keccak256("removeLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256))")),
+        (uint256 reserve0, ) = _getReserves();
+        uint256 stableWithdrawAmount = reserve0.mul(collWithdrawSize).div(IERC20(lpToken).totalSupply());
+
+        // Calculate debt to repay in two tokens.
+        (uint256 stableTokenDebtAmount, uint256 assetTokenDebtAmount) = currentDebtAmount();
+        uint256 stableTokenRepayAmount = stableTokenDebtAmount.mul(collWithdrawSize).ceilDiv(totalCollShareAmount);
+        uint256 assetTokenRepayAmount = assetTokenDebtAmount.mul(collWithdrawSize).ceilDiv(totalCollShareAmount);
+
+        // Encode removeLiqiduity call.
+        bytes memory data = abi.encodeWithSelector(
+            bytes4(keccak256("removeLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256))")),
             stableToken,
             assetToken,
             [
                 collWithdrawSize,
                 0,
+                stableTokenRepayAmount,
+                assetTokenRepayAmount,
                 0,
-                0,
-                0,
-                0,
+                stableWithdrawAmount*2,
                 0
-            ],
-            0
+            ]
         );
 
-        uint res = IHomoraBank(homoraBank).execute(
+        uint256 res = IHomoraBank(homoraBank).execute(
             homoraBankPosId,
             spell,
-            data1
+            data
             );
 
         uint256 stableTokenWithdrawAmount = IERC20(stableToken).balanceOf(address(this));
         uint256 assetTokenWithdrawAmount = IERC20(assetToken).balanceOf(address(this));
-
+        uint256 ethWithdrawAmount = address(this).balance;
+        
         // Return withdraw funds to user.
         IERC20(stableToken).transfer(
             msg.sender,
@@ -206,14 +217,23 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             assetTokenWithdrawAmount
         );
 
-        console.log(collWithdrawSize, stableTokenWithdrawAmount, assetTokenWithdrawAmount);
+        console.log(collWithdrawSize, stableTokenWithdrawAmount, assetTokenWithdrawAmount, ethWithdrawAmount);
 
+        // Update position info.
+        positions[msg.sender].collShareAmount -= withdrawShareAmount;
+        totalCollShareAmount -= withdrawShareAmount;
+
+        // Emit event.
         emit LogWithdraw(
             msg.sender,
             withdrawShareAmount,
             stableTokenWithdrawAmount,
             assetTokenWithdrawAmount
         );
+    }
+
+    fallback() external payable {
+
     }
 
     function deposit(
@@ -233,7 +253,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
                 address(this),
                 _assetTokenDepositAmount
             );
-    
+
         (
             uint256 _stableTokenAmount,
             uint256 _assetTokenAmount,
@@ -241,6 +261,8 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             uint256 _assetTokenBorrowAmount
         ) = (_stableTokenDepositAmount, _assetTokenDepositAmount, 0, 0); // deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount);
         
+        if (homoraBankPosId != 0) _assetTokenBorrowAmount = 1;
+        console.log(_stableTokenAmount, _assetTokenAmount, _stableTokenBorrowAmount, _assetTokenBorrowAmount);
         // Record original colletral size.
         (, , , uint256 originalCollSize) = homoraBank.getPositionInfo(
             homoraBankPosId

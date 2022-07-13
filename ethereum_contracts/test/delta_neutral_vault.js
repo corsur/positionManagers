@@ -4,7 +4,6 @@ const { ethers } = require("hardhat");
 const { homoraBankABI } = require('./abi/homoraBankABI.js');
 const { traderJoeSpellV3ABI } = require('./abi/traderJoeSpellV3ABI.js');
 const { wBoostedMasterChefJoeWorkerABI } = require('./abi/wBoostedMasterChefJoeWorker.js');
-
 const ERC20ABI = require('../data/abi/CErc20.json');
 
 const { 
@@ -13,16 +12,17 @@ const {
   WAVAX_TOKEN_ADDRESS,
   USDC_TOKEN_ADDRESS,
   MC_JOEV3_WAVAX_USDC_ADDRESS,
-} = require("./avax_constants");
+} = require("./avax_constants.js");
+const LP_TOKEN_ADDRESS = "0xf4003F4efBE8691B60249E6afbD307aBE7758adb";
 
 const provider = ethers.provider;
 const WAVAX = new ethers.Contract(WAVAX_TOKEN_ADDRESS, ERC20ABI, provider);
 const USDC = new ethers.Contract(USDC_TOKEN_ADDRESS, ERC20ABI, provider);
+const cToken = new ethers.Contract('0xEc5Aa19566Aa442C8C50f3C6734b6Bb23fF21CD7', ERC20ABI, provider);
 const homoraBank = new ethers.Contract(HOMORA_BANK_ADDRESS, homoraBankABI, provider);
 const spell = new ethers.Contract(TJ_SPELLV3_WAVAX_USDC_ADDRESS, traderJoeSpellV3ABI, provider);
 const wstaking = new ethers.Contract(MC_JOEV3_WAVAX_USDC_ADDRESS, wBoostedMasterChefJoeWorkerABI, provider);
-// const LP_TOKEN = spell.pairs(USDC_TOKEN, WETH_TOKEN);
-// const LP = new ethers.Contract(LP_TOKEN, ERC20ABI, provider);
+const LP = new ethers.Contract(LP_TOKEN_ADDRESS, ERC20ABI, provider);
 
 const mainWallet = new ethers.Wallet('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80', provider);
 
@@ -64,11 +64,9 @@ async function whitelistContract(contractAddressToWhitelist) {
 async function initialize(contract) {
   // Impersonate USDC holder.
   const signer = await getImpersonatedSigner('0x42d6ce661bb2e5f5cc639e7befe74ff9fd649541');
-  await USDC.connect(signer).transfer(wallets[0].address, 100000, txOptions);
-  await USDC.connect(signer).transfer(wallets[1].address, 100000, txOptions);
-
-  await USDC.connect(wallets[0]).approve(contract.address, 100000, txOptions);
-  await USDC.connect(wallets[1]).approve(contract.address, 100000, txOptions);
+  // Transfer 10000 USDC to wallets.
+  await USDC.connect(signer).transfer(wallets[0].address, 1e11, txOptions);
+  await USDC.connect(signer).transfer(wallets[1].address, 1e11, txOptions);
 }
 
 describe.only("DeltaNeutralVault Initialization", function() {
@@ -86,13 +84,21 @@ describe.only("DeltaNeutralVault Initialization", function() {
       txOptions
       );
     
-    
+    console.log(await homoraBank.getBankInfo(USDC_TOKEN_ADDRESS));
+    console.log(await cToken.balanceOf(HOMORA_BANK_ADDRESS));
     await whitelistContract(contract.address);
     await initialize(contract);
-    await contract.connect(wallets[0]).deposit(1000, 0, txOptions);
-    await contract.connect(wallets[1]).deposit(500, 0, txOptions);
 
-    await contract.connect(wallets[0]).withdraw(50000, txOptions);
+    const usdc_deposit_amount_0 = 100000e6;
+    const usdc_deposit_amount_1 = 500e6;
+
+    await USDC.connect(wallets[0]).approve(contract.address, usdc_deposit_amount_0*10, txOptions);
+    await USDC.connect(wallets[1]).approve(contract.address, usdc_deposit_amount_1*10, txOptions);
+    
+    await contract.connect(wallets[0]).deposit(usdc_deposit_amount_0, 0, txOptions);
+    await contract.connect(wallets[1]).deposit(usdc_deposit_amount_1, 0, txOptions);
+    
+    //await contract.connect(wallets[0]).withdraw(5000000, txOptions);
   });
 });
 
