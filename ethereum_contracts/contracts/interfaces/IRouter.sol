@@ -3,6 +3,7 @@ pragma solidity >=0.6.2;
 
 interface IRouter {
     function factory() external pure returns (address);
+    function WAVAX() external pure returns (address);
 
     function swapExactTokensForTokens(
         uint256 amountIn,
@@ -19,6 +20,13 @@ interface IRouter {
         address to,
         uint256 deadline
     ) external returns (uint256[] memory amounts);
+
+    function swapExactAVAXForTokens(
+        uint256 amountOutMin,
+        address[] calldata path,
+        address to,
+        uint256 deadline
+    ) external payable returns (uint256[] memory amounts);
 
     function quote(
         uint256 amountA,
