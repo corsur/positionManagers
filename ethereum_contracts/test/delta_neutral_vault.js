@@ -43,11 +43,13 @@ async function getImpersonatedSigner(accountToImpersonate) {
   return await ethers.getSigner(accountToImpersonate);
 }
 
-async function whitelistContract(contractAddressToWhitelist) {
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+
+async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
   // Get impersonatedSigner as governor of homoraBank contract.
   const homoraBankGovernor = await homoraBank.governor(txOptions);
   const signer = await getImpersonatedSigner(homoraBankGovernor);
-  
+
   // Transfer AVAX to the governor and check.
   await mainWallet.sendTransaction({
       to: homoraBankGovernor,
@@ -57,6 +59,10 @@ async function whitelistContract(contractAddressToWhitelist) {
 
   // Whitelist address and check.
   await homoraBank.connect(signer).setWhitelistUsers([contractAddressToWhitelist, ], [true,], txOptions);
+  // Set credit to 100,000 USDC and 5,000 WAVAX.
+  await homoraBank.connect(signer).setCreditLimits([[contractAddressToWhitelist, USDC_TOKEN_ADDRESS, 1e11, ZERO_ADDR], [contractAddressToWhitelist, WAVAX_TOKEN_ADDRESS, ethers.BigNumber.from('1000000000000000000000'), ZERO_ADDR], ], txOptions);
+  
+  // Check.
   let res = await homoraBank.whitelistedUsers(contractAddressToWhitelist, txOptions);
   expect(res).to.equal(true);
 }
@@ -67,9 +73,6 @@ async function initialize(contract) {
 
   await USDC.connect(signer).transfer(wallets[0].address, 1000 * 1e6, txOptions);
   await USDC.connect(signer).transfer(wallets[1].address, 1000 * 1e6, txOptions);
-
-  await USDC.connect(wallets[0]).approve(contract.address, 1000 * 1e6, txOptions);
-  await USDC.connect(wallets[1]).approve(contract.address, 1000 * 1e6, txOptions);
 
   // JOE holder
   // const signer = await getImpersonatedSigner('0x1a731b2299e22fbac282e7094eda41046343cb51');
@@ -94,7 +97,7 @@ describe.only("DeltaNeutralVault Initialization", function() {
       );
     
     
-    await whitelistContract(contract.address);
+    await whitelistContractAndAddCredit(contract.address);
     await initialize(contract);
     
     const usdc_deposit_amount_0 = 300 * 1e6;
@@ -106,9 +109,12 @@ describe.only("DeltaNeutralVault Initialization", function() {
     await contract.connect(wallets[0]).deposit(usdc_deposit_amount_0, 0, txOptions);
     // await contract.connect(wallets[1]).deposit(usdc_deposit_amount_1, 0, txOptions);
     //await contract.connect(wallets[0]).withdraw(5000000, txOptions);
-
+    
+    await contract.connect(wallets[0]).test(txOptions);
     await contract.connect(wallets[0]).rebalance(txOptions);
+    await contract.connect(wallets[0]).test(txOptions);
     await contract.connect(wallets[0]).reinvest(txOptions);
+    await contract.connect(wallets[0]).test(txOptions);
   });
 });
 
