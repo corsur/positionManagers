@@ -1419,7 +1419,38 @@ const homoraBankABI = [
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
-    }
+    },
+    {
+      "inputs": [
+          {
+              "components": [
+                  {
+                      "name": "contract_addr",
+                      "type": "address"
+                  },
+                  {
+                      "name": "borrow_token",
+                      "type": "address"
+                  },
+                  {
+                      "name": "limit_amount",
+                      "type": "uint256"
+                  },
+                  {
+                      "name": "ZERO_ADDR",
+                      "type": "address"
+                  }
+              ],
+              "name": "creditLimits",
+              "type": "tuple[]"
+          }
+      ],
+      "name": "setCreditLimits",
+      "outputs": [],
+      "payable": false,
+      "stateMutability": "nonpayable",
+      "type": "function"
+  }
   ];
 
   module.exports = { homoraBankABI };

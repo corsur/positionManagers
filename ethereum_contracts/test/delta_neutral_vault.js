@@ -5,6 +5,7 @@ const { homoraBankABI } = require('./abi/homoraBankABI.js');
 const { traderJoeSpellV3ABI } = require('./abi/traderJoeSpellV3ABI.js');
 const { wBoostedMasterChefJoeWorkerABI } = require('./abi/wBoostedMasterChefJoeWorker.js');
 const ERC20ABI = require('../data/abi/CErc20.json');
+const IERC20ABI = require('../data/abi/IERC20.json');
 
 const { 
   HOMORA_BANK_ADDRESS,
@@ -13,12 +14,13 @@ const {
   USDC_TOKEN_ADDRESS,
   MC_JOEV3_WAVAX_USDC_ADDRESS,
 } = require("./avax_constants.js");
+const { BigNumber } = require("ethers");
 const LP_TOKEN_ADDRESS = "0xf4003F4efBE8691B60249E6afbD307aBE7758adb";
 
 const provider = ethers.provider;
 const WAVAX = new ethers.Contract(WAVAX_TOKEN_ADDRESS, ERC20ABI, provider);
 const USDC = new ethers.Contract(USDC_TOKEN_ADDRESS, ERC20ABI, provider);
-const cToken = new ethers.Contract('0xEc5Aa19566Aa442C8C50f3C6734b6Bb23fF21CD7', ERC20ABI, provider);
+const cToken = new ethers.Contract('0xEc5Aa19566Aa442C8C50f3C6734b6Bb23fF21CD7', IERC20ABI, provider);
 const homoraBank = new ethers.Contract(HOMORA_BANK_ADDRESS, homoraBankABI, provider);
 const spell = new ethers.Contract(TJ_SPELLV3_WAVAX_USDC_ADDRESS, traderJoeSpellV3ABI, provider);
 const wstaking = new ethers.Contract(MC_JOEV3_WAVAX_USDC_ADDRESS, wBoostedMasterChefJoeWorkerABI, provider);
@@ -43,11 +45,13 @@ async function getImpersonatedSigner(accountToImpersonate) {
   return await ethers.getSigner(accountToImpersonate);
 }
 
-async function whitelistContract(contractAddressToWhitelist) {
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+
+async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
   // Get impersonatedSigner as governor of homoraBank contract.
   const homoraBankGovernor = await homoraBank.governor(txOptions);
   const signer = await getImpersonatedSigner(homoraBankGovernor);
-  
+
   // Transfer AVAX to the governor and check.
   await mainWallet.sendTransaction({
       to: homoraBankGovernor,
@@ -57,6 +61,10 @@ async function whitelistContract(contractAddressToWhitelist) {
 
   // Whitelist address and check.
   await homoraBank.connect(signer).setWhitelistUsers([contractAddressToWhitelist, ], [true,], txOptions);
+  // Set credit to 100,000 USDC and 5,000 WAVAX.
+  await homoraBank.connect(signer).setCreditLimits([[contractAddressToWhitelist, USDC_TOKEN_ADDRESS, 1e11, ZERO_ADDR], [contractAddressToWhitelist, WAVAX_TOKEN_ADDRESS, ethers.BigNumber.from('1000000000000000000000'), ZERO_ADDR], ], txOptions);
+  
+  // Check.
   let res = await homoraBank.whitelistedUsers(contractAddressToWhitelist, txOptions);
   expect(res).to.equal(true);
 }
@@ -83,20 +91,18 @@ describe.only("DeltaNeutralVault Initialization", function() {
       MC_JOEV3_WAVAX_USDC_ADDRESS,
       txOptions
       );
-    
-    console.log(await homoraBank.getBankInfo(USDC_TOKEN_ADDRESS));
-    console.log(await cToken.balanceOf(HOMORA_BANK_ADDRESS));
-    await whitelistContract(contract.address);
+
+    await whitelistContractAndAddCredit(contract.address);
     await initialize(contract);
 
-    const usdc_deposit_amount_0 = 100000e6;
+    const usdc_deposit_amount_0 = 1000e6;
     const usdc_deposit_amount_1 = 500e6;
 
     await USDC.connect(wallets[0]).approve(contract.address, usdc_deposit_amount_0*10, txOptions);
-    await USDC.connect(wallets[1]).approve(contract.address, usdc_deposit_amount_1*10, txOptions);
+    //await USDC.connect(wallets[1]).approve(contract.address, usdc_deposit_amount_1*10, txOptions);
     
     await contract.connect(wallets[0]).deposit(usdc_deposit_amount_0, 0, txOptions);
-    await contract.connect(wallets[1]).deposit(usdc_deposit_amount_1, 0, txOptions);
+    //await contract.connect(wallets[1]).deposit(usdc_deposit_amount_1, 0, txOptions);
     
     //await contract.connect(wallets[0]).withdraw(5000000, txOptions);
   });

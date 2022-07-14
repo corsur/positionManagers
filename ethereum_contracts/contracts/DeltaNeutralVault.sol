@@ -259,15 +259,14 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             uint256 _assetTokenAmount,
             uint256 _stableTokenBorrowAmount,
             uint256 _assetTokenBorrowAmount
-        ) = (_stableTokenDepositAmount, _assetTokenDepositAmount, 0, 0); // deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount);
+        ) = (_stableTokenDepositAmount, _assetTokenDepositAmount, _stableTokenDepositAmount, 0); // deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount);
         
-        if (homoraBankPosId != 0) _assetTokenBorrowAmount = 1;
         console.log(_stableTokenAmount, _assetTokenAmount, _stableTokenBorrowAmount, _assetTokenBorrowAmount);
         // Record original colletral size.
         (, , , uint256 originalCollSize) = homoraBank.getPositionInfo(
             homoraBankPosId
         );
-        
+
         // Approve HomoraBank transferring tokens.
         IERC20(stableToken).approve(address(homoraBank), 2**256 - 1);
         IERC20(assetToken).approve(address(homoraBank), 2**256 - 1);
@@ -309,6 +308,8 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             ],
             0
         );
+
+        console.logBytes(data1);
 
         uint res = IHomoraBank(homoraBank).execute(
             homoraBankPosId,
