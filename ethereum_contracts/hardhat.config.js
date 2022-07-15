@@ -8,6 +8,7 @@ const {
   INFURA_URL_RINKERBY,
   INFURA_URL_ROPSTEN,
   ALCHEMY_URL_MAINNET,
+  AVAX_MAINNET_FORK,
 } = require("./constants");
 
 // This is a sample Hardhat task. To learn how to create your own go to
@@ -39,10 +40,16 @@ module.exports = {
   },
   networks: {
     hardhat: {
+      // for avax
       forking: {
-        url: ALCHEMY_URL_MAINNET,
-        blockNumber: 15004700, // 14957690, // previously 14247160, modified to have block with known interest rate
-      }
+        url: AVAX_MAINNET_FORK,
+        blockNumber: 16681756,
+      },
+      // for ethereum
+      // forking: {
+      //   url: ALCHEMY_URL_MAINNET,
+      //   blockNumber: 15004700, // previously 14957690, 14247160
+      // }
     },
     ropsten: {
       url: INFURA_URL_ROPSTEN,
@@ -65,7 +72,7 @@ module.exports = {
   },
   abiExporter: {
     path: "./data/abi",
-    runOnCompile: true,
+    runOnCompile: false,
     clear: true,
     flat: true,
     spacing: 2,

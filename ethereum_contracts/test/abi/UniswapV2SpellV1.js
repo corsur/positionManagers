@@ -1,4 +1,4 @@
-const traderjoeABI = [
+const uniswapSpellABI = [
   {
     inputs: [
       {
@@ -12,18 +12,8 @@ const traderjoeABI = [
         type: "address",
       },
       {
-        internalType: "contract IJoeRouter02",
+        internalType: "contract IUniswapV2Router02",
         name: "_router",
-        type: "address",
-      },
-      {
-        internalType: "address",
-        name: "_wmasterchef",
-        type: "address",
-      },
-      {
-        internalType: "address",
-        name: "_fromWMasterchef",
         type: "address",
       },
     ],
@@ -67,25 +57,6 @@ const traderjoeABI = [
       },
     ],
     name: "SetPendingGovernor",
-    type: "event",
-  },
-  {
-    anonymous: false,
-    inputs: [
-      {
-        indexed: false,
-        internalType: "address",
-        name: "rewarder",
-        type: "address",
-      },
-      {
-        indexed: false,
-        internalType: "bool",
-        name: "status",
-        type: "bool",
-      },
-    ],
-    name: "SetWhitelistRewarder",
     type: "event",
   },
   {
@@ -150,7 +121,7 @@ const traderjoeABI = [
             type: "uint256",
           },
         ],
-        internalType: "struct TraderJoeSpellV3.Amounts",
+        internalType: "struct UniswapV2SpellV1.Amounts",
         name: "amt",
         type: "tuple",
       },
@@ -215,17 +186,17 @@ const traderjoeABI = [
             type: "uint256",
           },
         ],
-        internalType: "struct TraderJoeSpellV3.Amounts",
+        internalType: "struct UniswapV2SpellV1.Amounts",
         name: "amt",
         type: "tuple",
       },
       {
-        internalType: "uint256",
-        name: "pid",
-        type: "uint256",
+        internalType: "address",
+        name: "wstaking",
+        type: "address",
       },
     ],
-    name: "addLiquidityWMasterChef",
+    name: "addLiquidityWStakingRewards",
     outputs: [],
     stateMutability: "payable",
     type: "function",
@@ -281,19 +252,6 @@ const traderjoeABI = [
     type: "function",
   },
   {
-    inputs: [],
-    name: "fromWMasterchef",
-    outputs: [
-      {
-        internalType: "address",
-        name: "",
-        type: "address",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
     inputs: [
       {
         internalType: "address",
@@ -331,28 +289,14 @@ const traderjoeABI = [
     type: "function",
   },
   {
-    inputs: [],
-    name: "harvestWMasterChef",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "joe",
-    outputs: [
+    inputs: [
       {
         internalType: "address",
-        name: "",
+        name: "wstaking",
         type: "address",
       },
     ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "migrate",
+    name: "harvestWStakingRewards",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
@@ -522,7 +466,7 @@ const traderjoeABI = [
             type: "uint256",
           },
         ],
-        internalType: "struct TraderJoeSpellV3.RepayAmounts",
+        internalType: "struct UniswapV2SpellV1.RepayAmounts",
         name: "amt",
         type: "tuple",
       },
@@ -582,12 +526,17 @@ const traderjoeABI = [
             type: "uint256",
           },
         ],
-        internalType: "struct TraderJoeSpellV3.RepayAmounts",
+        internalType: "struct UniswapV2SpellV1.RepayAmounts",
         name: "amt",
         type: "tuple",
       },
+      {
+        internalType: "address",
+        name: "wstaking",
+        type: "address",
+      },
     ],
-    name: "removeLiquidityWMasterChef",
+    name: "removeLiquidityWStakingRewards",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
@@ -597,7 +546,7 @@ const traderjoeABI = [
     name: "router",
     outputs: [
       {
-        internalType: "contract IJoeRouter02",
+        internalType: "contract IUniswapV2Router02",
         name: "",
         type: "address",
       },
@@ -632,24 +581,6 @@ const traderjoeABI = [
       },
     ],
     name: "setWhitelistLPTokens",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "address[]",
-        name: "rewarders",
-        type: "address[]",
-      },
-      {
-        internalType: "bool[]",
-        name: "statuses",
-        type: "bool[]",
-      },
-    ],
-    name: "setWhitelistRewarders",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
@@ -719,41 +650,9 @@ const traderjoeABI = [
     type: "function",
   },
   {
-    inputs: [
-      {
-        internalType: "address",
-        name: "",
-        type: "address",
-      },
-    ],
-    name: "whitelistedRewarders",
-    outputs: [
-      {
-        internalType: "bool",
-        name: "",
-        type: "bool",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "wmasterchef",
-    outputs: [
-      {
-        internalType: "contract IWBoostedMasterChefJoeWorker",
-        name: "",
-        type: "address",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
     stateMutability: "payable",
     type: "receive",
   },
 ];
 
-module.exports = { traderjoeABI };
+module.exports = { uniswapSpellABI };

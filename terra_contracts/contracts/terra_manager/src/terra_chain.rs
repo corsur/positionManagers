@@ -25,9 +25,9 @@ pub fn add_strategy(
     version: String,
     manager_addr: String,
 ) -> StdResult<Response> {
-    if info.sender != ADMIN.load(deps.storage)? {
-        return Err(StdError::generic_err("unauthorized"));
-    }
+    ADMIN
+        .assert_admin(deps.as_ref(), &info.sender)
+        .map_err(|err| StdError::generic_err(err.to_string()))?;
 
     let strategy_id = NEXT_STRATEGY_ID.load(deps.storage)?;
     NEXT_STRATEGY_ID.save(deps.storage, &(strategy_id.checked_add(1u64.into())?))?;
@@ -48,10 +48,9 @@ pub fn remove_strategy(
     info: MessageInfo,
     strategy_id: Uint64,
 ) -> StdResult<Response> {
-    if info.sender != ADMIN.load(deps.storage)? {
-        return Err(StdError::generic_err("unauthorized"));
-    }
-
+    ADMIN
+        .assert_admin(deps.as_ref(), &info.sender)
+        .map_err(|err| StdError::generic_err(err.to_string()))?;
     STRATEGY_ID_TO_METADATA_MAP.remove(deps.storage, get_strategy_id_key(strategy_id));
     Ok(Response::default())
 }
@@ -181,7 +180,7 @@ pub fn create_execute_strategy_messages(
 
     // Validate & accept incoming asset transfer.
     let mut messages: Vec<CosmosMsg> = if let Some(info) = info {
-        validate_and_accept_incoming_asset_transfer(env, info, &assets)?
+        validate_and_accept_incoming_asset_transfer(deps, env, info, &assets)?
     } else {
         vec![]
     };
