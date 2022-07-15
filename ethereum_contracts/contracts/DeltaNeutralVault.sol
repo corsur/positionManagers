@@ -175,7 +175,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         );
     }
 
-    function currentDebtAmount() internal view returns (uint256, uint256) {
+    function currentDebtAmount() public view returns (uint256, uint256) {
         (address[] memory tokens, uint256[] memory debts) = homoraBank
             .getPositionDebts(homoraBankPosId);
         uint256 stableTokenDebtAmount = 0;
@@ -384,18 +384,16 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         bool isLeverageHealthy = false;
         bool isDebtRatioHealthy = false;
 
+        uint256 collateralSize = getCollateralSize();
+
         // 1. delta-neutrality check
-        (
-            uint256 stableTokenAmt,
-            uint256 assetTokenAmt
-        ) = convertCollateralToTokens();
-        (
-            uint256 stableTokenDebtAmt,
-            uint256 assetTokenDebtAmt
-        ) = currentDebtAmount();
+        (, uint256 assetTokenAmt) = convertCollateralToTokens(collateralSize);
+        (, uint256 assetTokenDebtAmt) = currentDebtAmount();
         if (_getOffset(assetTokenAmt, assetTokenDebtAmt) < dnThreshold) {
             isDeltaNeutral = true;
-            console.log("Is delta neutral");
+            console.log("Position is delta neutral");
+        } else {
+            console.log("Position is not delta neutral");
         }
 
         // 2. leverage check
@@ -413,19 +411,48 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             isDebtRatioHealthy = true;
         }
 
-        // if (isDeltaNeutral && isLeverageHealthy && isDebtRatioHealthy) {
-        //     revert DeltaNeutralVault_PositionsIsHealthy();
-        // }
+        if (isDeltaNeutral && isLeverageHealthy && isDebtRatioHealthy) {
+            revert DeltaNeutralVault_PositionsIsHealthy();
+        }
 
-        // execute rebalance
         console.log("Execute rebalance");
-        (, , , uint256 collateralSize) = homoraBank.getPositionInfo(
-            homoraBankPosId
-        );
-        uint256 stableTokenRepayAmt = stableTokenAmt > stableTokenDebtAmt ? stableTokenDebtAmt : stableTokenAmt;
-        uint256 assetTokenRepayAmt = assetTokenAmt > assetTokenDebtAmt ? assetTokenDebtAmt : assetTokenAmt;
 
-        // Encode the calling function.
+        // withdraw all lp tokens and repay all the debts
+        // here we withdraw 99.99% of the collateral to avoid (collateral credit < borrow credit)
+        _removeLiquidityInternal();
+
+        // swap reward tokens into stable tokens
+        _swapReward();
+
+        // reinvest
+        _reinvestInternal();
+
+        uint256 collateralAfter = getCollateralSize();
+
+        emit LogRebalance(collateralSize, collateralAfter);
+    }
+
+    /// @notice withdraw collateral tokens and repay the debt
+    function _removeLiquidityInternal() internal {
+        uint256 collateralSize = getCollateralSize();
+        uint256 collAmount = (collateralSize * 9999) / 10000;
+
+        (
+            uint256 stableTokenAmt,
+            uint256 assetTokenAmt
+        ) = convertCollateralToTokens(collAmount);
+        (
+            uint256 stableTokenDebtAmt,
+            uint256 assetTokenDebtAmt
+        ) = currentDebtAmount();
+
+        uint256 stableTokenRepayAmt = stableTokenAmt > stableTokenDebtAmt
+            ? stableTokenDebtAmt
+            : stableTokenAmt;
+        uint256 assetTokenRepayAmt = assetTokenAmt > assetTokenDebtAmt
+            ? assetTokenDebtAmt
+            : assetTokenAmt;
+
         bytes memory data = abi.encodeWithSelector(
             bytes4(
                 keccak256(
@@ -434,37 +461,14 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             ),
             stableToken,
             assetToken,
-            [
-                collateralSize,
-                0,
-                stableTokenRepayAmt,
-                assetTokenRepayAmt,
-                0,
-                0,
-                0
-            ]
+            [collAmount, 0, stableTokenRepayAmt, assetTokenRepayAmt, 0, 0, 0]
         );
-
-        // withdraw all lp tokens and repay all the debts
         homoraBank.execute(homoraBankPosId, spell, data);
-
-        // swap reward tokens into stable tokens
-        _swapReward();
-
-        // reinvest
-        _reinvestInternal();
-
-        (, , , uint256 collateralAfter) = homoraBank.getPositionInfo(
-            homoraBankPosId
-        );
-
-        emit LogRebalance(collateralSize, collateralAfter);
     }
 
     function reinvest() external {
-        (, , , uint256 equityBefore) = homoraBank.getPositionInfo(
-            homoraBankPosId
-        );
+        uint256 equityBefore = getCollateralSize();
+
         // 1. claim rewards
         _harvest();
         _swapReward();
@@ -472,9 +476,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         // 2. reinvest with the current balance
         _reinvestInternal();
 
-        (, , , uint256 equityAfter) = homoraBank.getPositionInfo(
-            homoraBankPosId
-        );
+        uint256 equityAfter = getCollateralSize();
         emit LogReinvest(equityBefore, equityAfter);
     }
 
@@ -625,7 +627,9 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     /// @notice Calculate the real time leverage and return the leverage, multiplied by 1e4
     function getLeverage() public view returns (uint256) {
         // 0: stableToken, 1: assetToken
-        (uint256 amount0, uint256 amount1) = convertCollateralToTokens();
+        (uint256 amount0, uint256 amount1) = convertCollateralToTokens(
+            getCollateralSize()
+        );
         (uint256 debtAmt0, uint256 debtAmt1) = currentDebtAmount();
         (uint256 reserve0, uint256 reserve1) = _getReserves();
 
@@ -637,21 +641,25 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         return (totalEquity * 10000) / (totalEquity - debtEquity);
     }
 
+    function getCollateralSize() public view returns (uint256) {
+        (, , , uint256 collateralSize) = homoraBank.getPositionInfo(
+            homoraBankPosId
+        );
+        return collateralSize;
+    }
+
     /// @notice Evalute the current collateral's amount in terms of 2 tokens
-    function convertCollateralToTokens()
+    function convertCollateralToTokens(uint256 collAmount)
         public
         view
         returns (uint256, uint256)
     {
         uint256 totalLPSupply = IERC20(address(pair)).totalSupply();
-        (, , , uint256 collateralSize) = homoraBank.getPositionInfo(
-            homoraBankPosId
-        );
 
         (uint256 reserve0, uint256 reserve1) = _getReserves();
 
-        uint256 amount0 = (collateralSize * reserve0) / totalLPSupply;
-        uint256 amount1 = (collateralSize * reserve1) / totalLPSupply;
+        uint256 amount0 = (collAmount * reserve0) / totalLPSupply;
+        uint256 amount1 = (collAmount * reserve1) / totalLPSupply;
         return (amount0, amount1);
     }
 
@@ -699,5 +707,15 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
 
     function getBalanceOf(address token) public view returns (uint256) {
         return IERC20(token).balanceOf(address(this));
+    }
+
+    function getEquivalentTokenB(uint256 amountA) external view returns (uint256) {
+        (uint256 reserve0, uint256 reserve1) = _getReserves();
+        return router.quote(amountA, reserve0, reserve1);
+    }
+
+    function getEquivalentTokenA(uint256 amountB) external view returns (uint256) {
+        (uint256 reserve0, uint256 reserve1) = _getReserves();
+        return router.quote(amountB, reserve1, reserve0);
     }
 }
