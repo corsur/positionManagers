@@ -72,7 +72,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     event LogReinvest(uint256 equityBefore, uint256 equityAfter);
 
     // --- error ---
-    error DeltaNeutralVault_PositionsIsHealthy();
+    error DeltaNeutralVault_PositionIsHealthy();
     error Insufficient_Liquidity_Mint();
 
     constructor(
@@ -412,7 +412,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         }
 
         if (isDeltaNeutral && isLeverageHealthy && isDebtRatioHealthy) {
-            revert DeltaNeutralVault_PositionsIsHealthy();
+            revert DeltaNeutralVault_PositionIsHealthy();
         }
 
         console.log("Execute rebalance");
@@ -509,9 +509,9 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         assetTokenBalance = IERC20(assetToken).balanceOf(address(this));
         avaxBalance = address(this).balance;
 
-        if (stableTokenBalance < 1000000) {
-            revert Insufficient_Liquidity_Mint();
-        }
+        (uint256 reserve0, ) = _getReserves();
+        uint256 liquidity = stableTokenBalance * leverageLevel / 2 * IERC20(lpToken).totalSupply() / reserve0;
+        require(liquidity > 0, "Insufficient liquidity minted");
 
         (
             uint256 _stableTokenAmount,
@@ -717,5 +717,13 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     function getEquivalentTokenA(uint256 amountB) external view returns (uint256) {
         (uint256 reserve0, uint256 reserve1) = _getReserves();
         return router.quote(amountB, reserve1, reserve0);
+    }
+
+    function getLiquidityMinted(uint256 amount0, uint256 amount1) public view returns (uint256) {
+        uint256 totalSupply = IERC20(lpToken).totalSupply();
+        (uint256 reserve0, uint256 reserve1) = _getReserves();
+        uint256 liquidity0 = amount0 * totalSupply / reserve0;
+        uint256 liquidity1 = amount1 * totalSupply / reserve1;
+        return liquidity0 > liquidity1 ? liquidity1 : liquidity0;
     }
 }
