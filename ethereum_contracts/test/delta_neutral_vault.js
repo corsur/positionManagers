@@ -73,7 +73,7 @@ async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
     to: homoraBankGovernor,
     value: ethers.utils.parseEther("100"),
   });
-  expect(await provider.getBalance(signer.address)).to.equal(BigInt(1e20));
+  // expect(await provider.getBalance(signer.address)).to.equal(BigInt(1e20));
 
   // Whitelist address and check.
   await homoraBank
@@ -120,74 +120,127 @@ async function initialize(contract) {
 }
 
 // testing function for rebalance()
-async function rebalanceTest(contract) {
-  const usdc_deposit_amount = 300 * 1e6;
+async function testRebalance(contract) {
+  const usdcDepositAmt = 300 * 1e6;
   await USDC.connect(wallets[0]).approve(
     contract.address,
-    usdc_deposit_amount * 10,
+    usdcDepositAmt * 10,
     txOptions
   );
 
   // deposit 300 USDC
-  await contract.connect(wallets[0]).deposit(usdc_deposit_amount, 0, txOptions);
+  await contract.connect(wallets[0]).deposit(usdcDepositAmt, 0, txOptions);
 
-  let usdc_expect = (300 * 1e6 * 3) / 2;
-  let wavax_expect = await contract
+  let usdcExpect = (300 * 1e6 * 3) / 2;
+  let wavaxExpect = await contract
     .connect(wallets[0])
-    .getEquivalentTokenB(usdc_expect, txOptions);
+    .getEquivalentTokenB(usdcExpect, txOptions);
 
   // check collateral
-  let collSize = await contract.connect(wallets[0]).getCollateralSize(txOptions);
-  let [usdc_hold, wavax_hold] = await contract
+  let collSize = await contract
+    .connect(wallets[0])
+    .getCollateralSize(txOptions);
+  let [usdcHold, wavaxHold] = await contract
     .connect(wallets[0])
     .convertCollateralToTokens(collSize, txOptions);
-  console.log("collateral: usdc: %d, wavax: %d", usdc_hold, wavax_hold);
-  console.log("    expect: usdc: %d, wavax: %d", usdc_expect, wavax_expect);
+  console.log("collateral: usdc: %d, wavax: %d", usdcHold, wavaxHold);
+  console.log("    expect: usdc: %d, wavax: %d", usdcExpect, wavaxExpect);
   assert(
-    Math.abs(usdc_expect - usdc_hold) / usdc_expect < 1e-6,
+    Math.abs(usdcExpect - usdcHold) / usdcExpect < 1e-6,
     "collateral USDC not equal to the expected amount"
   );
   assert(
-    Math.abs(wavax_expect - wavax_hold) / wavax_expect < 1e-6,
+    Math.abs(wavaxExpect - wavaxHold) / wavaxExpect < 1e-6,
     "collateral WAVAX not equal to the expected amount"
   );
 
   // check debt
-  let [usdc_debt, wavax_debt] = await contract
+  let [usdcDebt, wavaxDebt] = await contract
     .connect(wallets[0])
     .currentDebtAmount(txOptions);
-  let usdc_debt_expect = (300 * 1e6) / 2;
-  let wavax_debt_expect = wavax_expect;
-  console.log("current debt: usdc: %d, wavax: %d", usdc_debt, wavax_debt);
-  console.log(" expect debt: usdc: %d, wavax: %d", usdc_debt_expect, wavax_debt_expect);
+  let usdcDebtExpect = (300 * 1e6) / 2;
+  let wavaxDebtExpect = wavaxExpect;
+  console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
+  console.log(
+    " expect debt: usdc: %d, wavax: %d",
+    usdcDebtExpect,
+    wavaxDebtExpect
+  );
   assert(
-    Math.abs(usdc_debt_expect - usdc_debt) / usdc_debt_expect < 1e-6,
+    Math.abs(usdcDebtExpect - usdcDebt) / usdcDebtExpect < 1e-6,
     "USDC debt not equal to the expected amount"
   );
   assert(
-    Math.abs(wavax_debt_expect - wavax_debt) / wavax_debt_expect < 1e-6,
+    Math.abs(wavaxDebtExpect - wavaxDebt) / wavaxDebtExpect < 1e-6,
     "WAVAX debt not equal to the expected amount"
   );
 
   // check if position state is healthy (no need to rebalance)
-  try {
-    await contract.connect(wallets[0]).rebalance(txOptions);
-  } catch (err) {
-    console.log(err);
-  }
+  await expect(
+    contract.connect(wallets[0]).rebalance(txOptions)
+  ).to.be.revertedWith("DeltaNeutralVault_PositionIsHealthy");
 
   // set delta-neutral threshold to 0 to force executing rebalance
-  // await contract.connect(wallets[0]).setDNThreshold(0, txOptions);
+  console.log("Temporarily set delta-neutral offset threshold to 0");
+  await contract.connect(wallets[0]).setDNThreshold(0, txOptions);
+  await contract.connect(wallets[0]).rebalance(txOptions);
 
+  await contract.connect(wallets[0]).setDNThreshold(500, txOptions);
+  // check if position state is healthy after rebalance
+  await expect(
+    contract.connect(wallets[0]).rebalance(txOptions)
+  ).to.be.revertedWith("DeltaNeutralVault_PositionIsHealthy");
+}
+
+async function testReinvest(contract) {
+  const usdcDepositAmt = 300 * 1e6;
+  await USDC.connect(wallets[0]).approve(
+    contract.address,
+    usdcDepositAmt * 10,
+    txOptions
+  );
+
+  // deposit 300 USDC
+  await contract.connect(wallets[0]).deposit(usdcDepositAmt, 0, txOptions);
+
+  let collateralBefore = await contract
+    .connect(wallets[0])
+    .getCollateralSize(txOptions);
+
+  let reinvested = false;
+  try {
+    await contract.connect(wallets[0]).reinvest(txOptions);
+    reinvested = true;
+  } catch (err) {
+    await expect(
+      contract.connect(wallets[0]).reinvest(txOptions)
+    ).to.be.revertedWith("Insufficient liquidity minted");
+    reinvested = false;
+  }
+
+  let collateralAfter = await contract
+    .connect(wallets[0])
+    .getCollateralSize(txOptions);
+
+  console.log("Collateral before reinvest: %d", collateralBefore);
+  console.log("Collateral after reinvest: %d", collateralAfter);
+  if (reinvested) {
+    expect(collateralAfter > collateralBefore).to.equal(true);
+  } else {
+    expect(collateralAfter == collateralBefore).to.equal(true);
+  }
 }
 
 describe.only("DeltaNeutralVault Initialization", function () {
-  it("Initialize and whitelist DeltaNeutralVault contract", async function () {
+  var contractFactory = undefined;
+  var contract = undefined;
+
+  beforeEach("Setup before each test", async function() {
     // DeltaNeutralVault contract
-    const contractFactory = await ethers.getContractFactory(
+    contractFactory = await ethers.getContractFactory(
       "DeltaNeutralVault"
     );
-    const contract = await contractFactory
+    contract = await contractFactory
       .connect(mainWallet)
       .deploy(
         "WAVAX-USDC TraderJoe",
@@ -201,9 +254,20 @@ describe.only("DeltaNeutralVault Initialization", function () {
         WAVAX_USDC_POOL_ID,
         txOptions
       );
+  });
+
+  it("Initialize and whitelist DeltaNeutralVault contract", async function () {
     await whitelistContractAndAddCredit(contract.address);
     await initialize(contract);
+  });
 
-    await rebalanceTest(contract);
+  it("Deposit and test rebalance", async function () {
+    await whitelistContractAndAddCredit(contract.address);
+    await testRebalance(contract);
+  });
+
+  it("Deposit and test reinvest", async function () {
+    await whitelistContractAndAddCredit(contract.address);
+    await testReinvest(contract);
   });
 });
