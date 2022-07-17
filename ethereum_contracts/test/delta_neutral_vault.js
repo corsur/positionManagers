@@ -305,6 +305,7 @@ describe.only("DeltaNeutralVault Initialization", function () {
     contract = await contractFactory
       .connect(mainWallet)
       .deploy(
+        wallets[0].address,
         "WAVAX-USDC TraderJoe",
         "L3x-WAVAXUSDC-TJ1",
         USDC_TOKEN_ADDRESS,
@@ -330,5 +331,11 @@ describe.only("DeltaNeutralVault Initialization", function () {
 
   it("Deposit and test reinvest", async function () {
     await testReinvest(contract);
+  });
+
+  it("Should fail for doing unauthorized operations", async function () {
+    await expect(
+      contract.connect(mainWallet).setDNThreshold(0, txOptions)
+    ).to.be.revertedWith("unauthorized ops");
   });
 });

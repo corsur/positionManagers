@@ -21,9 +21,17 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         uint256 collShareAmount;
     }
 
+    // --- modifiers ---
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "unauthorized ops");
+        _;
+    }
+
+    // --- constants ---
     uint256 private constant _NO_ID = 0;
 
     // --- config ---
+    address public admin;
     address public stableToken;
     address public assetToken;
     address public spell;
@@ -66,6 +74,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     error Insufficient_Liquidity_Mint();
 
     constructor(
+        address _admin,
         string memory _name,
         string memory _symbol,
         address _stableToken,
@@ -76,6 +85,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         address _rewardToken,
         uint256 _pid
     ) ERC20(_name, _symbol) {
+        admin = _admin;
         stableToken = _stableToken;
         assetToken = _assetToken;
         homoraBank = IHomoraBank(_homoraBank);
@@ -104,20 +114,20 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     /// @notice Set target and maximum debt ratio
     /// @param targetR target ratio * 1e4
     /// @param maxR maximum ratio * 1e4
-    function setTargetRatio(uint256 targetR, uint256 maxR) public {
+    function setTargetRatio(uint256 targetR, uint256 maxR) public onlyAdmin {
         _TR = targetR;
         _MR = maxR;
     }
 
     /// @notice Set delta-neutral offset threshold
     /// @param threshold delta-neutral offset threshold * 1e4
-    function setDNThreshold(uint256 threshold) public {
+    function setDNThreshold(uint256 threshold) public onlyAdmin {
         dnThreshold = threshold;
     }
 
     /// @notice Set leverage offset threshold
     /// @param threshold leverage offset threshold * 1e4
-    function setLeverageThreshold(uint256 threshold) public {
+    function setLeverageThreshold(uint256 threshold) public onlyAdmin {
         leverageThreshold = threshold;
     }
 
@@ -187,8 +197,12 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         uint256 _assetTokenDepositAmount
     ) external payable nonReentrant {
         // Record the balance state before transfer fund.
-        uint256 stableTokenBalanceBefore = IERC20(stableToken).balanceOf(address(this));
-        uint256 assetTokenBalanceBefore = IERC20(assetToken).balanceOf(address(this));
+        uint256 stableTokenBalanceBefore = IERC20(stableToken).balanceOf(
+            address(this)
+        );
+        uint256 assetTokenBalanceBefore = IERC20(assetToken).balanceOf(
+            address(this)
+        );
         uint256 avaxBalanceBefore = address(this).balance;
 
         // Transfer user's deposit.
@@ -274,13 +288,15 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         // Return leftover funds to user.
         IERC20(stableToken).transfer(
             msg.sender,
-            IERC20(stableToken).balanceOf(address(this))-stableTokenBalanceBefore
+            IERC20(stableToken).balanceOf(address(this)) -
+                stableTokenBalanceBefore
         );
         IERC20(assetToken).transfer(
             msg.sender,
-            IERC20(assetToken).balanceOf(address(this))-assetTokenBalanceBefore
+            IERC20(assetToken).balanceOf(address(this)) -
+                assetTokenBalanceBefore
         );
-        payable(msg.sender).transfer(address(this).balance-avaxBalanceBefore);
+        payable(msg.sender).transfer(address(this).balance - avaxBalanceBefore);
 
         emit LogDeposit(msg.sender, collSize, collShareAmount);
     }
@@ -301,17 +317,21 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         _swapReward();
 
         // Record the balance state before remove liquidity.
-        uint256 stableTokenBalanceBefore = IERC20(stableToken).balanceOf(address(this));
-        uint256 assetTokenBalanceBefore = IERC20(assetToken).balanceOf(address(this));
+        uint256 stableTokenBalanceBefore = IERC20(stableToken).balanceOf(
+            address(this)
+        );
+        uint256 assetTokenBalanceBefore = IERC20(assetToken).balanceOf(
+            address(this)
+        );
         uint256 avaxBalanceBefore = address(this).balance;
 
         // Calculate collSize to withdraw.
         (, , , uint256 totalCollSize) = homoraBank.getPositionInfo(
             homoraBankPosId
         );
-        uint256 collWithdrawSize = withdrawShareAmount
-            .mul(totalCollSize)
-            .div(totalCollShareAmount);
+        uint256 collWithdrawSize = withdrawShareAmount.mul(totalCollSize).div(
+            totalCollShareAmount
+        );
 
         // Calculate debt to repay in two tokens.
         (
@@ -331,8 +351,12 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             [
                 collWithdrawSize,
                 0,
-                stableTokenDebtAmount.mul(collWithdrawSize).div(totalCollShareAmount),
-                assetTokenDebtAmount.mul(collWithdrawSize).div(totalCollShareAmount),
+                stableTokenDebtAmount.mul(collWithdrawSize).div(
+                    totalCollShareAmount
+                ),
+                assetTokenDebtAmount.mul(collWithdrawSize).div(
+                    totalCollShareAmount
+                ),
                 0,
                 0,
                 0
@@ -342,30 +366,31 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         homoraBank.execute(homoraBankPosId, spell, data);
 
         // Calculate.
-        uint256 stableTokenWithdrawAmount = IERC20(stableToken).balanceOf(
-            address(this)
-        ).sub(stableTokenBalanceBefore)
-        .add(
-            stableTokenBalanceBefore
-            .mul(withdrawShareAmount)
-            .div(totalCollShareAmount)
-        );
+        uint256 stableTokenWithdrawAmount = IERC20(stableToken)
+            .balanceOf(address(this))
+            .sub(stableTokenBalanceBefore)
+            .add(
+                stableTokenBalanceBefore.mul(withdrawShareAmount).div(
+                    totalCollShareAmount
+                )
+            );
 
-        uint256 assetTokenWithdrawAmount = IERC20(assetToken).balanceOf(
-            address(this)
-        ).sub(assetTokenBalanceBefore)
-        .add(
-            assetTokenBalanceBefore
-            .mul(withdrawShareAmount)
-            .div(totalCollShareAmount)
-        );
-        uint256 avaxWithdrawAmount = address(this).balance
-        .sub(avaxBalanceBefore)
-        .add(
-            avaxBalanceBefore
-            .mul(withdrawShareAmount)
-            .div(totalCollShareAmount)
-        );
+        uint256 assetTokenWithdrawAmount = IERC20(assetToken)
+            .balanceOf(address(this))
+            .sub(assetTokenBalanceBefore)
+            .add(
+                assetTokenBalanceBefore.mul(withdrawShareAmount).div(
+                    totalCollShareAmount
+                )
+            );
+        uint256 avaxWithdrawAmount = address(this)
+            .balance
+            .sub(avaxBalanceBefore)
+            .add(
+                avaxBalanceBefore.mul(withdrawShareAmount).div(
+                    totalCollShareAmount
+                )
+            );
 
         // Transfer fund to user (caller).
         IERC20(stableToken).transfer(msg.sender, stableTokenWithdrawAmount);
@@ -443,6 +468,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     /// @notice withdraw collateral tokens and repay the debt
     function _removeLiquidityInternal() internal {
         uint256 collateralSize = getCollateralSize();
+        // TODO: remove this hack after detailed math derivation is implemented.
         uint256 collAmount = (collateralSize * 9999) / 10000;
 
         (
@@ -518,7 +544,8 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         avaxBalance = address(this).balance;
 
         (uint256 reserve0, ) = _getReserves();
-        uint256 liquidity = stableTokenBalance * leverageLevel / 2 * IERC20(lpToken).totalSupply() / reserve0;
+        uint256 liquidity = (((stableTokenBalance * leverageLevel) / 2) *
+            IERC20(lpToken).totalSupply()) / reserve0;
         require(liquidity > 0, "Insufficient liquidity minted");
 
         (
@@ -717,21 +744,33 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         return IERC20(token).balanceOf(address(this));
     }
 
-    function getEquivalentTokenB(uint256 amountA) external view returns (uint256) {
+    function getEquivalentTokenB(uint256 amountA)
+        external
+        view
+        returns (uint256)
+    {
         (uint256 reserve0, uint256 reserve1) = _getReserves();
         return router.quote(amountA, reserve0, reserve1);
     }
 
-    function getEquivalentTokenA(uint256 amountB) external view returns (uint256) {
+    function getEquivalentTokenA(uint256 amountB)
+        external
+        view
+        returns (uint256)
+    {
         (uint256 reserve0, uint256 reserve1) = _getReserves();
         return router.quote(amountB, reserve1, reserve0);
     }
 
-    function getLiquidityMinted(uint256 amount0, uint256 amount1) public view returns (uint256) {
+    function getLiquidityMinted(uint256 amount0, uint256 amount1)
+        public
+        view
+        returns (uint256)
+    {
         uint256 totalSupply = IERC20(lpToken).totalSupply();
         (uint256 reserve0, uint256 reserve1) = _getReserves();
-        uint256 liquidity0 = amount0 * totalSupply / reserve0;
-        uint256 liquidity1 = amount1 * totalSupply / reserve1;
+        uint256 liquidity0 = (amount0 * totalSupply) / reserve0;
+        uint256 liquidity1 = (amount1 * totalSupply) / reserve1;
         return liquidity0 > liquidity1 ? liquidity1 : liquidity0;
     }
 }
