@@ -17,93 +17,6 @@ async function getImpersonatedSigner(addr) {
   return await ethers.getSigner(accountToImpersonate);
 }
 
-<<<<<<< HEAD
-describe.only("LendingOptimizer tests", function () {
-||||||| 5de0583
-async function deployLendingOptimizer(signer) {
-  const address = await signer.getAddress();
-  // console.log("Using impersonated wallet address:", address);
-
-  const LendingOptimizer = await ethers.getContractFactory(
-    "LendingOptimizer",
-    signer
-  );
-
-  const lendingOptimizer = await upgrades.deployProxy(
-    LendingOptimizer,
-    [
-      /*_cETHAddr=*/ "0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5",
-      /*_lendingPoolAddr=*/ "0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9",
-      /*_wethAddr=*/ "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-      /*_wethGatewayAddr=*/ "0xcc9a0B7c43DC2a5F023Bb9b738E45B0Ef6B06E04",
-    ], { unsafeAllow: ["delegatecall"], kind: "uups" }
-  );
-
-  await lendingOptimizer.deployed();
-
-  return lendingOptimizer;
-}
-
-async function testSupplyUsdcUsdt(addr, cAddr, aAddr, signer, lendingOptimizer) {
-  const amount = 1e6; // $1
-
-  const tokenContract = new ethers.Contract(addr, erc20ABI, signer);
-  const cTokenContract = new ethers.Contract(cAddr, cTokenAbi, signer);
-  const aTokenContract = new ethers.Contract(aAddr, aTokenAbi, signer);
-
-  const prevUserBalance = await tokenContract.balanceOf(signer.address);
-  const prevCompoundBalance = await tokenContract.balanceOf(CUSDC_ADDR);
-  const prevCTokenBalance = await cTokenContract.balanceOf(lendingOptimizer.address);
-  const prevAaveBalance = await tokenContract.balanceOf(AUSDC_ADDR);
-  const prevATokenBalance = await aTokenContract.balanceOf(lendingOptimizer.address);
-
-  await tokenContract.approve(lendingOptimizer.address, amount);
-  await lendingOptimizer.connect(signer).supply(addr, amount);
-
-  const userDelta = ((await tokenContract.balanceOf(signer.address)) - prevUserBalance) / 1e6;
-  expect(userDelta).to.equal(-1);
-
-  const compoundDelta = ((await tokenContract.balanceOf(CUSDC_ADDR)) - prevCompoundBalance) / 1e6;
-  const cTokenDelta = ((await cTokenContract.balanceOf(lendingOptimizer.address)) - prevCTokenBalance) * (await cTokenContract.callStatic.exchangeRateCurrent()) / 1e24;
-  const aaveDelta = ((await tokenContract.balanceOf(AUSDC_ADDR)) - prevAaveBalance) / 1e6;
-  const aTokenDelta = ((await aTokenContract.balanceOf(lendingOptimizer.address)) - prevATokenBalance) / 1e6;
-
-  if (signer.address == USDC_ADDR) {
-    // at block 14957690, compound interst rate was around 0.60% APY, aave was around 1.34% APY, date 6/13/2022
-    expect(compoundDelta).to.equal(0);
-    expect(cTokenDelta).to.equal(0);
-    expect(aaveDelta).to.equal(1);
-    expect(aTokenDelta).to.equal(1);
-  } else if (signer.address == /* USDT */ "0xdAC17F958D2ee523a2206206994597C13D831ec7") {
-    // at block 14957690, compound had higher APY than aave for USDT
-    expect(compoundDelta).to.equal(1);
-    expect(cTokenDelta).to.equal(1);
-    expect(aaveDelta).to.equal(0);
-    expect(aTokenDelta).to.equal(0);
-  }
-}
-
-async function testSupplyOtherErc20(addr, signer, lendingOptimizer) {
-  const tokenContract = new ethers.Contract(addr, erc20ABI, signer);
-  await tokenContract.approve(lendingOptimizer.address, 1e8);
-  await lendingOptimizer.connect(signer).supply(addr, 1e8);
-}
-
-async function testWithdrawErc20(addr, signer, lendingOptimizer) {
-  const tokenContract = new ethers.Contract(addr, erc20ABI, signer);
-
-  const prevUserBalance = await tokenContract.balanceOf(signer.address);
-
-  await tokenContract.approve(lendingOptimizer.address, 1e6);
-  await lendingOptimizer.connect(signer).supply(addr, 1e6);
-  await lendingOptimizer.connect(signer).withdraw(addr, 8015);
-
-  const userDelta = (prevUserBalance - (await tokenContract.balanceOf(signer.address))) / 1e6;
-  expect(userDelta).to.equal(0.1985);
-}
-
-describe.only("LendingOptimizer tests", function () {
-=======
 async function deployLendingOptimizer(signer) {
   const address = await signer.getAddress();
   // console.log("Using impersonated wallet address:", address);
@@ -187,7 +100,6 @@ async function testWithdrawErc20(addr, signer, lendingOptimizer) {
 }
 
 describe("LendingOptimizer tests", function () {
->>>>>>> 3675b891391a8e57f611cd7797af6e655c9dac88
   var owner = undefined;
   var user = undefined;
   var optimizer = undefined;

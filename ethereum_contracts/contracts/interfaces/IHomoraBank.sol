@@ -2,6 +2,7 @@
 pragma solidity ^0.8.13;
 
 interface IHomoraBank {
+
     function execute(
         uint256 positionId,
         address spell,
@@ -35,5 +36,5 @@ interface IHomoraBank {
         view
         returns (uint256);
 
-    function support(address token) external view returns (bool);
+    function accrue(address token) external;
 }

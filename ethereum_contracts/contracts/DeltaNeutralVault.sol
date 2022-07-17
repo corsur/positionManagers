@@ -14,19 +14,8 @@ import "./interfaces/IRouter.sol";
 import "./interfaces/IOracle.sol";
 import "./interfaces/ISpell.sol";
 
-// Is there some other way?
-library HomoraSafeMath {
-    using SafeMath for uint256;
-
-    /// @dev Computes round-up division.
-    function ceilDiv(uint256 a, uint256 b) internal pure returns (uint256) {
-        return a.add(b).sub(1).div(b);
-    }
-}
-
 contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     using SafeMath for uint256;
-    using HomoraSafeMath for uint256;
 
     struct Position {
         uint256 collShareAmount;
@@ -65,8 +54,9 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
     event LogWithdraw(
         address indexed _to,
         uint256 withdrawShareAmount,
-        uint256 stableTokenAmount,
-        uint256 assetTokenAmount
+        uint256 stableTokenWithdrawAmount,
+        uint256 assetTokenWithdrawAmount,
+        uint256 avaxWithdrawAmount
     );
     event LogRebalance(uint256 equityBefore, uint256 equityAfter);
     event LogReinvest(uint256 equityBefore, uint256 equityAfter);
@@ -196,6 +186,11 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         uint256 _stableTokenDepositAmount,
         uint256 _assetTokenDepositAmount
     ) external payable nonReentrant {
+        // Record the balance state before transfer fund.
+        uint256 stableTokenBalanceBefore = IERC20(stableToken).balanceOf(address(this));
+        uint256 assetTokenBalanceBefore = IERC20(assetToken).balanceOf(address(this));
+        uint256 avaxBalanceBefore = address(this).balance;
+
         // Transfer user's deposit.
         if (_stableTokenDepositAmount > 0)
             IERC20(stableToken).transferFrom(
@@ -215,7 +210,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             uint256 _assetTokenAmount,
             uint256 _stableTokenBorrowAmount,
             uint256 _assetTokenBorrowAmount
-        ) = deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount); // (_stableTokenDepositAmount, _assetTokenDepositAmount, 0, 0); //
+        ) = deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount);
 
         // Record original colletral size.
         (, , , uint256 originalCollSize) = homoraBank.getPositionInfo(
@@ -223,10 +218,10 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         );
 
         // Approve HomoraBank transferring tokens.
-        IERC20(stableToken).approve(address(homoraBank), 2**256 - 1);
-        IERC20(assetToken).approve(address(homoraBank), 2**256 - 1);
+        IERC20(stableToken).approve(address(homoraBank), _stableTokenAmount);
+        IERC20(assetToken).approve(address(homoraBank), _assetTokenAmount);
 
-        bytes memory data1 = abi.encodeWithSelector(
+        bytes memory data = abi.encodeWithSelector(
             bytes4(
                 keccak256(
                     "addLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256),uint256)"
@@ -250,7 +245,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         uint256 res = IHomoraBank(homoraBank).execute(
             homoraBankPosId,
             spell,
-            data1
+            data
         );
 
         if (homoraBankPosId == _NO_ID) {
@@ -268,7 +263,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         uint256 collSize = finalCollSize - originalCollSize;
         uint256 collShareAmount = originalCollSize == 0
             ? collSize
-            : collSize.mul(totalCollShareAmount).ceilDiv(originalCollSize);
+            : collSize.mul(totalCollShareAmount).div(originalCollSize);
 
         // Update vault position state.
         totalCollShareAmount += collShareAmount;
@@ -279,12 +274,14 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         // Return leftover funds to user.
         IERC20(stableToken).transfer(
             msg.sender,
-            IERC20(stableToken).balanceOf(address(this))
+            IERC20(stableToken).balanceOf(address(this))-stableTokenBalanceBefore
         );
         IERC20(assetToken).transfer(
             msg.sender,
-            IERC20(assetToken).balanceOf(address(this))
+            IERC20(assetToken).balanceOf(address(this))-assetTokenBalanceBefore
         );
+        payable(msg.sender).transfer(address(this).balance-avaxBalanceBefore);
+
         emit LogDeposit(msg.sender, collSize, collShareAmount);
     }
 
@@ -299,30 +296,28 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             "not enough share amount to withdraw"
         );
 
+        // Harvest reward token and swap to stable token.
+        _harvest();
+        _swapReward();
+
+        // Record the balance state before remove liquidity.
+        uint256 stableTokenBalanceBefore = IERC20(stableToken).balanceOf(address(this));
+        uint256 assetTokenBalanceBefore = IERC20(assetToken).balanceOf(address(this));
+        uint256 avaxBalanceBefore = address(this).balance;
+
         // Calculate collSize to withdraw.
         (, , , uint256 totalCollSize) = homoraBank.getPositionInfo(
             homoraBankPosId
         );
         uint256 collWithdrawSize = withdrawShareAmount
             .mul(totalCollSize)
-            .ceilDiv(totalCollShareAmount);
-
-        (uint256 reserve0, ) = _getReserves();
-        uint256 stableWithdrawAmount = reserve0.mul(collWithdrawSize).div(
-            IERC20(lpToken).totalSupply()
-        );
+            .div(totalCollShareAmount);
 
         // Calculate debt to repay in two tokens.
         (
             uint256 stableTokenDebtAmount,
             uint256 assetTokenDebtAmount
         ) = currentDebtAmount();
-        uint256 stableTokenRepayAmount = stableTokenDebtAmount
-            .mul(collWithdrawSize)
-            .ceilDiv(totalCollShareAmount);
-        uint256 assetTokenRepayAmount = assetTokenDebtAmount
-            .mul(collWithdrawSize)
-            .ceilDiv(totalCollShareAmount);
 
         // Encode removeLiqiduity call.
         bytes memory data = abi.encodeWithSelector(
@@ -336,8 +331,8 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             [
                 collWithdrawSize,
                 0,
-                stableTokenRepayAmount,
-                assetTokenRepayAmount,
+                stableTokenDebtAmount.mul(collWithdrawSize).div(totalCollShareAmount),
+                assetTokenDebtAmount.mul(collWithdrawSize).div(totalCollShareAmount),
                 0,
                 0,
                 0
@@ -346,24 +341,36 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
 
         homoraBank.execute(homoraBankPosId, spell, data);
 
+        // Calculate.
         uint256 stableTokenWithdrawAmount = IERC20(stableToken).balanceOf(
             address(this)
+        ).sub(stableTokenBalanceBefore)
+        .add(
+            stableTokenBalanceBefore
+            .mul(withdrawShareAmount)
+            .div(totalCollShareAmount)
         );
+
         uint256 assetTokenWithdrawAmount = IERC20(assetToken).balanceOf(
             address(this)
+        ).sub(assetTokenBalanceBefore)
+        .add(
+            assetTokenBalanceBefore
+            .mul(withdrawShareAmount)
+            .div(totalCollShareAmount)
         );
-        uint256 ethWithdrawAmount = address(this).balance;
+        uint256 avaxWithdrawAmount = address(this).balance
+        .sub(avaxBalanceBefore)
+        .add(
+            avaxBalanceBefore
+            .mul(withdrawShareAmount)
+            .div(totalCollShareAmount)
+        );
 
-        // Return withdraw funds to user.
+        // Transfer fund to user (caller).
         IERC20(stableToken).transfer(msg.sender, stableTokenWithdrawAmount);
         IERC20(assetToken).transfer(msg.sender, assetTokenWithdrawAmount);
-
-        console.log(
-            collWithdrawSize,
-            stableTokenWithdrawAmount,
-            assetTokenWithdrawAmount,
-            ethWithdrawAmount
-        );
+        payable(msg.sender).transfer(avaxWithdrawAmount);
 
         // Update position info.
         positions[msg.sender].collShareAmount -= withdrawShareAmount;
@@ -374,7 +381,8 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             msg.sender,
             withdrawShareAmount,
             stableTokenWithdrawAmount,
-            assetTokenWithdrawAmount
+            assetTokenWithdrawAmount,
+            avaxWithdrawAmount
         );
     }
 

@@ -1,4 +1,5 @@
 const { expect, assert } = require("chai");
+const { BigNumber } = require("ethers");
 const { ethers } = require("hardhat");
 
 const { homoraBankABI } = require("./abi/homoraBankABI.js");
@@ -27,6 +28,7 @@ const homoraBank = new ethers.Contract(
   homoraBankABI,
   provider
 );
+const leverageLevel = 3;
 
 const mainWallet = new ethers.Wallet(
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
@@ -79,6 +81,12 @@ async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
   await homoraBank
     .connect(signer)
     .setWhitelistUsers([contractAddressToWhitelist], [true], txOptions);
+  let res = await homoraBank.whitelistedUsers(
+    contractAddressToWhitelist,
+    txOptions
+  );
+  expect(res).to.equal(true);
+
   // Set credit to 100,000 USDC and 5,000 WAVAX.
   await homoraBank.connect(signer).setCreditLimits(
     [
@@ -92,13 +100,6 @@ async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
     ],
     txOptions
   );
-
-  // Check.
-  let res = await homoraBank.whitelistedUsers(
-    contractAddressToWhitelist,
-    txOptions
-  );
-  expect(res).to.equal(true);
 }
 
 async function initialize(contract) {
@@ -231,15 +232,76 @@ async function testReinvest(contract) {
   }
 }
 
+async function testDepositAndWithdraw(contract) {
+  const usdcDepositAmount0 = 1000e6;
+  const usdcDepositAmount1 = 500e6;
+
+  // Deposit 1000 USDC to vault from wallet 0.
+  await USDC.connect(wallets[0]).approve(contract.address, usdcDepositAmount0);
+  await contract.connect(wallets[0]).deposit(usdcDepositAmount0, 0, txOptions);
+
+  // Deposit 500 USDC to vault from wallet 1.
+  await USDC.connect(wallets[1]).approve(contract.address, usdcDepositAmount1);
+  await contract.connect(wallets[1]).deposit(usdcDepositAmount1, 0, txOptions);
+
+  // Check whether it initiates a position in HomoraBank.
+  var homoraBankPosId = (await contract.homoraBankPosId()).toNumber();
+  expect(homoraBankPosId).not.to.equal(0);
+
+  // Check whether the vault contract is the owner of the HomoraBank position.
+  var res = await homoraBank.getPositionInfo(homoraBankPosId);
+  expect(res.owner).to.equal(contract.address);
+
+  // Colletral size of each wallet.
+  var totalCollateralSize = res.collateralSize;
+  var totalShareAmount = await contract.totalCollShareAmount();
+  var shareAmount0 = await contract.positions(wallets[0].address);
+  var shareAmount1 = await contract.positions(wallets[1].address);
+  var collSize0 = shareAmount0.mul(totalCollateralSize).div(totalShareAmount);
+  var collSize1 = shareAmount1.mul(totalCollateralSize).div(totalShareAmount);
+
+  [usdcAmount0, wavaxAmount0] = await contract.convertCollateralToTokens(
+    collSize0
+  );
+  [usdcAmount1, wavaxAmount1] = await contract.convertCollateralToTokens(
+    collSize1
+  );
+
+  var totalAmount0InUsdc = usdcAmount0.add(
+    await contract.getEquivalentTokenA(wavaxAmount0)
+  );
+  var totalAmount1InUsdc = usdcAmount1.add(
+    await contract.getEquivalentTokenA(wavaxAmount1)
+  );
+
+  expect(totalAmount0InUsdc).to.be.closeTo(
+    BigNumber.from(usdcDepositAmount0 * leverageLevel),
+    100
+  );
+  expect(totalAmount1InUsdc).to.be.closeTo(
+    BigNumber.from(usdcDepositAmount1 * leverageLevel),
+    100
+  );
+
+  // Withdraw half amount from vault for wallet 0.
+  var withdrawAmount0 = shareAmount0.div(2);
+  var usdcBalance0 = await USDC.balanceOf(wallets[0].address);
+  await contract.connect(wallets[0]).withdraw(withdrawAmount0, txOptions);
+  var withdrawUsdcAmount0 =
+    (await USDC.balanceOf(wallets[0].address)) - usdcBalance0;
+  expect(withdrawUsdcAmount0).to.be.closeTo(
+    BigNumber.from(usdcDepositAmount0).div(2),
+    100
+  );
+}
+
 describe.only("DeltaNeutralVault Initialization", function () {
   var contractFactory = undefined;
   var contract = undefined;
 
-  beforeEach("Setup before each test", async function() {
+  beforeEach("Setup before each test", async function () {
     // DeltaNeutralVault contract
-    contractFactory = await ethers.getContractFactory(
-      "DeltaNeutralVault"
-    );
+    contractFactory = await ethers.getContractFactory("DeltaNeutralVault");
     contract = await contractFactory
       .connect(mainWallet)
       .deploy(
@@ -254,20 +316,19 @@ describe.only("DeltaNeutralVault Initialization", function () {
         WAVAX_USDC_POOL_ID,
         txOptions
       );
-  });
-
-  it("Initialize and whitelist DeltaNeutralVault contract", async function () {
     await whitelistContractAndAddCredit(contract.address);
     await initialize(contract);
   });
 
+  it("DeltaNeutralVault DepositAndWithdraw", async function () {
+    await testDepositAndWithdraw(contract);
+  });
+
   it("Deposit and test rebalance", async function () {
-    await whitelistContractAndAddCredit(contract.address);
     await testRebalance(contract);
   });
 
   it("Deposit and test reinvest", async function () {
-    await whitelistContractAndAddCredit(contract.address);
     await testReinvest(contract);
   });
 });
