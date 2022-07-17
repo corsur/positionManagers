@@ -2,6 +2,7 @@ require("@nomiclabs/hardhat-waffle");
 require("@openzeppelin/hardhat-upgrades");
 require("hardhat-gas-reporter");
 require("hardhat-abi-exporter");
+require("hardhat-contract-sizer");
 
 const {
   ETH_PRV_KEY_1,
@@ -29,7 +30,7 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  */
 module.exports = {
   solidity: {
-    version: "0.8.13",
+    version: "0.8.9",
     settings: {
       optimizer: {
         enabled: true,

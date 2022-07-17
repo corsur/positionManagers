@@ -1,0 +1,10 @@
+[
+  "constructor()",
+  "event OwnershipTransferred(address indexed,address indexed)",
+  "function owner() view returns (address)",
+  "function renounceOwnership()",
+  "function simulateSwapToken(address,address,uint256) view returns (uint256)",
+  "function swapToken(address,address,uint256,uint256,address) returns (uint256)",
+  "function transferOwnership(address)",
+  "function updateCurveSwapRoute(address,address,tuple(address,int128,int128,bool)[],address[])"
+]

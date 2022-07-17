@@ -1,0 +1,6 @@
+[
+  "function addLiquidity(address,address,uint256,uint256,uint256,uint256,address,uint256) returns (uint256, uint256, uint256)",
+  "function removeLiquidity(address,address,uint256,uint256,uint256,address,uint256) returns (uint256, uint256)",
+  "function swapExactTokensForETH(uint256,uint256,address[],address,uint256) returns (uint256[])",
+  "function swapExactTokensForTokens(uint256,uint256,address[],address,uint256) returns (uint256[])"
+]

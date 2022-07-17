@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.13;
+pragma solidity >=0.8.0 <0.9.0;
 
 import "hardhat/console.sol";
 
@@ -10,43 +10,10 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "contracts/interfaces/ICurve.sol";
-import "contracts/interfaces/IWormhole.sol";
-import "contracts/libraries/BytesLib.sol";
-
-struct StoredPositionInfo {
-    address ownerAddr;
-    uint16 strategyChainId;
-    uint64 strategyId;
-}
-
-// Only used by the getPositions() view function.
-struct PositionInfo {
-    uint128 positionId; // The EVM position id.
-    uint16 chainId; // Chain id, following Wormhole's design.
-}
-
-struct Config {
-    uint32 crossChainFeeBPS; // Cross-chain fee in bpq.
-    address feeSink; // Fee collecting address.
-}
-
-struct AssetInfo {
-    address assetAddr; // The ERC20 address.
-    uint256 amount;
-}
-
-// Information on a single swap with a Curve pool.
-struct CurveSwapOperation {
-    // Curve pool address.
-    address pool;
-    // Index of the token in the pool to be swapped.
-    int128 from_index;
-    // Index of the token in the pool to be returned.
-    int128 to_index;
-    // If true, use exchange_underlying(); otherwise, use exchange().
-    bool underlying;
-}
+import "./interfaces/IWormhole.sol";
+import "./libraries/BytesLib.sol";
+import "./interfaces/ICurveSwap.sol";
+import "./interfaces/IEthereumManager.sol";
 
 contract EthereumManager is
     Initializable,
@@ -80,6 +47,8 @@ contract EthereumManager is
     address public WORMHOLE_TOKEN_BRIDGE;
     // Address of the Wormhole core bridge contract.
     address public WORMHOLE_CORE_BRIDGE;
+    // Address of the Curve swap router contract.
+    address public CURVE_SWAP;
     // Consistency level for published Aperture instruction message via Wormhole core bridge.
     // The number of blocks to wait before Wormhole guardians consider a published message final.
     uint8 public CONSISTENCY_LEVEL;
@@ -88,20 +57,18 @@ contract EthereumManager is
     // Where fee is sent.
     address public FEE_SINK;
 
-    // Position ids for Ethereum.
+    // Information about positions held by users of this chain.
     uint128 public nextPositionId;
-
-    mapping(uint16 => bytes32) public chainIdToApertureManager;
-
-    // The array curveSwapRoutes[from_token][to_token] stores Curve swap operations that achieve the exchange from `from_token` to `to_token`.
-    mapping(address => mapping(address => CurveSwapOperation[]))
-        private curveSwapRoutes;
-
-    // Stored position info by position id.
     mapping(uint128 => StoredPositionInfo) public positionIdToInfo;
+
+    mapping(uint16 => bytes32) public chainIdToApertureManager;    
 
     // Hashes of processed incoming Aperture instructions are stored in this mapping.
     mapping(bytes32 => bool) public processedInstructions;
+
+    // Infomation about strategies managed by this Aperture manager.
+    uint64 public nextStrategyId;
+    mapping(uint64 => StrategyMetadata) public strategyIdToMetadata;
 
     modifier onlyPositionOwner(uint128 positionId) {
         require(positionIdToInfo[positionId].ownerAddr == msg.sender);
@@ -114,7 +81,8 @@ contract EthereumManager is
         uint8 _consistencyLevel,
         address _wormholeTokenBridge,
         uint32 _crossChainFeeBPS,
-        address _feeSink
+        address _feeSink,
+        address _curveSwap
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
@@ -128,10 +96,24 @@ contract EthereumManager is
         );
         CROSS_CHAIN_FEE_BPS = _crossChainFeeBPS;
         FEE_SINK = _feeSink;
+        CURVE_SWAP = _curveSwap;
     }
 
     // Only owner of this logic contract can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    function addStrategy(
+        string calldata _name,
+        string calldata _version,
+        address _manager
+    ) external onlyOwner {
+        uint64 strategyId = nextStrategyId++;
+        strategyIdToMetadata[strategyId] = StrategyMetadata(_name, _version, _manager);
+    }
+
+    function removeStrategy(uint64 _strategyId) external onlyOwner {
+        delete strategyIdToMetadata[_strategyId];
+    }
 
     function updateCrossChainFeeBPS(uint32 crossChainFeeBPS)
         external
@@ -168,116 +150,6 @@ contract EthereumManager is
         isTokenWhitelistedForStrategy[chainId][strategyId][
             tokenAddress
         ] = isWhitelisted;
-    }
-
-    // Owner-only.
-    // Updates the Curve swap route for `fromToken` to `toToken` with `route`.
-    // The array `tokens` should comprise all tokens on `route` except for `toToken`.
-    // Each element of `tokens` needs to be swapped for another token through some Curve pool, so we need to allow the pool to transfer the corresponding token from this contract.
-    //
-    // Examples:
-    // (1) BUSD -> whUST route: [[CURVE_BUSD_3CRV_POOL_ADDR, 0, 1, false], [CURVE_WHUST_3CRV_POOL_ADDR, 1, 0, false]];
-    //     tokens: [BUSD_TOKEN_ADDR, 3CRV_TOKEN_ADDR];
-    //     The first exchange: BUSD -> 3Crv using the BUSD-3Crv pool;
-    //     The second exchange: 3Crv -> whUST using the whUST-3Crv pool.
-    // (2) USDC -> whUST route: [[CURVE_WHUST_3CRV_POOL_ADDR, 2, 0, true]];
-    //     tokens: [USDC_TOKEN_ADDR];
-    //     The only underlying exchange: USDC -> whUST using the whUST-3Crv pool's exchange_underlying() function.
-    function updateCurveSwapRoute(
-        address fromToken,
-        address toToken,
-        CurveSwapOperation[] calldata route,
-        address[] calldata tokens
-    ) external onlyOwner {
-        require(route.length > 0 && route.length == tokens.length);
-        for (uint256 i = 0; i < route.length; i++) {
-            if (
-                IERC20(tokens[i]).allowance(address(this), route[i].pool) == 0
-            ) {
-                IERC20(tokens[i]).safeIncreaseAllowance(
-                    route[i].pool,
-                    type(uint256).max
-                );
-            }
-        }
-        CurveSwapOperation[] storage storage_route = curveSwapRoutes[fromToken][
-            toToken
-        ];
-        if (storage_route.length != 0) {
-            delete curveSwapRoutes[fromToken][toToken];
-        }
-        for (uint256 i = 0; i < route.length; ++i) {
-            storage_route.push(route[i]);
-        }
-    }
-
-    // Swaps `fromToken` in the amount of `amount` to `toToken`.
-    // Revert if the output amount is less `minAmountOut`.
-    // Returns the output amount.
-    //
-    // Note that `curveSwapRoutes` also acts as a whitelist on `fromToken`.
-    // That is to say, if a swap route is not set for `fromToken` -> `toToken`, then this function reverts
-    // without calling ` IERC20(fromToken).safeTransferFrom()`.
-    // This prevents re-entrancy attacks due to malicious `fromToken` contracts.
-    function swapToken(
-        address fromToken,
-        address toToken,
-        uint256 amount,
-        uint256 minAmountOut
-    ) internal returns (uint256) {
-        CurveSwapOperation[] memory route = curveSwapRoutes[fromToken][toToken];
-        require(route.length > 0, "Swap route does not exist");
-
-        for (uint256 i = 0; i < route.length; i++) {
-            if (route[i].underlying) {
-                amount = ICurve(route[i].pool).exchange_underlying(
-                    route[i].from_index,
-                    route[i].to_index,
-                    amount,
-                    0
-                );
-            } else {
-                amount = ICurve(route[i].pool).exchange(
-                    route[i].from_index,
-                    route[i].to_index,
-                    amount,
-                    0
-                );
-            }
-        }
-
-        require(
-            amount >= minAmountOut,
-            "Output token amount less than specified minimum"
-        );
-        return amount;
-    }
-
-    // Simulates the swap from `amount` amount of `fromToken` to `toToken` and returns the output amount.
-    // Note that this function chains together simulations of Curve pool exchanges; assumes that each Curve pool exchange does not have any side effects on subsequent exchanges.
-    function simulateSwapToken(
-        address fromToken,
-        address toToken,
-        uint256 amount
-    ) public view returns (uint256) {
-        CurveSwapOperation[] memory route = curveSwapRoutes[fromToken][toToken];
-        require(route.length > 0, "Swap route does not exist");
-        for (uint256 i = 0; i < route.length; i++) {
-            if (route[i].underlying) {
-                amount = ICurve(route[i].pool).get_dy_underlying(
-                    route[i].from_index,
-                    route[i].to_index,
-                    amount
-                );
-            } else {
-                amount = ICurve(route[i].pool).get_dy(
-                    route[i].from_index,
-                    route[i].to_index,
-                    amount
-                );
-            }
-        }
-        return amount;
     }
 
     function validateAndTransferAssetFromSender(
@@ -413,13 +285,20 @@ contract EthereumManager is
             strategyId,
             assetInfos
         );
-        publishPositionOpenInstruction(
-            strategyChainId,
-            strategyId,
-            positionId,
-            assetInfos,
-            encodedPositionOpenData
-        );
+        if (
+            strategyChainId !=
+            WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).chainId()
+        ) {
+            publishPositionOpenInstruction(
+                strategyChainId,
+                strategyId,
+                positionId,
+                assetInfos,
+                encodedPositionOpenData
+            );
+        } else {
+            StrategyMetadata memory strategy = strategyIdToMetadata[strategyId];
+        }
     }
 
     function swapTokenAndCreatePosition(
@@ -436,22 +315,30 @@ contract EthereumManager is
             "toToken not allowed"
         );
         uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
-        IERC20(fromToken).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 toTokenAmount = swapToken(
+        IERC20(fromToken).safeTransferFrom(msg.sender, CURVE_SWAP, amount);
+        uint256 toTokenAmount = ICurveSwap(CURVE_SWAP).swapToken(
             fromToken,
             toToken,
             amount,
-            minAmountOut
+            minAmountOut,
+            address(this)
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
         assetInfos[0] = AssetInfo(toToken, toTokenAmount);
-        publishPositionOpenInstruction(
-            strategyChainId,
-            strategyId,
-            positionId,
-            assetInfos,
-            encodedPositionOpenData
-        );
+        if (
+            strategyChainId !=
+            WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).chainId()
+        ) {
+            publishPositionOpenInstruction(
+                strategyChainId,
+                strategyId,
+                positionId,
+                assetInfos,
+                encodedPositionOpenData
+            );
+        } else {
+            StrategyMetadata memory strategy = strategyIdToMetadata[strategyId];
+        }
     }
 
     function publishExecuteStrategyInstruction(
@@ -501,11 +388,12 @@ contract EthereumManager is
         bytes calldata encodedActionData
     ) external onlyPositionOwner(positionId) {
         IERC20(fromToken).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 toTokenAmount = swapToken(
+        uint256 toTokenAmount = ICurveSwap(CURVE_SWAP).swapToken(
             fromToken,
             toToken,
             amount,
-            minAmountOut
+            minAmountOut,
+            address(this)
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
         assetInfos[0] = AssetInfo(toToken, toTokenAmount);
@@ -680,25 +568,26 @@ contract EthereumManager is
                 "invalid instruction payload"
             );
 
-            // Perform swap if the output amount meets the required threshold.
-            uint256 simulatedOutputAmount = simulateSwapToken(
-                tokenAddress,
-                desiredTokenAddress,
-                tokenAmount
-            );
+            // Swap and disburse if the output amount meets the required threshold.
+            uint256 simulatedOutputAmount = ICurveSwap(CURVE_SWAP)
+                .simulateSwapToken(
+                    tokenAddress,
+                    desiredTokenAddress,
+                    tokenAmount
+                );
             if (simulatedOutputAmount >= minOutputAmount) {
-                uint256 actualOutputAmount = swapToken(
+                ICurveSwap(CURVE_SWAP).swapToken(
                     tokenAddress,
                     desiredTokenAddress,
                     tokenAmount,
-                    minOutputAmount
+                    minOutputAmount,
+                    recipient
                 );
-                tokenAddress = desiredTokenAddress;
-                tokenAmount = actualOutputAmount;
+                return;
             }
         }
 
-        // Disburse to the recipient.
+        // No swap has been performed; disburse the original token directly to the recipient.
         SafeERC20.safeTransfer(IERC20(tokenAddress), recipient, tokenAmount);
     }
 
