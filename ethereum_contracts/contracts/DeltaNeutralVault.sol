@@ -29,6 +29,9 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
 
     // --- constants ---
     uint256 private constant _NO_ID = 0;
+    uint256 private constant MAX_UINT256 = 2**256 - 1;
+    bytes private constant HARVEST_DATA =
+        abi.encodeWithSelector(bytes4(keccak256("harvestWMasterChef()")));
 
     // --- config ---
     address public admin;
@@ -226,7 +229,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             uint256 _assetTokenBorrowAmount
         ) = deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount);
 
-        // Record original colletral size.
+        // Record original collateral size.
         (, , , uint256 originalCollSize) = homoraBank.getPositionInfo(
             homoraBankPosId
         );
@@ -256,15 +259,11 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
             pid
         );
 
-        uint256 res = IHomoraBank(homoraBank).execute(
+        homoraBankPosId = IHomoraBank(homoraBank).execute(
             homoraBankPosId,
             spell,
             data
         );
-
-        if (homoraBankPosId == _NO_ID) {
-            homoraBankPosId = res;
-        }
 
         // Cancel HomoraBank's allowance.
         IERC20(stableToken).approve(address(homoraBank), 0);
@@ -365,7 +364,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
 
         homoraBank.execute(homoraBankPosId, spell, data);
 
-        // Calculate.
+        // Calculate token disbursement amount.
         uint256 stableTokenWithdrawAmount = IERC20(stableToken)
             .balanceOf(address(this))
             .sub(stableTokenBalanceBefore)
@@ -516,10 +515,7 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
 
     /// @notice harvest rewards
     function _harvest() internal {
-        bytes memory data = abi.encodeWithSelector(
-            bytes4(keccak256("harvestWMasterChef()"))
-        );
-        homoraBank.execute(homoraBankPosId, spell, data);
+        homoraBank.execute(homoraBankPosId, spell, HARVEST_DATA);
     }
 
     /// @notice reinvest with the current balance
@@ -556,8 +552,8 @@ contract DeltaNeutralVault is ERC20, ReentrancyGuard {
         ) = deltaNeutral(stableTokenBalance, assetTokenBalance); // (stableTokenBalance, 0, 0, 0); //
 
         // Approve HomoraBank transferring tokens.
-        IERC20(stableToken).approve(address(homoraBank), 2**256 - 1);
-        IERC20(assetToken).approve(address(homoraBank), 2**256 - 1);
+        IERC20(stableToken).approve(address(homoraBank), MAX_UINT256);
+        IERC20(assetToken).approve(address(homoraBank), MAX_UINT256);
 
         // Encode the calling function.
         bytes memory data = abi.encodeWithSelector(
