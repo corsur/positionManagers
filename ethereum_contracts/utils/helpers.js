@@ -75,8 +75,6 @@ async function deployEthereumManager() {
   // Wait for contract deployment.
   await ethereumManager.deployed();
 
-  console.log("ASDF");
-
   // Register Aperture Terra manager to allow Terra manager to send instruction
   // to Ethereum manager.
   await ethereumManager.updateApertureManager(
