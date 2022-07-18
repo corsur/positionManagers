@@ -12,8 +12,8 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "./interfaces/IWormhole.sol";
 import "./libraries/BytesLib.sol";
+import "./interfaces/IApertureCommon.sol";
 import "./interfaces/ICurveSwap.sol";
-import "./interfaces/IEthereumManager.sol";
 
 contract EthereumManager is
     Initializable,
@@ -61,7 +61,7 @@ contract EthereumManager is
     uint128 public nextPositionId;
     mapping(uint128 => StoredPositionInfo) public positionIdToInfo;
 
-    mapping(uint16 => bytes32) public chainIdToApertureManager;    
+    mapping(uint16 => bytes32) public chainIdToApertureManager;
 
     // Hashes of processed incoming Aperture instructions are stored in this mapping.
     mapping(bytes32 => bool) public processedInstructions;
@@ -108,7 +108,11 @@ contract EthereumManager is
         address _manager
     ) external onlyOwner {
         uint64 strategyId = nextStrategyId++;
-        strategyIdToMetadata[strategyId] = StrategyMetadata(_name, _version, _manager);
+        strategyIdToMetadata[strategyId] = StrategyMetadata(
+            _name,
+            _version,
+            _manager
+        );
     }
 
     function removeStrategy(uint64 _strategyId) external onlyOwner {
@@ -273,18 +277,13 @@ contract EthereumManager is
         );
     }
 
-    function createPosition(
+    function createPositionInternal(
+        uint128 positionId,
         uint16 strategyChainId,
         uint64 strategyId,
-        AssetInfo[] calldata assetInfos,
+        AssetInfo[] memory assetInfos,
         bytes calldata encodedPositionOpenData
-    ) external {
-        uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
-        validateAndTransferAssetFromSender(
-            strategyChainId,
-            strategyId,
-            assetInfos
-        );
+    ) internal {
         if (
             strategyChainId !=
             WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).chainId()
@@ -298,7 +297,33 @@ contract EthereumManager is
             );
         } else {
             StrategyMetadata memory strategy = strategyIdToMetadata[strategyId];
+            require(strategy.manager != address(0), "invalid strategyId");
+            IStrategyManager(strategy.manager).openPosition(
+                PositionInfo(positionId, strategyChainId),
+                encodedPositionOpenData
+            );
         }
+    }
+
+    function createPosition(
+        uint16 strategyChainId,
+        uint64 strategyId,
+        AssetInfo[] calldata assetInfos,
+        bytes calldata encodedPositionOpenData
+    ) external {
+        uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
+        validateAndTransferAssetFromSender(
+            strategyChainId,
+            strategyId,
+            assetInfos
+        );
+        createPositionInternal(
+            positionId,
+            strategyChainId,
+            strategyId,
+            assetInfos,
+            encodedPositionOpenData
+        );
     }
 
     function swapTokenAndCreatePosition(
@@ -325,20 +350,13 @@ contract EthereumManager is
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
         assetInfos[0] = AssetInfo(toToken, toTokenAmount);
-        if (
-            strategyChainId !=
-            WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).chainId()
-        ) {
-            publishPositionOpenInstruction(
-                strategyChainId,
-                strategyId,
-                positionId,
-                assetInfos,
-                encodedPositionOpenData
-            );
-        } else {
-            StrategyMetadata memory strategy = strategyIdToMetadata[strategyId];
-        }
+        createPositionInternal(
+            positionId,
+            strategyChainId,
+            strategyId,
+            assetInfos,
+            encodedPositionOpenData
+        );
     }
 
     function publishExecuteStrategyInstruction(

@@ -7,7 +7,6 @@ struct StoredPositionInfo {
     uint64 strategyId;
 }
 
-// Only used by the getPositions() view function.
 struct PositionInfo {
     uint128 positionId; // The EVM position id.
     uint16 chainId; // Chain id, following Wormhole's design.
@@ -29,20 +28,18 @@ struct AssetInfo {
     uint256 amount;
 }
 
-/*
-interface IDeltaNeutralInvest {
-    function openPosition(bytes calldata positionData)
-        external
-        returns (uint128 positionId);
-
-    function updatePosition(uint128 _positionId, bytes memory position_)
+interface IStrategyManager {
+    function openPosition(PositionInfo memory position_info, bytes calldata data)
         external;
 
-    function removePosition(uint128 positionId) external;
+    function increasePosition(
+        PositionInfo memory position_info,
+        bytes calldata data
+    ) external;
 
-    function getPosition(uint128 positionId)
-        external
-        view
-        returns (bytes memory);
+    function decreasePosition(
+        PositionInfo memory position_info,
+        uint256 fraction,
+        address recipient
+    ) external;
 }
-*/
