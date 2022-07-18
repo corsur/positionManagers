@@ -5,19 +5,16 @@ import "hardhat/console.sol";
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 import "./interfaces/IApertureCommon.sol";
+import "./interfaces/IHomoraAvaxRouter.sol";
 import "./interfaces/IHomoraBank.sol";
-import "./interfaces/IPair.sol";
-import "./interfaces/IFactory.sol";
-import "./interfaces/IRouter.sol";
-import "./interfaces/IOracle.sol";
-import "./interfaces/ISpell.sol";
+import "./interfaces/IHomoraOracle.sol";
+import "./interfaces/IHomoraSpell.sol";
+import "./interfaces/IUniswapPair.sol";
+import "./interfaces/IUniswapV2Factory.sol";
 
 contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
-    using SafeMath for uint256;
-
     struct Position {
         uint256 collShareAmount;
     }
@@ -44,8 +41,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     uint256 public leverageLevel;
     uint256 public pid; // pool id
     IHomoraBank public homoraBank;
-    IPair public pair;
-    IRouter public router;
+    IUniswapPair public pair;
+    IHomoraAvaxRouter public router;
 
     uint256 private _TR; // target debt ratio * 10000
     uint256 private _MR; // maximum debt ratio * 10000
@@ -74,7 +71,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     event LogReinvest(uint256 equityBefore, uint256 equityAfter);
 
     // --- error ---
-    error DeltaNeutralVault_PositionIsHealthy();
+    error HomoraPDNVault_PositionIsHealthy();
     error Insufficient_Liquidity_Mint();
 
     constructor(
@@ -99,10 +96,10 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         pid = _pid;
         homoraBankPosId = _NO_ID;
         totalCollShareAmount = 0;
-        lpToken = ISpell(spell).pairs(stableToken, assetToken);
+        lpToken = IHomoraSpell(spell).pairs(stableToken, assetToken);
         require(lpToken != address(0), "Pair does not match the spell.");
-        pair = IPair(lpToken);
-        router = IRouter(ISpell(spell).router());
+        pair = IUniswapPair(lpToken);
+        router = IHomoraAvaxRouter(IHomoraSpell(spell).router());
 
         // set config values
         _TR = 9500;
@@ -114,6 +111,26 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     fallback() external payable {}
 
     receive() external payable {}
+
+    function openPosition(
+        PositionInfo memory position_info,
+        bytes calldata data
+    ) external {}
+
+    function increasePosition(
+        PositionInfo memory position_info,
+        bytes calldata data
+    ) external {}
+
+    function decreasePosition(
+        PositionInfo memory position_info,
+        uint256 fraction,
+        address recipient
+    ) external {}
+
+    function closePosition(PositionInfo memory position_info, address recipient)
+        external
+    {}
 
     /// @notice Set target and maximum debt ratio
     /// @param targetR target ratio * 1e4
@@ -277,7 +294,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         uint256 collSize = finalCollSize - originalCollSize;
         uint256 collShareAmount = originalCollSize == 0
             ? collSize
-            : collSize.mul(totalCollShareAmount).div(originalCollSize);
+            : (collSize * totalCollShareAmount) / originalCollSize;
 
         // Update vault position state.
         totalCollShareAmount += collShareAmount;
@@ -329,9 +346,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         (, , , uint256 totalCollSize) = homoraBank.getPositionInfo(
             homoraBankPosId
         );
-        uint256 collWithdrawSize = withdrawShareAmount.mul(totalCollSize).div(
-            totalCollShareAmount
-        );
+        uint256 collWithdrawSize = (withdrawShareAmount * totalCollSize) /
+            totalCollShareAmount;
 
         // Calculate debt to repay in two tokens.
         (
@@ -351,12 +367,10 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
             [
                 collWithdrawSize,
                 0,
-                stableTokenDebtAmount.mul(collWithdrawSize).div(
-                    totalCollShareAmount
-                ),
-                assetTokenDebtAmount.mul(collWithdrawSize).div(
-                    totalCollShareAmount
-                ),
+                (stableTokenDebtAmount * collWithdrawSize) /
+                    totalCollShareAmount,
+                (assetTokenDebtAmount * collWithdrawSize) /
+                    totalCollShareAmount,
                 0,
                 0,
                 0
@@ -366,31 +380,23 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         homoraBank.execute(homoraBankPosId, spell, data);
 
         // Calculate token disbursement amount.
-        uint256 stableTokenWithdrawAmount = IERC20(stableToken)
-            .balanceOf(address(this))
-            .sub(stableTokenBalanceBefore)
-            .add(
-                stableTokenBalanceBefore.mul(withdrawShareAmount).div(
-                    totalCollShareAmount
-                )
-            );
+        uint256 stableTokenWithdrawAmount = IERC20(stableToken).balanceOf(
+            address(this)
+        ) -
+            stableTokenBalanceBefore +
+            (stableTokenBalanceBefore * withdrawShareAmount) /
+            totalCollShareAmount;
 
-        uint256 assetTokenWithdrawAmount = IERC20(assetToken)
-            .balanceOf(address(this))
-            .sub(assetTokenBalanceBefore)
-            .add(
-                assetTokenBalanceBefore.mul(withdrawShareAmount).div(
-                    totalCollShareAmount
-                )
-            );
-        uint256 avaxWithdrawAmount = address(this)
-            .balance
-            .sub(avaxBalanceBefore)
-            .add(
-                avaxBalanceBefore.mul(withdrawShareAmount).div(
-                    totalCollShareAmount
-                )
-            );
+        uint256 assetTokenWithdrawAmount = IERC20(assetToken).balanceOf(
+            address(this)
+        ) -
+            assetTokenBalanceBefore +
+            (assetTokenBalanceBefore * withdrawShareAmount) /
+            totalCollShareAmount;
+        uint256 avaxWithdrawAmount = address(this).balance -
+            avaxBalanceBefore +
+            (avaxBalanceBefore * withdrawShareAmount) /
+            totalCollShareAmount;
 
         // Transfer fund to user (caller).
         IERC20(stableToken).transfer(msg.sender, stableTokenWithdrawAmount);
@@ -445,7 +451,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         }
 
         if (isDeltaNeutral && isLeverageHealthy && isDebtRatioHealthy) {
-            revert DeltaNeutralVault_PositionIsHealthy();
+            revert HomoraPDNVault_PositionIsHealthy();
         }
 
         console.log("Execute rebalance");
@@ -705,7 +711,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
             uint16 liqIncentive
         )
     {
-        IOracle oracle = IOracle(address(homoraBank.oracle()));
+        IHomoraOracle oracle = IHomoraOracle(address(homoraBank.oracle()));
         return oracle.tokenFactors(token);
     }
 

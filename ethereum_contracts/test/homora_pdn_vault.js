@@ -179,7 +179,7 @@ async function testRebalance(contract) {
   // check if position state is healthy (no need to rebalance)
   await expect(
     contract.connect(wallets[0]).rebalance(txOptions)
-  ).to.be.revertedWith("DeltaNeutralVault_PositionIsHealthy");
+  ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
   // set delta-neutral threshold to 0 to force executing rebalance
   console.log("Temporarily set delta-neutral offset threshold to 0");
@@ -190,7 +190,7 @@ async function testRebalance(contract) {
   // check if position state is healthy after rebalance
   await expect(
     contract.connect(wallets[0]).rebalance(txOptions)
-  ).to.be.revertedWith("DeltaNeutralVault_PositionIsHealthy");
+  ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 }
 
 async function testReinvest(contract) {
@@ -295,13 +295,13 @@ async function testDepositAndWithdraw(contract) {
   );
 }
 
-describe.only("DeltaNeutralVault Initialization", function () {
+describe.only("HomoraPDNVault Initialization", function () {
   var contractFactory = undefined;
   var contract = undefined;
 
   beforeEach("Setup before each test", async function () {
-    // DeltaNeutralVault contract
-    contractFactory = await ethers.getContractFactory("DeltaNeutralVault");
+    // HomoraPDNVault contract
+    contractFactory = await ethers.getContractFactory("HomoraPDNVault");
     contract = await contractFactory
       .connect(mainWallet)
       .deploy(
@@ -321,7 +321,7 @@ describe.only("DeltaNeutralVault Initialization", function () {
     await initialize(contract);
   });
 
-  it("DeltaNeutralVault DepositAndWithdraw", async function () {
+  it("HomoraPDNVault DepositAndWithdraw", async function () {
     await testDepositAndWithdraw(contract);
   });
 

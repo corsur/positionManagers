@@ -2,7 +2,6 @@
 pragma solidity >=0.8.0 <0.9.0;
 
 interface IHomoraBank {
-
     function execute(
         uint256 positionId,
         address spell,

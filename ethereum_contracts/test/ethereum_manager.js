@@ -187,7 +187,7 @@ async function testUSTDeltaNeutralInvest(signer, ethereumManager) {
   console.log("createPosition(%d UST) completed.", whUSTAmount);
 }
 
-describe.only("Aperture Ethereum Manager unit tests", function () {
+describe("Aperture Ethereum Manager unit tests", function () {
   var signer = undefined;
   var ethereumManager = undefined;
   var curveSwap = undefined;
