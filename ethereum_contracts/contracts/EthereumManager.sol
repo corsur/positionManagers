@@ -6,7 +6,6 @@ import "hardhat/console.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -15,12 +14,7 @@ import "./libraries/BytesLib.sol";
 import "./interfaces/IApertureCommon.sol";
 import "./interfaces/ICurveSwap.sol";
 
-contract EthereumManager is
-    Initializable,
-    UUPSUpgradeable,
-    OwnableUpgradeable,
-    ReentrancyGuard
-{
+contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     using SafeERC20 for IERC20;
     using BytesLib for bytes;
 
@@ -176,9 +170,9 @@ contract EthereumManager is
         }
     }
 
+    // TODO: add re-entrancy guard that is compatible with UUPSUpgradable; OpenZeppelin's ReentrancyGuard isn't compatible since it has a constructor.
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
         internal
-        nonReentrant
         returns (uint128)
     {
         uint128 positionId = nextPositionId++;
@@ -378,6 +372,10 @@ contract EthereumManager is
         );
     }
 
+    // TODO: implement a same-chain version of executeStrategy.
+    // Plan to have separate external functions for increase and decrease positions rather than encoding the action in a byte array.
+    // However, this contract is approaching the limit of 24576 bytes (introduced in Spurious Dragon hard fork) even after moving CurveSwap to a separate contract.
+    // Moving certain functions to libraries could help; alternatively, we can move cross-chain logic to a separate contract.
     function executeStrategy(
         uint128 positionId,
         AssetInfo[] calldata assetInfos,

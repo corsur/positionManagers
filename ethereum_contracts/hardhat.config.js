@@ -42,15 +42,16 @@ module.exports = {
   networks: {
     hardhat: {
       // for avax
+      /*
       forking: {
         url: AVAX_MAINNET_FORK,
         blockNumber: 16681756,
-      },
+      },*/
       // for ethereum
-      // forking: {
-      //   url: ALCHEMY_URL_MAINNET,
-      //   blockNumber: 15004700, // previously 14957690, 14247160
-      // }
+      forking: {
+         url: ALCHEMY_URL_MAINNET,
+         blockNumber: 14247160
+      }
     },
     ropsten: {
       url: INFURA_URL_ROPSTEN,

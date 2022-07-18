@@ -17,7 +17,7 @@ async function getImpersonatedSigner(addr) {
   return await ethers.getSigner(accountToImpersonate);
 }
 
-describe.only("LendingOptimizer tests", function () {
+describe("LendingOptimizer tests", function () {
   var owner = undefined;
   var user = undefined;
   var optimizer = undefined;
