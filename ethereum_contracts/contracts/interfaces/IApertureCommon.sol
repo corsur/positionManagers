@@ -42,4 +42,9 @@ interface IStrategyManager {
         uint256 fraction,
         address recipient
     ) external;
+
+    function closePosition(
+        PositionInfo memory position_info,
+        address recipient
+    ) external;
 }
