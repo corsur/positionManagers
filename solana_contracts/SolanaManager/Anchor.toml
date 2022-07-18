@@ -7,7 +7,7 @@ solana_manager = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "/home/corsur/.config/solana/id.json"
 
 [scripts]

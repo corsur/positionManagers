@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::state::whitelist::*;
+use crate::state::token_whitelist::*;
 
 pub fn update_token_whitelist(ctx: Context<UpdateTokenWhitelist>, token_address: Pubkey) -> Result<()> {
 

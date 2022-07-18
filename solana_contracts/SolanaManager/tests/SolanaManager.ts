@@ -12,7 +12,78 @@ describe("SolanaManager", () => {
   anchor.setProvider(provider);
   const program = anchor.workspace.SolanaManager as Program<SolanaManager>;
 
-  it('Creates and updates an aperture manager', async () => {
+  function getSingletonPDA(singletonSeed) {
+    return PublicKey
+      .findProgramAddress(
+        [
+          anchor.utils.bytes.utf8.encode(singletonSeed)
+        ],
+        program.programId
+      );
+  }
+
+  it('Initializes governance', async () => {
+
+    const [adminInfoPDA, adminBump] = await getSingletonPDA("admininfo");
+
+    await program.methods
+      .initializeAdmin()
+      .accounts({
+        adminInfo: adminInfoPDA
+      })
+      .rpc();
+
+    let admin_info = await program.account.adminInfo.fetch(adminInfoPDA);
+
+    console.log("Admin from PDA: " + admin_info.admin.toString());
+    console.log("Admin expected: " + wallet.publicKey.toBase58())
+    expect(admin_info.admin.toString()).to.equal(wallet.publicKey.toBase58());
+
+    const [feeSinkPDA, feeSinkBump] = await getSingletonPDA("feesink");
+
+    await program.methods
+      .initializeFeeSink(wallet.publicKey)
+      .accounts({
+        feeSink: feeSinkPDA,
+        adminInfo: adminInfoPDA
+      })
+      .rpc();
+
+    let fee_sink = await program.account.feeSink.fetch(feeSinkPDA);
+
+    console.log("Fee sink from PDA: " + fee_sink.feeSink.toString());
+    console.log("Fee sink expected: " + wallet.publicKey.toBase58())
+    expect(fee_sink.feeSink.toString()).to.equal(wallet.publicKey.toBase58());
+    
+  });
+
+  it('Updates fee sink', async () => {
+
+    const [adminInfoPDA, adminBump] = await getSingletonPDA("admininfo");
+
+    const [feeSinkPDA, feeSinkBump] = await getSingletonPDA("feesink");
+
+    let keypair1 = Keypair.generate();
+
+    await program.methods
+      .updateFeeSink(keypair1.publicKey)
+      .accounts({
+        feeSink: feeSinkPDA,
+        adminInfo: adminInfoPDA
+      })
+      .rpc();
+
+    let fee_sink = await program.account.feeSink.fetch(feeSinkPDA);
+
+    console.log("Fee sink from PDA: " + fee_sink.feeSink.toString());
+    console.log("Fee sink expected: " + keypair1.publicKey.toBase58())
+    expect(fee_sink.feeSink.toString()).to.equal(keypair1.publicKey.toBase58());
+    
+  });
+  
+
+  it('Creates an aperture manager', async () => {
+
     let sequence = 3;
     const buffer = new anchor.BN(sequence).toArrayLike(Buffer);
 
@@ -26,22 +97,23 @@ describe("SolanaManager", () => {
         program.programId
       );
 
-    console.log(canonicalBump);
-    console.log(wallet.publicKey);
-
     let keypair1 = Keypair.generate();
 
+    const [adminInfoPDA, adminBump] = await getSingletonPDA("admininfo");
+
     await program.methods
-      .updateManager(sequence, keypair1.publicKey)
+      .initializeManager(sequence, keypair1.publicKey)
       .accounts({
-        admin: wallet.publicKey,
-        manager: managerPDA
+        manager: managerPDA,
+        adminInfo: adminInfoPDA
       })
       .rpc();
-
-    console.log((await program.account.apertureManager.fetch(managerPDA)).bump);
     
     expect((await program.account.apertureManager.fetch(managerPDA)).bump).to.equal(canonicalBump);
+    console.log("Manager address in PDA: " + await (await program.account.apertureManager.fetch(managerPDA)).managerAddress);
+    console.log("Manager address expected: " + keypair1.publicKey);
+    expect((await program.account.apertureManager.fetch(managerPDA)).managerAddress.toBase58())
+      .to.equal(keypair1.publicKey.toBase58());
 
   });
 

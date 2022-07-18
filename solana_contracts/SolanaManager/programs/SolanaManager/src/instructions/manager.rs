@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::state::manager::*;
 
-pub fn update_manager(ctx: Context<UpdateManager>, chain: u16, address: Pubkey) -> Result<()> {
+pub fn initialize_manager(ctx: Context<InitializeManager>, chain: u16, address: Pubkey) -> Result<()> {
 
     let manager = &mut ctx.accounts.manager;
     manager.chain = chain;
