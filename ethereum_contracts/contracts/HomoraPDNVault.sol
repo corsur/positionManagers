@@ -21,7 +21,12 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     // --- modifiers ---
     modifier onlyAdmin() {
-        require(msg.sender == admin, "unauthorized ops");
+        require(msg.sender == admin, "unauthorized admin op");
+        _;
+    }
+
+    modifier onlyApertureManager() {
+        require(msg.sender == apertureManager, "unauthorized position op");
         _;
     }
 
@@ -33,6 +38,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     // --- config ---
     address public admin;
+    address public apertureManager;
     address public stableToken;
     address public assetToken;
     address public spell;
@@ -50,7 +56,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     uint256 public leverageThreshold; // offset percentage * 10000
 
     // --- state ---
-    mapping(address => Position) public positions;
+    // positions[chainId][positionId] stores share information about the position identified by (chainId, positionId).
+    mapping(uint16 => mapping(uint128 => Position)) public positions;
     uint256 public homoraBankPosId;
     uint256 public totalCollShareAmount;
 
@@ -76,6 +83,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     constructor(
         address _admin,
+        address _apertureManager,
         string memory _name,
         string memory _symbol,
         address _stableToken,
@@ -87,6 +95,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         uint256 _pid
     ) ERC20(_name, _symbol) {
         admin = _admin;
+        apertureManager = _apertureManager;
         stableToken = _stableToken;
         assetToken = _assetToken;
         homoraBank = IHomoraBank(_homoraBank);
@@ -115,21 +124,29 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     function openPosition(
         PositionInfo memory position_info,
         bytes calldata data
-    ) external {}
+    ) external payable onlyApertureManager nonReentrant {
+        (stableTokenDepositAmount, assetTokenDepositAmount) = abi.decode(data, (uint256, uint256));
+        depositInternal(position_info, _stableTokenDepositAmount, _assetTokenDepositAmount);
+    }
 
     function increasePosition(
         PositionInfo memory position_info,
         bytes calldata data
-    ) external {}
+    ) external payable onlyApertureManager nonReentrant {
+        (stableTokenDepositAmount, assetTokenDepositAmount) = abi.decode(data, (uint256, uint256));
+        depositInternal(position_info, _stableTokenDepositAmount, _assetTokenDepositAmount);
+    }
 
     function decreasePosition(
         PositionInfo memory position_info,
-        uint256 fraction,
+        uint256 amount,
         address recipient
-    ) external {}
+    ) external onlyApertureManager nonReentrant {}
 
     function closePosition(PositionInfo memory position_info, address recipient)
         external
+        onlyApertureManager
+        nonReentrant
     {}
 
     /// @notice Set target and maximum debt ratio
@@ -213,10 +230,11 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         return (stableTokenDebtAmount, assetTokenDebtAmount);
     }
 
-    function deposit(
+    function depositInternal(
+        PositionInfo memory position_info,
         uint256 _stableTokenDepositAmount,
         uint256 _assetTokenDepositAmount
-    ) external payable nonReentrant {
+    ) internal {
         // Record the balance state before transfer fund.
         uint256 stableTokenBalanceBefore = IERC20(stableToken).balanceOf(
             address(this)
@@ -300,7 +318,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         totalCollShareAmount += collShareAmount;
 
         // Update deposit owner's position state.
-        positions[msg.sender].collShareAmount += collShareAmount;
+        positions[position_info.chainId][position_info.positionId]
+            .collShareAmount += collShareAmount;
 
         // Return leftover funds to user.
         IERC20(stableToken).transfer(
@@ -318,14 +337,16 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         emit LogDeposit(msg.sender, collSize, collShareAmount);
     }
 
-    function withdraw(uint256 withdrawShareAmount)
-        external
-        payable
-        nonReentrant
-    {
+    function withdrawInternal(
+        PositionInfo memory position_info,
+        uint256 withdrawShareAmount,
+        address recipient
+    ) internal {
         require(withdrawShareAmount > 0, "inccorect withdraw amount");
         require(
-            withdrawShareAmount <= positions[msg.sender].collShareAmount,
+            withdrawShareAmount <=
+                positions[position_info.chainId][position_info.positionId]
+                    .collShareAmount,
             "not enough share amount to withdraw"
         );
 
@@ -404,7 +425,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         payable(msg.sender).transfer(avaxWithdrawAmount);
 
         // Update position info.
-        positions[msg.sender].collShareAmount -= withdrawShareAmount;
+        positions[position_info.chainId][position_info.positionId].collShareAmount -= withdrawShareAmount;
         totalCollShareAmount -= withdrawShareAmount;
 
         // Emit event.

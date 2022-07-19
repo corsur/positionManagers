@@ -29,22 +29,25 @@ struct AssetInfo {
 }
 
 interface IStrategyManager {
-    function openPosition(PositionInfo memory position_info, bytes calldata data)
-        external;
+    function openPosition(
+        PositionInfo memory position_info,
+        bytes calldata data
+    ) external payable;
 
     function increasePosition(
         PositionInfo memory position_info,
         bytes calldata data
-    ) external;
+    ) external payable;
 
+    // Params:
+    // amount - the amount to decrease the position by. Interpretation of amount is up to individual strategy managers.
+    // recipient - the address to disburse the withdrawn token(s) to.
     function decreasePosition(
         PositionInfo memory position_info,
-        uint256 fraction,
+        uint256 amount,
         address recipient
     ) external;
 
-    function closePosition(
-        PositionInfo memory position_info,
-        address recipient
-    ) external;
+    function closePosition(PositionInfo memory position_info, address recipient)
+        external;
 }
