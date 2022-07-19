@@ -125,29 +125,39 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         PositionInfo memory position_info,
         bytes calldata data
     ) external payable onlyApertureManager nonReentrant {
-        (stableTokenDepositAmount, assetTokenDepositAmount) = abi.decode(data, (uint256, uint256));
-        depositInternal(position_info, _stableTokenDepositAmount, _assetTokenDepositAmount);
+        (stableTokenDepositAmount, assetTokenDepositAmount) = abi.decode(
+            data,
+            (uint256, uint256)
+        );
+        depositInternal(
+            position_info,
+            _stableTokenDepositAmount,
+            _assetTokenDepositAmount
+        );
     }
 
     function increasePosition(
         PositionInfo memory position_info,
         bytes calldata data
     ) external payable onlyApertureManager nonReentrant {
-        (stableTokenDepositAmount, assetTokenDepositAmount) = abi.decode(data, (uint256, uint256));
-        depositInternal(position_info, _stableTokenDepositAmount, _assetTokenDepositAmount);
+        (stableTokenDepositAmount, assetTokenDepositAmount) = abi.decode(
+            data,
+            (uint256, uint256)
+        );
+        depositInternal(
+            position_info,
+            _stableTokenDepositAmount,
+            _assetTokenDepositAmount
+        );
     }
 
     function decreasePosition(
         PositionInfo memory position_info,
-        uint256 amount,
-        address recipient
-    ) external onlyApertureManager nonReentrant {}
-
-    function closePosition(PositionInfo memory position_info, address recipient)
-        external
-        onlyApertureManager
-        nonReentrant
-    {}
+        bytes calldata data
+    ) external onlyApertureManager nonReentrant {
+        (amount, recipient) = abi.decode(data, (uint256, address));
+        withdrawInternal(position_info, amount, recipient);
+    }
 
     /// @notice Set target and maximum debt ratio
     /// @param targetR target ratio * 1e4
@@ -342,7 +352,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         uint256 withdrawShareAmount,
         address recipient
     ) internal {
-        require(withdrawShareAmount > 0, "inccorect withdraw amount");
+        require(withdrawShareAmount > 0, "zero withdrawal amount");
         require(
             withdrawShareAmount <=
                 positions[position_info.chainId][position_info.positionId]
@@ -425,7 +435,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         payable(msg.sender).transfer(avaxWithdrawAmount);
 
         // Update position info.
-        positions[position_info.chainId][position_info.positionId].collShareAmount -= withdrawShareAmount;
+        positions[position_info.chainId][position_info.positionId]
+            .collShareAmount -= withdrawShareAmount;
         totalCollShareAmount -= withdrawShareAmount;
 
         // Emit event.

@@ -39,15 +39,8 @@ interface IStrategyManager {
         bytes calldata data
     ) external payable;
 
-    // Params:
-    // amount - the amount to decrease the position by. Interpretation of amount is up to individual strategy managers.
-    // recipient - the address to disburse the withdrawn token(s) to.
     function decreasePosition(
         PositionInfo memory position_info,
-        uint256 amount,
-        address recipient
+        bytes calldata data
     ) external;
-
-    function closePosition(PositionInfo memory position_info, address recipient)
-        external;
 }
