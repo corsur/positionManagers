@@ -198,18 +198,14 @@ describe("Aperture Ethereum Manager unit tests", function () {
     ethereumManager = await deployEthereumManager(signer, curveSwap.address);
   });
 
-  // it("Should add new strategy", async function () {
-  //   await ethereumManager.addStrategy("New Strategy", "V1.0", address);
-  //   expect((await ethereumManager.strategyIdToInfo(1))[0]).to.equal(
-  //     "New Strategy"
-  //   );
-  // });
-
-  // it("Should remove a strategy", async function () {
-  //   await ethereumManager.addStrategy("New Strategy", "V1.0", address);
-  //   await ethereumManager.removeStrategy(1);
-  //   expect((await ethereumManager.strategyIdToInfo(1))[0]).to.equal("");
-  // });
+  it("Should add/remove a strategy", async function () {
+    await ethereumManager.addStrategy("New Strategy", "V1.0", curveSwap.address);
+    expect((await ethereumManager.strategyIdToMetadata(0))[0]).to.equal(
+      "New Strategy"
+    );
+    await ethereumManager.removeStrategy(0);
+    expect((await ethereumManager.strategyIdToMetadata(0))[0]).to.equal("");
+  });
 
   it("Should swap USDC/BUSD token and create position", async function () {
     await testSwapAndDeltaNeutralInvest(signer, ethereumManager, curveSwap);

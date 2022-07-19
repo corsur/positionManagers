@@ -27,8 +27,6 @@ contract CurveSwap is Ownable, ICurveSwap {
     mapping(address => mapping(address => CurveSwapOperation[]))
         private curveSwapRoutes;
 
-    constructor() {}
-
     // Owner-only.
     // Updates the Curve swap route for `fromToken` to `toToken` with `route`.
     // The array `tokens` should comprise all tokens on `route` except for `toToken`.

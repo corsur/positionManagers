@@ -15,11 +15,11 @@ struct PositionInfo {
 struct StrategyMetadata {
     string name;
     string version;
-    address manager;
+    address strategyManager;
 }
 
 struct Config {
-    uint32 crossChainFeeBPS; // Cross-chain fee in bpq.
+    uint32 crossChainFeeBPS; // Cross-chain fee in bps.
     address feeSink; // Fee collecting address.
 }
 

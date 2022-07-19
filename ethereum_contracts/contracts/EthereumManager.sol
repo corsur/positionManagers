@@ -5,6 +5,7 @@ import "hardhat/console.sol";
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -14,7 +15,7 @@ import "./libraries/BytesLib.sol";
 import "./interfaces/IApertureCommon.sol";
 import "./interfaces/ICurveSwap.sol";
 
-contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
     using BytesLib for bytes;
 
@@ -99,13 +100,13 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function addStrategy(
         string calldata _name,
         string calldata _version,
-        address _manager
+        address _strategyManager
     ) external onlyOwner {
         uint64 strategyId = nextStrategyId++;
         strategyIdToMetadata[strategyId] = StrategyMetadata(
             _name,
             _version,
-            _manager
+            _strategyManager
         );
     }
 
@@ -170,9 +171,8 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         }
     }
 
-    // TODO: add re-entrancy guard that is compatible with UUPSUpgradable; OpenZeppelin's ReentrancyGuard isn't compatible since it has a constructor.
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
-        internal
+        internal nonReentrant
         returns (uint128)
     {
         uint128 positionId = nextPositionId++;
@@ -291,8 +291,11 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             );
         } else {
             StrategyMetadata memory strategy = strategyIdToMetadata[strategyId];
-            require(strategy.manager != address(0), "invalid strategyId");
-            IStrategyManager(strategy.manager).openPosition(
+            require(
+                strategy.strategyManager != address(0),
+                "invalid strategyId"
+            );
+            IStrategyManager(strategy.strategyManager).openPosition(
                 PositionInfo(positionId, strategyChainId),
                 encodedPositionOpenData
             );
