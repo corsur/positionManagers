@@ -5,6 +5,8 @@ import * as BufferLayout from "buffer-layout";
 import * as fs from "fs";
 
 export const logError = (msg: string) => {
+  // \x1b[31m is the ansicolor. It provides color console in Windows as ANSICON for Golang.
+  // refer link: https://github.com/shiena/ansicolor/blob/master/README.md.
   console.log(`\x1b[31m${msg}\x1b[0m`);
 };
 

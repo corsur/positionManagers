@@ -33,9 +33,9 @@ const createMint = (
       publicKey,
       secretKey,
     },
-    publicKey,
-    null,
-    0,
+    /*mintAuthority=*/publicKey,
+    /*freezeAuthority=*/null,
+    /*decimals=*/0,
     TOKEN_PROGRAM_ID
   );
 };
@@ -102,7 +102,7 @@ const setup = async () => {
   console.log("");
 };
 
-const createAccount = async () => {
+const initializeAccounts = async () => {
   const pdnProgramId = getProgramId();
   const deposit = getDeposit();
   const usdcTokenAccountPubkey = getPublicKey("usdc");
@@ -175,7 +175,7 @@ const createAccount = async () => {
     ),
   });
 
-  // make a transaction, trans usdc from main account to temp usdc account
+  // make a transaction, transfer usdc from main account to temp usdc account
   const tx = new Transaction().add(
     createTempTokenAccountIx,
     initTempAccountIx,
@@ -239,7 +239,7 @@ const createAccount = async () => {
     process.exit(1);
   }
   console.log(
-    `✨PDN successfully initialized. user is deposit ${deposit.usdcDepositAmount} USDC✨\n`
+    `✨PDN successfully initialized. User deposited ${deposit.usdcDepositAmount} USDC✨\n`
   );
   writePublicKey(pdnKeypair.publicKey, "pdn");
   console.table([
@@ -263,4 +263,4 @@ const createAccount = async () => {
 };
 
 setup();
-createAccount();
+initializeAccounts();

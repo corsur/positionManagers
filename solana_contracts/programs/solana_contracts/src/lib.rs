@@ -16,6 +16,37 @@ declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 #[program]
 pub mod examples {
     use super::*;
+
+    pub fn pdn_strategy(
+        ctx AccountInfo<'info>, 
+        strategy_id u64, 
+        farm_type: u64
+    )-> Result<()> {
+    // transation 1
+    {
+        // initialize_user_with_nonce // create a new user-info account for a new position
+        // transfer // transfer tokens to user's position
+        // borrow  // borrow from lending pool
+    }
+    // transation 2 
+    {
+        // swap  // swap to makes both tokens roughly the same value
+        // add_liquidity // add two tokens in to dex
+    }
+    // transation 3
+    {
+        // stake_lp // stake lp tokens to stake program
+    }
+        Ok(())
+    }
+
+
+    pub fn withdraw_multi_deposit_vault_through_mango(
+        ctx: AccountInfo<'info>,
+        amount: u64,
+    ) -> Result<()> {
+        Ok(())
+    }
     pub fn register_deposit_tracking_account(
         ctx: Context<RegisterDepositTrackingAccount>,
         farm_type: [u64; 2],

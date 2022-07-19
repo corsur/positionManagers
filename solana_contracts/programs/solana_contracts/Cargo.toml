@@ -1,8 +1,10 @@
 [package]
 name = "solana_contracts"
 version = "0.1.0"
-description = "Created with Anchor"
+authors = ["Aperture Finance <dezhi@aperture.finance>"]
+description = "Rust program for pdn strategy"
 edition = "2021"
+license = "Apache-2.0"
 
 [lib]
 crate-type = ["cdylib", "lib"]
