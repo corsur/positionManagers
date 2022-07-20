@@ -5,7 +5,6 @@ import "hardhat/console.sol";
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -15,7 +14,7 @@ import "./libraries/BytesLib.sol";
 import "./interfaces/IApertureCommon.sol";
 import "./interfaces/ICurveSwap.sol";
 
-contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     using SafeERC20 for IERC20;
     using BytesLib for bytes;
 
@@ -100,13 +99,13 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
     function addStrategy(
         string calldata _name,
         string calldata _version,
-        address _strategyManager
+        address _manager
     ) external onlyOwner {
         uint64 strategyId = nextStrategyId++;
         strategyIdToMetadata[strategyId] = StrategyMetadata(
             _name,
             _version,
-            _strategyManager
+            _manager
         );
     }
 
@@ -171,8 +170,9 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         }
     }
 
+    // TODO: add re-entrancy guard that is compatible with UUPSUpgradable; OpenZeppelin's ReentrancyGuard isn't compatible since it has a constructor.
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
-        internal nonReentrant
+        internal
         returns (uint128)
     {
         uint128 positionId = nextPositionId++;
@@ -253,22 +253,21 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         AssetInfo[] memory assetInfos,
         bytes calldata encodedPositionOpenData
     ) internal {
-        // Initiate token transfers and construct partial instruction payload.
-        bytes
-            memory partial_payload = sendTokensCrossChainAndConstructCommonPayload(
-                INSTRUCTION_TYPE_POSITION_OPEN,
-                strategyChainId,
-                assetInfos,
-                positionId,
-                encodedPositionOpenData
-            );
-
-        // Append `strategyId` to the instruction to complete the payload and publish it via Wormhole.
-        WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).publishMessage(
-            WORMHOLE_NONCE,
-            partial_payload.concat(abi.encodePacked(strategyId)),
-            CONSISTENCY_LEVEL
-        );
+        // // Initiate token transfers and construct partial instruction payload.
+        // bytes
+        //     memory partial_payload = sendTokensCrossChainAndConstructCommonPayload(
+        //         INSTRUCTION_TYPE_POSITION_OPEN,
+        //         strategyChainId,
+        //         assetInfos,
+        //         positionId,
+        //         encodedPositionOpenData
+        //     );
+        // // Append `strategyId` to the instruction to complete the payload and publish it via Wormhole.
+        // WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).publishMessage(
+        //     WORMHOLE_NONCE,
+        //     partial_payload.concat(abi.encodePacked(strategyId)),
+        //     CONSISTENCY_LEVEL
+        // );
     }
 
     function createPositionInternal(
@@ -295,7 +294,16 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
                 strategy.strategyManager != address(0),
                 "invalid strategyId"
             );
+
+            // Approve strategy manager to move assets.
+            for (uint256 i = 0; i < assetInfos.length; i++) {
+                address assetAddr = assetInfos[i].assetAddr;
+                uint256 amount = assetInfos[i].amount;
+                IERC20(assetAddr).approve(strategy.strategyManager, amount);
+            }
+            console.log("recipient: %s", msg.sender);
             IStrategyManager(strategy.strategyManager).openPosition(
+                msg.sender,
                 PositionInfo(positionId, strategyChainId),
                 encodedPositionOpenData
             );
@@ -362,17 +370,17 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         AssetInfo[] memory assetInfos,
         bytes calldata encodedActionData
     ) internal {
-        WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).publishMessage(
-            WORMHOLE_NONCE,
-            sendTokensCrossChainAndConstructCommonPayload(
-                INSTRUCTION_TYPE_EXECUTE_STRATEGY,
-                strategyChainId,
-                assetInfos,
-                positionId,
-                encodedActionData
-            ),
-            CONSISTENCY_LEVEL
-        );
+        // WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).publishMessage(
+        //     WORMHOLE_NONCE,
+        //     sendTokensCrossChainAndConstructCommonPayload(
+        //         INSTRUCTION_TYPE_EXECUTE_STRATEGY,
+        //         strategyChainId,
+        //         assetInfos,
+        //         positionId,
+        //         encodedActionData
+        //     ),
+        //     CONSISTENCY_LEVEL
+        // );
     }
 
     // TODO: implement a same-chain version of executeStrategy.
@@ -390,12 +398,60 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
             positionIdToInfo[positionId].strategyId,
             assetInfos
         );
-        publishExecuteStrategyInstruction(
-            strategyChainId,
+        executeStrategyInternal(
             positionId,
+            strategyChainId,
             assetInfos,
             encodedActionData
         );
+    }
+
+    function executeStrategyInternal(
+        uint128 positionId,
+        uint16 strategyChainId,
+        AssetInfo[] calldata assetInfos,
+        bytes calldata encodedActionData
+    ) internal {
+        if (
+            strategyChainId !=
+            WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).chainId()
+        ) {
+            publishExecuteStrategyInstruction(
+                strategyChainId,
+                positionId,
+                assetInfos,
+                encodedActionData
+            );
+        } else {
+            StrategyMetadata memory strategy = strategyIdToMetadata[
+                positionIdToInfo[positionId].strategyId
+            ];
+            require(
+                strategy.strategyManager != address(0),
+                "invalid strategyId"
+            );
+            // Parse action based on encodedActionData.
+            require(
+                encodedActionData.length > 0,
+                "invalid encoded action data"
+            );
+            Action action = Action(uint8(encodedActionData[0]));
+            require(action != Action.Open, "invalid open action in execute");
+            if (action == Action.Increase) {
+                IStrategyManager(strategy.strategyManager).increasePosition(
+                    PositionInfo(positionId, strategyChainId),
+                    encodedActionData[1:]
+                );
+            } else if (action == Action.Decrease) {
+                console.log('Decrease action is called.');
+                IStrategyManager(strategy.strategyManager).decreasePosition(
+                    PositionInfo(positionId, strategyChainId),
+                    encodedActionData[1:]
+                );
+            } else {
+                revert("invalid action");
+            }
+        }
     }
 
     function swapTokenAndExecuteStrategy(

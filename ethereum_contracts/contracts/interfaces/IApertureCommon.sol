@@ -1,6 +1,13 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
+enum Action {
+    Open,
+    Increase,
+    Decrease,
+    Close
+}
+
 struct StoredPositionInfo {
     address ownerAddr;
     uint16 strategyChainId;
@@ -30,6 +37,7 @@ struct AssetInfo {
 
 interface IStrategyManager {
     function openPosition(
+        address recipient,
         PositionInfo memory position_info,
         bytes calldata data
     ) external payable;
