@@ -5,8 +5,9 @@ use crate::state::fee_sink::*;
 use std::str::FromStr;
 
 pub fn initialize_admin(ctx: Context<InitializeAdmin>) -> Result<()> {
-    let admin_pubkey = Pubkey::from_str("4S6RKWVG9rLiPCj51kGRCbXty7Ht2GVUBuGmkzwqpaCP").unwrap();
-    ctx.accounts.admin_info.admin = admin_pubkey;
+    let admin_info = &mut ctx.accounts.admin_info;
+    admin_info.admin = Pubkey::from_str("4S6RKWVG9rLiPCj51kGRCbXty7Ht2GVUBuGmkzwqpaCP").unwrap();
+    admin_info.bump = *ctx.bumps.get("admin_info").unwrap();
     Ok(())
 }
 

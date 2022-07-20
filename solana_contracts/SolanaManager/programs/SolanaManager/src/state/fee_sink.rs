@@ -12,7 +12,7 @@ pub struct FeeSink {
 pub struct UpdateFeeSink<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(mut, has_one = admin, seeds = [b"admininfo"], bump)]
+    #[account(mut, has_one = admin, seeds = [b"admininfo"], bump = admin_info.bump)]
     pub admin_info: Account<'info, AdminInfo>,
     #[account(mut, seeds = [b"feesink"], bump)]
     pub fee_sink: Account<'info, FeeSink>
