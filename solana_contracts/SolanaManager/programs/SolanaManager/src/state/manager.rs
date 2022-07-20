@@ -12,7 +12,7 @@ pub struct ApertureManager {
 
 #[derive(Accounts)]
 #[instruction(chain: u8, address: Pubkey)]
-pub struct UpdateManager<'info> {
+pub struct InitializeManager<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
     #[account(mut, has_one = admin)]
@@ -21,7 +21,7 @@ pub struct UpdateManager<'info> {
     #[account(
         init,
         payer = admin,
-        space = 8 + 2 + 4 + 200 + 1, seeds = [b"manager", admin.key().as_ref(), &(chain.to_be_bytes())], bump
+        space = 200, seeds = [b"manager", admin.key().as_ref(), &(chain.to_be_bytes())], bump
     )]
     pub manager: Account<'info, ApertureManager>,
     pub system_program: Program<'info, System>,
