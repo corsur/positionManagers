@@ -22,10 +22,10 @@ pub struct UpdateFeeSink<'info> {
 pub struct InitializeFeeSink<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(mut, has_one = admin, seeds = [b"admininfo"], bump)]
+    #[account(mut, has_one = admin, seeds = [b"admininfo"], bump = admin_info.bump)]
     pub admin_info: Account<'info, AdminInfo>,
-    // space: TBD
-    #[account(init, payer = admin,space = 200, seeds = [b"feesink"], bump)]
+    // space = 8 for discriminator, 32 for pubkey, 1 for bump
+    #[account(init, payer = admin, space = 41, seeds = [b"feesink"], bump)]
     pub fee_sink: Account<'info, FeeSink>,
     pub system_program: Program<'info, System>,
 }
@@ -39,7 +39,7 @@ pub struct FeeBps {
 pub struct UpdateCrossChainFeeBps<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(mut, has_one = admin)]
+    #[account(mut, has_one = admin, seeds = [b"admininfo"], bump = admin_info.bump)]
     pub admin_info: Account<'info, AdminInfo>,
     #[account(mut)]
     pub fee_bps: Account<'info, FeeBps>

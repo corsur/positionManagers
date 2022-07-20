@@ -17,6 +17,7 @@ pub struct UpdateAdmin<'info> {
 
 #[derive(Accounts)]
 pub struct InitializeAdmin<'info> {
+    // space = 8 for discriminator, 32 for pubkey, 1 for bump
     #[account(init, payer = initializer, space = 41, seeds = [b"admininfo"], bump)]
     pub admin_info: Account<'info, AdminInfo>,
     #[account(mut)]
