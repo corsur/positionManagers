@@ -1,3 +1,4 @@
+const { CHAIN_ID_AVAX } = require("@certusone/wormhole-sdk");
 const { expect } = require("chai");
 const { ethers, upgrades } = require("hardhat");
 const { homoraBankABI } = require("../test/abi/homoraBankABI");
@@ -131,7 +132,7 @@ async function main() {
 
   // Whitelist tokens for the strategy.
   await managerContract.updateIsTokenWhitelistedForStrategy(
-    AVAX_CHAIN_ID,
+    CHAIN_ID_AVAX,
     /*strategyId=*/ 0,
     USDC_TOKEN_ADDRESS,
     /*isWhitelisted=*/ true
