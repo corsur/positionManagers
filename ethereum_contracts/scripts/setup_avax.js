@@ -24,6 +24,12 @@ const homoraBank = new ethers.Contract(
   provider
 );
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
+const ERC20ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function approve(address spender, uint256 value) returns (bool)",
+  "function transfer(address _to, uint256 value) returns(bool)",
+];
+const USDC = new ethers.Contract(USDC_TOKEN_ADDRESS, ERC20ABI, provider);
 
 async function getImpersonatedSigner(accountToImpersonate) {
   await hre.network.provider.request({
@@ -31,6 +37,15 @@ async function getImpersonatedSigner(accountToImpersonate) {
     params: [accountToImpersonate],
   });
   return await ethers.getSigner(accountToImpersonate);
+}
+
+async function getUSDC(addr, amount) {
+  // Impersonate USDC holder.
+  const signer = await getImpersonatedSigner(
+    "0x42d6ce661bb2e5f5cc639e7befe74ff9fd649541"
+  );
+
+  await USDC.connect(signer).transfer(addr, amount * 1e6, txOptions);
 }
 
 async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
@@ -136,6 +151,14 @@ async function main() {
     /*strategyId=*/ 0,
     USDC_TOKEN_ADDRESS,
     /*isWhitelisted=*/ true
+  );
+
+  // Send some USDC to wallet for testing.
+  await getUSDC(mainWallet.address, 1e6);
+  console.log(
+    `Sent ${await USDC.balanceOf(mainWallet.address)} USDC to ${
+      mainWallet.address
+    }`
   );
 }
 

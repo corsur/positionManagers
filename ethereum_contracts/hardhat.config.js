@@ -41,7 +41,7 @@ module.exports = {
   },
   networks: {
     localhost: {
-      url: "http://127.0.0.1:8989/"
+      url: "http://0.0.0.0:8989/"
     },
     hardhat: {
       // for avax
