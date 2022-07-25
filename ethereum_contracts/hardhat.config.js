@@ -2,6 +2,7 @@ require("@nomiclabs/hardhat-waffle");
 require("@openzeppelin/hardhat-upgrades");
 require("hardhat-gas-reporter");
 require("hardhat-abi-exporter");
+require("hardhat-contract-sizer");
 
 const {
   ETH_PRV_KEY_1,
@@ -29,7 +30,7 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  */
 module.exports = {
   solidity: {
-    version: "0.8.13",
+    version: "0.8.9",
     settings: {
       optimizer: {
         enabled: true,
@@ -39,17 +40,21 @@ module.exports = {
     },
   },
   networks: {
+    localhost: {
+      url: "http://0.0.0.0:8989/"
+    },
     hardhat: {
       // for avax
       forking: {
         url: AVAX_MAINNET_FORK,
         blockNumber: 16681756,
-      },
+      }
       // for ethereum
-      // forking: {
-      //   url: ALCHEMY_URL_MAINNET,
-      //   blockNumber: 15004700, // previously 14957690, 14247160
-      // }
+      /*
+      forking: {
+         url: ALCHEMY_URL_MAINNET,
+         blockNumber: 14247160
+      }*/
     },
     ropsten: {
       url: INFURA_URL_ROPSTEN,

@@ -23,6 +23,8 @@ module.exports = {
     "https://goerli.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
   ALCHEMY_URL_MAINNET:
     "https://eth-mainnet.alchemyapi.io/v2/1ZmO4kq4GOot3A-1bq747e1nKY-2zD0r",
+  POLYGON_URL_MAINNET:
+    "https://polygon-mainnet.g.alchemy.com/v2/1ZmO4kq4GOot3A-1bq747e1nKY-2zD0r",
   BSC_TESTNET: "https://data-seed-prebsc-1-s3.binance.org:8545",
   ETH_PRV_KEY_1:
     "0x53f446e52f3cb33084b0c31baee7542392844776ff593f444a480b29ed964ff8",

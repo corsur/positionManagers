@@ -1,8 +1,7 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.13;
+pragma solidity >=0.8.0 <0.9.0;
 
 interface IHomoraBank {
-
     function execute(
         uint256 positionId,
         address spell,

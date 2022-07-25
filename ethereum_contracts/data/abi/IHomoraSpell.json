@@ -1,0 +1,5 @@
+[
+  "function factory() view returns (address)",
+  "function pairs(address,address) view returns (address)",
+  "function router() view returns (address)"
+]
