@@ -47,6 +47,14 @@ async function deployEthereumManagerHardhat() {
 
 async function deployEthereumManager() {
   console.log("Using eth wallet address", ethWallet.address);
+
+  // Deploying CurveSwap contract.
+  const CurveSwap = await ethers.getContractFactory("CurveSwap", ethWallet);
+  const curveSwap = await CurveSwap.deploy();
+
+  await curveSwap.deployed();
+  console.log("curveSwap.deployed at:", curveSwap.address);
+
   // Deploying EthereumManager contract.
   const consistencyLevel = 1;
   const EthereumManager = await ethers.getContractFactory(
@@ -60,6 +68,7 @@ async function deployEthereumManager() {
       ETH_TOKEN_BRIDGE_ADDR,
       /*_crossChainFeeBPS=*/ 0,
       /*_feeSink=*/ ethWallet.address,
+      /*curveSwap=*/ curveSwap.address,
     ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
   );
