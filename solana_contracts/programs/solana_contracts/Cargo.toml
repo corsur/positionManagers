@@ -22,7 +22,7 @@ overflow-checks = true
 
 [dependencies]
 anchor-spl = "0.24.2"
-tulipv2-sdk-common = {path = "../../../common", version = "0.9.17"}
-tulipv2-sdk-vaults = {path = "../../../vaults", version = "0.9.17"}
-tulipv2-sdk-farms = {path = "../../../farms", version = "0.9.17"}
+tulipv2-sdk-common = "0.9.17"
+tulipv2-sdk-vaults = "0.9.17"
+tulipv2-sdk-farms = "0.9.17"
 spl-associated-token-account = "1.0.3"
