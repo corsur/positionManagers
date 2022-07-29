@@ -761,15 +761,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "memoffset"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "043175f069eda7b85febe4a74abbaeff828d9f8b448515d3151a14a3542811aa"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
 name = "mpl-token-metadata"
 version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1003,12 +994,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49b3de9ec5dc0a3417da371aab17d729997c15010e7fd24ff707773a33bddb64"
 
 [[package]]
-name = "rustc-hex"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
-
-[[package]]
 name = "rustc_version"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1141,53 +1126,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "sighashdb"
-version = "0.1.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5592a15099e51bf583d62a838c7805999a7ceeaf640364942ce069b058ed7809"
-
-[[package]]
 name = "smallvec"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc88c725d61fc6c3132893370cac4a0200e3fedf5da8331c570664b1987f5ca2"
-
-[[package]]
-name = "so-defi-accounts"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf471432806f66734ed18c4d9ac657f0df3c0f5b683fa255d8434c071072d134"
-dependencies = [
- "borsh",
- "borsh-derive",
- "solana-program",
- "static-pubkey",
-]
-
-[[package]]
-name = "so-defi-atrix"
-version = "0.1.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6fff5c8e3d2d6ef9f49c6322c9a88f9aed214abbf5cfc249e0e5efb840ea475"
-dependencies = [
- "borsh",
- "borsh-derive",
- "sighashdb",
- "so-defi-accounts",
- "solana-program",
- "spl-token",
- "static-pubkey",
-]
-
-[[package]]
-name = "so-defi-utils"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16818e6109f35f428d983bfdbedbb768aac12a22a52ecf032ad421f046350cd7"
-dependencies = [
- "bytemuck",
- "solana-program",
-]
 
 [[package]]
 name = "solana-frozen-abi"
@@ -1292,11 +1234,9 @@ dependencies = [
 name = "solana_contracts"
 version = "0.1.0"
 dependencies = [
+ "anchor-lang",
  "anchor-spl",
  "spl-associated-token-account",
- "tulipv2-sdk-common",
- "tulipv2-sdk-farms",
- "tulipv2-sdk-vaults",
 ]
 
 [[package]]
@@ -1323,24 +1263,6 @@ dependencies = [
  "solana-program",
  "thiserror",
 ]
-
-[[package]]
-name = "static-pubkey"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0547d5945c93f55e1b18bf2a67d1a3d0548561f2687645b22c1c1d4fbb9a8e90"
-dependencies = [
- "bs58 0.4.0",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "static_assertions"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "subtle"
@@ -1398,116 +1320,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tulip-arrform"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26e9bc79d09160eae39c81027639b268e2bc60a9cb05e772f788ff7a2b6265d0"
-
-[[package]]
-name = "tulip-derivative"
-version = "2.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75d6eabea9d108df2d23d7f1201de4f7d2bceebe0dda5fa05bcef95a5ff4deaf"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "tulipv2-sdk-common"
-version = "0.9.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cfeb922e88f9c759786c342b53fd49aa5c54470373e56ea4d6d6050c2f12c40"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "arrayref",
- "bytemuck",
- "num-derive",
- "num-traits",
- "sighashdb",
- "so-defi-utils",
- "solana-program",
- "spl-associated-token-account",
- "spl-token",
- "static-pubkey",
- "thiserror",
- "tulip-arrform",
- "tulipv2-sdk-farms",
- "uint",
-]
-
-[[package]]
-name = "tulipv2-sdk-farms"
-version = "0.9.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b0b89d92fc7e502a12b7b1bd5526de294bcee7a1861cadc1046cfbc40e89d60"
-dependencies = [
- "anchor-lang",
- "tulip-arrform",
-]
-
-[[package]]
-name = "tulipv2-sdk-vaults"
-version = "0.9.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5017f75ab623e9767cd575cf2e47b685177f3df518aae0b285b6036d9f14b54"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "bytemuck",
- "itertools",
- "sighashdb",
- "so-defi-atrix",
- "spl-associated-token-account",
- "spl-token",
- "static-pubkey",
- "tulip-arrform",
- "tulip-derivative",
- "tulipv2-sdk-common",
- "tulipv2-sdk-farms",
- "type-layout",
-]
-
-[[package]]
-name = "type-layout"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "074069282ba5be5078f1bdb34112b963516d50f262bf4c1082fee1f6ada11d74"
-dependencies = [
- "memoffset",
- "type-layout-derive",
-]
-
-[[package]]
-name = "type-layout-derive"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc4a1cf66ce820973c4b31c5ef47a8e930a53ffbcec191212c33f5a3ad75c6cd"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "typenum"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
-
-[[package]]
-name = "uint"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9db035e67dfaf7edd9aebfe8676afcd63eed53c8a4044fed514c8cccf1835177"
-dependencies = [
- "byteorder",
- "crunchy",
- "rustc-hex",
- "static_assertions",
-]
 
 [[package]]
 name = "unicode-ident"

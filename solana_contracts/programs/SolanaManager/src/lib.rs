@@ -8,9 +8,9 @@ use crate::state::admin::*;
 use crate::state::strategy::*;
 
 //devnet
-//declare_id!("7ySNekmtGq9NMjnWGb7YHtTGio7AcV4665cp9MwV3rVe");
+declare_id!("7ySNekmtGq9NMjnWGb7YHtTGio7AcV4665cp9MwV3rVe");
 //localnet
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+//declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
 pub mod instructions;
 pub mod state;
