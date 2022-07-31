@@ -156,17 +156,24 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         AssetInfo[] calldata assetInfos
     ) internal {
         for (uint256 i = 0; i < assetInfos.length; i++) {
-            require(
-                isTokenWhitelistedForStrategy[strategyChainId][strategyId][
-                    assetInfos[i].assetAddr
-                ],
-                "token not allowed"
-            );
-            IERC20(assetInfos[i].assetAddr).safeTransferFrom(
-                msg.sender,
-                address(this),
-                assetInfos[i].amount
-            );
+            if (assetInfos[i].assetType == AssetType.NativeToken) {
+                require(
+                    msg.value == assetInfos[i].amount,
+                    "insufficient native token amount"
+                );
+            } else {
+                require(
+                    isTokenWhitelistedForStrategy[strategyChainId][strategyId][
+                        assetInfos[i].assetAddr
+                    ],
+                    "token not allowed"
+                );
+                IERC20(assetInfos[i].assetAddr).safeTransferFrom(
+                    msg.sender,
+                    address(this),
+                    assetInfos[i].amount
+                );
+            }
         }
     }
 
@@ -206,37 +213,41 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             uint32(assetInfos.length)
         );
         for (uint256 i = 0; i < assetInfos.length; i++) {
-            // Collect cross-chain fees if applicable.
-            uint256 amount = assetInfos[i].amount;
-            uint256 crossChainFee = (amount * CROSS_CHAIN_FEE_BPS) / BPS;
-            if (crossChainFee > 0) {
-                IERC20(assetInfos[i].assetAddr).safeTransfer(
-                    FEE_SINK,
-                    crossChainFee
+            if (assetInfos[i].assetType == AssetType.NativeToken) {
+                revert("unsupported cross-chain native token");
+            } else {
+                // Collect cross-chain fees if applicable.
+                uint256 amount = assetInfos[i].amount;
+                uint256 crossChainFee = (amount * CROSS_CHAIN_FEE_BPS) / BPS;
+                if (crossChainFee > 0) {
+                    IERC20(assetInfos[i].assetAddr).safeTransfer(
+                        FEE_SINK,
+                        crossChainFee
+                    );
+                    amount -= crossChainFee;
+                }
+
+                // Allow wormhole token bridge contract to transfer this token out of here.
+                IERC20(assetInfos[i].assetAddr).safeIncreaseAllowance(
+                    WORMHOLE_TOKEN_BRIDGE,
+                    amount
                 );
-                amount -= crossChainFee;
+
+                // Initiate token transfer.
+                uint64 transferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
+                    .transferTokens(
+                        assetInfos[i].assetAddr,
+                        amount,
+                        strategyChainId,
+                        strategyChainApertureManager,
+                        /*arbiterFee=*/
+                        0,
+                        WORMHOLE_NONCE
+                    );
+
+                // Append sequence to payload.
+                payload = payload.concat(abi.encodePacked(transferSequence));
             }
-
-            // Allow wormhole token bridge contract to transfer this token out of here.
-            IERC20(assetInfos[i].assetAddr).safeIncreaseAllowance(
-                WORMHOLE_TOKEN_BRIDGE,
-                amount
-            );
-
-            // Initiate token transfer.
-            uint64 transferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
-                .transferTokens(
-                    assetInfos[i].assetAddr,
-                    amount,
-                    strategyChainId,
-                    strategyChainApertureManager,
-                    /*arbiterFee=*/
-                    0,
-                    WORMHOLE_NONCE
-                );
-
-            // Append sequence to payload.
-            payload = payload.concat(abi.encodePacked(transferSequence));
         }
 
         // Append encoded data: the length as a uint32, followed by the encoded bytes themselves.
@@ -295,14 +306,17 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
                 "invalid strategyId"
             );
 
-            // Approve strategy manager to move assets.
             for (uint256 i = 0; i < assetInfos.length; i++) {
-                address assetAddr = assetInfos[i].assetAddr;
-                uint256 amount = assetInfos[i].amount;
-                IERC20(assetAddr).approve(strategy.strategyManager, amount);
+                if (assetInfos[i].assetType != AssetType.NativeToken) {
+                    // Approve strategy manager to move assets.
+                    address assetAddr = assetInfos[i].assetAddr;
+                    uint256 amount = assetInfos[i].amount;
+                    IERC20(assetAddr).approve(strategy.strategyManager, amount);
+                }
             }
             console.log("recipient: %s", msg.sender);
-            IStrategyManager(strategy.strategyManager).openPosition(
+            IStrategyManager(strategy.strategyManager).openPosition{value: msg.value}
+            (
                 msg.sender,
                 PositionInfo(positionId, strategyChainId),
                 encodedPositionOpenData
@@ -315,7 +329,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint64 strategyId,
         AssetInfo[] calldata assetInfos,
         bytes calldata encodedPositionOpenData
-    ) external {
+    ) external payable {
         uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
         validateAndTransferAssetFromSender(
             strategyChainId,
@@ -354,7 +368,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             address(this)
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
-        assetInfos[0] = AssetInfo(toToken, toTokenAmount);
+        assetInfos[0] = AssetInfo(AssetType.Token, toToken, toTokenAmount);
         createPositionInternal(
             positionId,
             strategyChainId,
@@ -438,7 +452,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             Action action = Action(uint8(encodedActionData[0]));
             require(action != Action.Open, "invalid open action in execute");
             if (action == Action.Increase) {
-                IStrategyManager(strategy.strategyManager).increasePosition(
+                IStrategyManager(strategy.strategyManager).increasePosition{value: msg.value}(
                     PositionInfo(positionId, strategyChainId),
                     encodedActionData[1:]
                 );
@@ -471,7 +485,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             address(this)
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
-        assetInfos[0] = AssetInfo(toToken, toTokenAmount);
+        assetInfos[0] = AssetInfo(AssetType.Token, toToken, toTokenAmount);
         publishExecuteStrategyInstruction(
             positionIdToInfo[positionId].strategyChainId,
             positionId,

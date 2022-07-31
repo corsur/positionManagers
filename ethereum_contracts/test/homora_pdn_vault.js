@@ -234,6 +234,44 @@ async function testReinvest(contract) {
   }
 }
 
+async function testNativeTokenSupport(managerContract, strategyContract) {
+  const usdcDepositAmount0 = 1000e6;
+  const avaxAmount = BigNumber.from("10000000000000000000");
+
+   // Deposit 1000 USDC to vault from wallet 0.
+   await USDC.connect(wallets[0]).approve(
+    managerContract.address,
+    usdcDepositAmount0
+  );
+  console.log("using wallet: ", wallets[0].address);
+
+  // Craft open position data.
+  const buffer = new ArrayBuffer(32 * 2); // two uint256.
+  const view = new DataView(buffer);
+  // This is an encoding hack.
+  view.setUint32(28, usdcDepositAmount0);
+  const openPositionBytesArray = new Uint8Array(buffer);
+  console.log("print out uint8 array: ", openPositionBytesArray);
+  
+  txOptions["value"] = avaxAmount;
+
+  // Deposit 1000 USDC to vault from wallet 0.
+  await managerContract
+    .connect(wallets[0])
+    .createPosition(
+      /*strategyChainId=*/ AVAX_CHAIN_ID,
+      /*strategyId=*/ 0,
+      [[0, USDC_TOKEN_ADDRESS, usdcDepositAmount0], [1, ZERO_ADDR, avaxAmount]],
+      openPositionBytesArray,
+      txOptions
+    );
+      
+    // Manager contract is supposed not to keep any native tokens.
+    expect(await provider.getBalance(managerContract.address)).to.equal(0);
+    // Strategy contract is designed to receive native tokens but not handle them.
+    expect(await provider.getBalance(strategyContract.address)).to.equal(avaxAmount);
+}
+
 async function testDepositAndWithdraw(managerContract, strategyContract) {
   const usdcDepositAmount0 = 1000e6;
   const usdcDepositAmount1 = 500e6;
@@ -259,7 +297,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     .createPosition(
       /*strategyChainId=*/ AVAX_CHAIN_ID,
       /*strategyId=*/ 0,
-      [[USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
+      [[0, USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
       openPositionBytesArray,
       txOptions
     );
@@ -277,7 +315,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     .createPosition(
       /*strategyChainId=*/ AVAX_CHAIN_ID,
       /*strategyId=*/ 0,
-      [[USDC_TOKEN_ADDRESS, usdcDepositAmount1]],
+      [[0, USDC_TOKEN_ADDRESS, usdcDepositAmount1]],
       openPositionBytesArray1,
       txOptions
     );
@@ -428,6 +466,10 @@ describe("HomoraPDNVault Initialization", function () {
 
   it("HomoraPDNVault DepositAndWithdraw", async function () {
     await testDepositAndWithdraw(managerContract, strategyContract);
+  });
+
+  it("EthereumManager NativeTokenSupport", async function () {
+    await testNativeTokenSupport(managerContract, strategyContract);
   });
 
   // it("Deposit and test rebalance", async function () {
