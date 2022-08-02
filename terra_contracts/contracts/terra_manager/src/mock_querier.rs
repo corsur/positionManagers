@@ -212,6 +212,14 @@ impl WasmMockQuerier {
                         panic!()
                     };
                     SystemResult::Ok(ContractResult::Ok(to_binary(&parsed_vaa).unwrap()))
+                } else if *contract_addr == "terra1cw20" {
+                    SystemResult::Ok(ContractResult::Ok(
+                        to_binary(&cw20::AllowanceResponse {
+                            allowance: Uint128::MAX,
+                            expires: cw20::Expiration::Never {},
+                        })
+                        .unwrap(),
+                    ))
                 } else {
                     panic!()
                 }

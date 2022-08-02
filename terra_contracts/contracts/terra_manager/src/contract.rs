@@ -24,12 +24,13 @@ use aperture_common::terra_manager::{
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
-    deps: DepsMut,
+    mut deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    ADMIN.save(deps.storage, &deps.api.addr_validate(&msg.admin_addr)?)?;
+    let admin_addr = deps.api.addr_validate(&msg.admin_addr)?;
+    ADMIN.set(deps.branch(), Some(admin_addr))?;
     WORMHOLE_TOKEN_BRIDGE_ADDR.save(
         deps.storage,
         &deps.api.addr_validate(&msg.wormhole_token_bridge_addr)?,
@@ -55,6 +56,7 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     match msg {
+        ExecuteMsg::UpdateAdminAddr { new_admin_addr } => update_admin(deps, info, new_admin_addr),
         ExecuteMsg::AddStrategy {
             name,
             version,
@@ -83,6 +85,13 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             initiate_outgoing_token_transfer(deps.as_ref(), env, info, assets, recipient)
         }
     }
+}
+
+fn update_admin(deps: DepsMut, info: MessageInfo, new_admin_addr: String) -> StdResult<Response> {
+    let new_admin = deps.api.addr_validate(&new_admin_addr)?;
+    Ok(ADMIN
+        .execute_update_admin(deps, info, Some(new_admin))
+        .unwrap())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

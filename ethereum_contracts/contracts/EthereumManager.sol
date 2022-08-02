@@ -6,6 +6,7 @@ import "hardhat/console.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -47,7 +48,12 @@ struct CurveSwapOperation {
     bool underlying;
 }
 
-contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+contract EthereumManager is
+    Initializable,
+    UUPSUpgradeable,
+    OwnableUpgradeable,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
     using BytesLib for bytes;
 
@@ -116,6 +122,10 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         WORMHOLE_TOKEN_BRIDGE = _wormholeTokenBridge;
         WORMHOLE_CORE_BRIDGE = WormholeTokenBridge(_wormholeTokenBridge)
             .wormhole();
+        require(
+            _crossChainFeeBPS <= MAX_CROSS_CHAIN_FEE_BPS,
+            "crossChainFeeBPS exceeds maximum allowed value"
+        );
         CROSS_CHAIN_FEE_BPS = _crossChainFeeBPS;
         FEE_SINK = _feeSink;
     }
@@ -129,7 +139,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     {
         require(
             crossChainFeeBPS <= MAX_CROSS_CHAIN_FEE_BPS,
-            "crossChainFeeBPS exceeds maximum allowed value of 100"
+            "crossChainFeeBPS exceeds maximum allowed value"
         );
         CROSS_CHAIN_FEE_BPS = crossChainFeeBPS;
     }
@@ -184,7 +194,10 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             if (
                 IERC20(tokens[i]).allowance(address(this), route[i].pool) == 0
             ) {
-                IERC20(tokens[i]).safeApprove(route[i].pool, type(uint256).max);
+                IERC20(tokens[i]).safeIncreaseAllowance(
+                    route[i].pool,
+                    type(uint256).max
+                );
             }
         }
         CurveSwapOperation[] storage storage_route = curveSwapRoutes[fromToken][
@@ -287,9 +300,9 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         }
     }
 
-    // TODO(gnarlycow): Look into whether re-entrancy guard is needed for recordNewPositionInfo() which is called by createPosition() and swapTokenAndCreatePosition().
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
         internal
+        nonReentrant
         returns (uint128)
     {
         uint128 positionId = nextPositionId++;
@@ -335,7 +348,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             }
 
             // Allow wormhole token bridge contract to transfer this token out of here.
-            IERC20(assetInfos[i].assetAddr).safeApprove(
+            IERC20(assetInfos[i].assetAddr).safeIncreaseAllowance(
                 WORMHOLE_TOKEN_BRIDGE,
                 amount
             );
@@ -418,6 +431,10 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint16 strategyChainId,
         bytes calldata encodedPositionOpenData
     ) external {
+        require(
+            isTokenWhitelistedForStrategy[strategyChainId][strategyId][toToken],
+            "toToken not allowed"
+        );
         uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
         IERC20(fromToken).safeTransferFrom(msg.sender, address(this), amount);
         uint256 toTokenAmount = swapToken(
@@ -534,7 +551,8 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     }
 
     function decodeWormholeVM(bytes calldata encodedVM)
-        internal view
+        internal
+        view
         returns (WormholeCoreBridge.VM memory)
     {
         (

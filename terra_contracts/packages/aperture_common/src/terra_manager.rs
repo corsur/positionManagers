@@ -22,6 +22,9 @@ pub struct InstantiateMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
+    UpdateAdminAddr {
+        new_admin_addr: String,
+    },
     /// Add strategy with the specified strategy manager address and metadata.
     /// A new, unique strategy_id is assigned to this strategy.
     /// Can only be called by the administrator.
