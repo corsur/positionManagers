@@ -78,17 +78,21 @@ describe.only("LendingOptimizer tests", function () {
     }
   });
 
-  it.skip("AVAX", async function () {
-    await optimizer.connect(user1).supplyAvax({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
-    await optimizer.connect(user2).supplyAvax({ value: ethers.utils.parseUnits('1000000000', 'gwei') });
+  it("AVAX", async function () {
+    await optimizer.connect(user1).supplyAvax({ value: ethers.utils.parseUnits('500000000', 'gwei') });
+    await optimizer.connect(user2).supplyAvax({ value: ethers.utils.parseUnits('500000000', 'gwei') });
+    await optimizer.connect(user1).supplyAvax({ value: ethers.utils.parseUnits('500000000', 'gwei') });
+    await optimizer.connect(user2).supplyAvax({ value: ethers.utils.parseUnits('500000000', 'gwei') });
 
     console.log("After supply, user 1: " + await optimizer.connect(user1).avaxBalance());
-    console.log("After supply, user 2: " + await optimizer.connect(user2).avaxBalance());
+    console.log("After supply, user 2: " + await optimizer.connect(user2).avaxBalance() + "\n");
 
     await optimizer.optimizeAvax();
 
     await optimizer.connect(user1).withdrawAvax(8000);
     await optimizer.connect(user2).withdrawAvax(8000);
+    await optimizer.connect(user1).withdrawAvax(1000);
+    await optimizer.connect(user2).withdrawAvax(1000);
 
     console.log("After withdraw, user 1: " + await optimizer.connect(user1).avaxBalance());
     console.log("After withdraw, user 2: " + await optimizer.connect(user2).avaxBalance());

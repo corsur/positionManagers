@@ -125,7 +125,7 @@ contract LendingOptimizer is
 
         require(market != Market.NONE); // Revert if token not supported by any market
 
-        return Market.AAVE;
+        return market;
     }
 
     /* ERC-20 TOKEN FUNCTIONS */
@@ -171,7 +171,7 @@ contract LendingOptimizer is
     }
 
     function withdrawToken(address uAddr, uint16 basisPoint) external {
-        require(basisPoint <= 10000 && totalShare[uAddr] > 0);
+        require(basisPoint <= 10000 && userShare[uAddr][msg.sender] > 0);
 
         uint256 shares = (userShare[uAddr][msg.sender] * basisPoint) / 10000;
 
@@ -185,6 +185,10 @@ contract LendingOptimizer is
             uint256 amount = (ICompound(cAddr).balanceOf(address(this)) *
                 shares) / totalShare[uAddr];
             ICompound(cAddr).redeem(amount);
+            IERC20(uAddr).safeTransfer(
+                msg.sender,
+                IERC20(uAddr).balanceOf(address(this))
+            );
         }
 
         // update shares
@@ -245,107 +249,137 @@ contract LendingOptimizer is
 
     /* AVAX FUNCTIONS */
 
-    /*
-    function supplyAvaxInternal(
-        bool isOptimize,
-        uint256 amount,
-        address user
-    ) internal {
-        if (!isOptimize) {
-            if (balanceMap[AVAX[0]][user].market == Market(0)) users.push(user);
-            amount = msg.value;
+    function supplyAvax() external payable {
+        // first supply
+        if (currentMarket[AVAX[0]] == Market.NONE)
+            currentMarket[AVAX[0]] = bestMarket(AVAX[0]);
+
+        Market market = currentMarket[AVAX[0]];
+        uint256 prevBalance;
+        uint256 amount = address(this).balance;
+        uint256 supplied;
+
+        // token exchange
+        if (market == Market.AAVE) {
+            address aAddr = IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress;
+            IERC20 aToken = IERC20(aAddr);
+            prevBalance = aToken.balanceOf(address(this));
+            IAaveV3(AVAX[uint256(market)]).depositETH{value: amount}(
+                POOL,
+                address(this),
+                0 // referralCode
+            );
+            supplied = aToken.balanceOf(address(this)) - prevBalance;
+        } else {
+            address cAddr = AVAX[uint256(market)];
+            ICompound cToken = ICompound(cAddr);
+            prevBalance = cToken.balanceOf(address(this));
+            if (market == Market.BENQI) cToken.mint{value: amount}();
+            else cToken.mintNative{value: amount}();
+            supplied = cToken.balanceOf(address(this)) - prevBalance;
+            require(supplied > 0); // due to exchange rate
         }
 
-        Market market = bestMarket(AVAX[0]);
+        // update shares
+        if (userShare[AVAX[0]][msg.sender] == 0) {
+            userShare[AVAX[0]][msg.sender] += supplied;
+            totalShare[AVAX[0]] += supplied;
+        } else {
+            uint256 shares = (supplied * totalShare[AVAX[0]]) / prevBalance;
+            userShare[AVAX[0]][msg.sender] += shares;
+            totalShare[AVAX[0]] += shares;
+        }
+    }
+
+    function withdrawAvax(uint16 basisPoint) external payable {
+        require(basisPoint <= 10000 && userShare[AVAX[0]][msg.sender] > 0);
+
+        uint256 shares = (userShare[AVAX[0]][msg.sender] * basisPoint) / 10000;
+        Market market = currentMarket[AVAX[0]];
+
+        if (market == Market.AAVE) {
+            address aAddr = IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress;
+            uint256 amount = (IERC20(aAddr).balanceOf(address(this)) * shares) /
+                totalShare[AVAX[0]];
+            IERC20(aAddr).safeApprove(AVAX[uint256(market)], amount);
+            IAaveV3(AVAX[uint256(Market.AAVE)]).withdrawETH(
+                POOL,
+                amount,
+                msg.sender
+            );
+        } else {
+            address cAddr = AVAX[uint256(market)];
+            ICompound cToken = ICompound(cAddr);
+            uint256 amount = (ICompound(cAddr).balanceOf(address(this)) *
+                shares) / totalShare[AVAX[0]];
+            market == Market.BENQI
+                ? cToken.redeem(amount)
+                : cToken.redeemNative(amount);
+            payable(msg.sender).transfer(address(this).balance);
+        }
+
+        // update shares
+        userShare[AVAX[0]][msg.sender] -= shares;
+        totalShare[AVAX[0]] -= shares;
+    }
+
+    function optimizeAvax() external payable {
+        Market market;
+        uint256 amount;
+
+        // withdraw
+        market = currentMarket[AVAX[0]];
+        if (market == Market.AAVE) {
+            address aAddr = IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress;
+            amount = IERC20(aAddr).balanceOf(address(this));
+            IERC20(aAddr).safeApprove(AVAX[uint256(market)], amount);
+            IAaveV3(AVAX[uint256(market)]).withdrawETH(
+                POOL,
+                amount,
+                address(this)
+            );
+        } else {
+            address cAddr = AVAX[uint256(market)];
+            ICompound cToken = ICompound(cAddr);
+            amount = cToken.balanceOf(address(this));
+            market == Market.BENQI
+                ? cToken.redeem(amount)
+                : cToken.redeemNative(amount);
+        }
+
+        // supply
+        amount = address(this).balance;
+        market = bestMarket(AVAX[0]);
+        currentMarket[AVAX[0]] = market;
         if (market == Market.AAVE) {
             IAaveV3(AVAX[uint256(market)]).depositETH{value: amount}(
                 POOL,
                 address(this),
                 0 // referralCode
             );
-            balanceMap[AVAX[0]][user].amount += amount;
         } else {
             ICompound cToken = ICompound(AVAX[uint256(market)]);
-            uint256 cMinted = cToken.balanceOf(address(this));
             if (market == Market.BENQI) cToken.mint{value: amount}();
             else cToken.mintNative{value: amount}();
-            cMinted = cToken.balanceOf(address(this)) - cMinted;
-            require(cMinted > 0);
-            balanceMap[AVAX[0]][user].amount += cMinted;
         }
     }
 
-    function withdrawAvaxInternal(
-        uint16 basisPoint,
-        bool isOptimize,
-        address user
-    ) internal returns (uint256) {
-        address receiver = isOptimize ? address(this) : user;
-        Market market = balanceMap[AVAX[0]][user].market;
-        if (market == Market.AAVE) {
-            uint256 amount = (balanceMap[AVAX[0]][user].amount * basisPoint) /
-                10000;
-            IERC20(IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress)
-                .safeApprove(AVAX[uint256(Market.AAVE)], amount);
-            IAaveV3(AVAX[uint256(Market.AAVE)]).withdrawETH(
-                POOL,
-                amount,
-                receiver
-            );
-            balanceMap[AVAX[0]][user].amount -= amount;
-            return amount;
-        } else {
-            ICompound cToken = ICompound(AVAX[uint256(market)]);
-            uint256 amount = (balanceMap[AVAX[0]][user].amount * basisPoint) /
-                10000;
-            uint256 uAmount = address(this).balance;
-            uint256 cAmount = cToken.balanceOf(address(this));
-            market == Market.BENQI
-                ? cToken.redeem(amount)
-                : cToken.redeemNative(amount);
-            cAmount -= cToken.balanceOf(address(this));
-            amount = address(this).balance - uAmount;
-            payable(receiver).transfer(amount);
-            balanceMap[AVAX[0]][user].amount -= cAmount;
-            return amount;
-        }
-    }
-    */
-
-    /*
     function avaxBalance() external view returns (uint256) {
-        Market market = balanceMap[AVAX[0]][msg.sender].market;
+        Market market = currentMarket[AVAX[0]];
+        if (market == Market.NONE || totalShare[AVAX[0]] == 0) return 0;
+
         if (market == Market.AAVE) {
-            return balanceMap[AVAX[0]][msg.sender].amount;
+            address aAddr = IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress;
+            IERC20 aToken = IERC20(aAddr);
+            uint256 userBalance = (aToken.balanceOf(address(this)) *
+                userShare[AVAX[0]][msg.sender]) / totalShare[AVAX[0]];
+            return userBalance;
         } else {
-            return
-                uBalance(
-                    AVAX[uint256(market)],
-                    balanceMap[AVAX[0]][msg.sender].amount
-                );
+            address cAddr = AVAX[uint256(market)];
+            ICompound cToken = ICompound(cAddr);
+            uint256 userBalance = (cToken.balanceOf(address(this)) *
+                userShare[AVAX[0]][msg.sender]) / totalShare[AVAX[0]];
+            return compoundToUnderlying(cAddr, userBalance);
         }
     }
-    */
-
-    /*
-    function supplyAvax() external payable {
-        supplyAvaxInternal(false, 0, msg.sender); // 0 for amount, is an unused argument
-    }
-
-    function withdrawAvax(uint16 basisPoint)
-        external
-        payable
-        returns (uint256)
-    {
-        require(basisPoint <= 10000);
-        return withdrawAvaxInternal(basisPoint, false, msg.sender);
-    }
-    */
-
-    /*
-    function optimizeAvax() external payable {
-        uint256 amount = withdrawAvaxInternal(10000, true, msg.sender);
-        supplyAvaxInternal(true, amount, msg.sender);
-    }
-    */
 }

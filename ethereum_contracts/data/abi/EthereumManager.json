@@ -1,7 +1,6 @@
 [
   "event AdminChanged(address,address)",
   "event BeaconUpgraded(address indexed)",
-  "event Initialized(uint8)",
   "event OwnershipTransferred(address indexed,address indexed)",
   "event Upgraded(address indexed)",
   "function CONSISTENCY_LEVEL() view returns (uint8)",
