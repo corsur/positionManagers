@@ -22,7 +22,9 @@
     "ethers": "^5.6.1",
     "hardhat": "^2.9.1",
     "hardhat-abi-exporter": "^2.8.0",
-    "hardhat-gas-reporter": "^1.0.8"
+    "hardhat-gas-reporter": "^1.0.8",
+    "jest": "^25.2.2",
+    "supertest": "^6.2.2"
   },
   "dependencies": {
     "@certusone/wormhole-sdk": "^0.1.6",
@@ -31,6 +33,7 @@
     "@openzeppelin/contracts": "^4.6.0",
     "@openzeppelin/contracts-upgradeable": "^4.6.0",
     "@terra-money/terra.js": "^3.0.8",
-    "@uniswap/v2-core": "^1.0.1"
+    "@uniswap/v2-core": "^1.0.1",
+    "hardhat-contract-sizer": "^2.5.1"
   }
 }

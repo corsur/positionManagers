@@ -1,4 +1,5 @@
 [
+  "function chainId() view returns (uint16)",
   "function parseAndVerifyVM(bytes) view returns (tuple(uint8,uint32,uint32,uint16,bytes32,uint64,uint8,bytes,uint32,tuple(bytes32,bytes32,uint8,uint8)[],bytes32), bool, string)",
   "function publishMessage(uint32,bytes,uint8) payable returns (uint64)"
 ]
