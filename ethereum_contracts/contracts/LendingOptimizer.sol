@@ -160,7 +160,7 @@ contract LendingOptimizer is
         }
 
         // update shares
-        if (userShare[uAddr][msg.sender] == 0) {
+        if (prevBalance == 0) {
             userShare[uAddr][msg.sender] += supplied;
             totalShare[uAddr] += supplied;
         } else {
@@ -281,7 +281,7 @@ contract LendingOptimizer is
         }
 
         // update shares
-        if (userShare[AVAX[0]][msg.sender] == 0) {
+        if (prevBalance == 0) {
             userShare[AVAX[0]][msg.sender] += supplied;
             totalShare[AVAX[0]] += supplied;
         } else {
