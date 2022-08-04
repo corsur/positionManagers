@@ -17,3 +17,10 @@ target/
 
 # Environment variables.
 .env
+
+# Anchor 
+solana_contracts/SolanaManager/node_modules/
+solana_contracts/SolanaManager/.anchor
+
+# NodeJS
+node_modules

@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.13;
+pragma solidity >=0.8.0 <0.9.0;
 
 interface WormholeCoreBridge {
     function publishMessage(
@@ -7,6 +7,8 @@ interface WormholeCoreBridge {
         bytes memory payload,
         uint8 consistencyLevel
     ) external payable returns (uint64 sequence);
+
+    function chainId() external view returns (uint16);
 
     struct Signature {
         bytes32 r;
