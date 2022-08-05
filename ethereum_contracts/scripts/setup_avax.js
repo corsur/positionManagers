@@ -73,11 +73,11 @@ async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
   // Set credit to 100,000 USDC and 5,000 WAVAX.
   await homoraBank.connect(signer).setCreditLimits(
     [
-      [contractAddressToWhitelist, USDC_TOKEN_ADDRESS, 1e11, ZERO_ADDR],
+      [contractAddressToWhitelist, USDC_TOKEN_ADDRESS, 1e12, ZERO_ADDR],
       [
         contractAddressToWhitelist,
         WAVAX_TOKEN_ADDRESS,
-        ethers.BigNumber.from("1000000000000000000000"),
+        ethers.BigNumber.from("100000000000000000000000"),
         ZERO_ADDR,
       ],
     ],
