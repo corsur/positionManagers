@@ -347,7 +347,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     .connect(wallets[0])
     .executeStrategy(
       /*positionId=*/ 0,
-      /*assetInfos=*/ [],
+      /*assetInfos=*/[],
       encodedWithdrawData,
       txOptions
     );
@@ -360,7 +360,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
   // );
 }
 
-describe.only("HomoraPDNVault Initialization", function () {
+describe("HomoraPDNVault Initialization", function () {
   var managerFactory = undefined;
   var managerContract = undefined;
   var strategyFactory = undefined;

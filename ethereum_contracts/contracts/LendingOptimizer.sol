@@ -35,7 +35,7 @@ contract LendingOptimizer is
     mapping(address => mapping(address => uint256)) userShare; // uToken => userAddr => shares
     mapping(address => uint256) totalShare; // uToken => total
 
-    address public POOL; // Aave Lending Pool
+    address public AAVE_V3_POOL; // Aave Lending Pool
     address[NUM_MARKETS + 1] public AVAX; // Addresses of AVAX tokens
 
     /* SETUP */
@@ -50,7 +50,7 @@ contract LendingOptimizer is
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
-        POOL = _pool;
+        AAVE_V3_POOL = _pool;
         AVAX = [_wAvax, _wEth, _qiAvax, _iAvax, _jAvax];
     }
 
@@ -86,12 +86,15 @@ contract LendingOptimizer is
         // Interest rate APY formulas: (31536000 = seconds per year)
         // Aave: (currentLiquidityRate / (10 ^ 27) / 31536000 + 1) ^ 31536000 - 1
         // Rest: (supplyRatePerTimestamp / (10 ^ 18) + 1) ^ 31536000 - 1
-        // Benqi distribution APY not accounted yet, formula in code is simplified from Aave = Rest equation
+        // Benqi distribution APY not accounted yet
 
         uint256 factor = 31536000 * (10**9);
 
         if (market == Market.AAVE) {
-            return IAaveV3(POOL).getReserveData(uAddr).currentLiquidityRate; // 0 if token not supported
+            return
+                IAaveV3(AAVE_V3_POOL)
+                    .getReserveData(uAddr)
+                    .currentLiquidityRate; // 0 if token not supported
         } else {
             address addr = uAddr == AVAX[uint256(market)]
                 ? AVAX[uint256(market)]
@@ -143,11 +146,13 @@ contract LendingOptimizer is
 
         // token exchange
         if (currentMarket[uAddr] == Market.AAVE) {
-            address aAddr = IAaveV3(POOL).getReserveData(uAddr).aTokenAddress;
-            uToken.safeApprove(POOL, amount);
+            address aAddr = IAaveV3(AAVE_V3_POOL)
+                .getReserveData(uAddr)
+                .aTokenAddress;
+            uToken.safeApprove(AAVE_V3_POOL, amount);
             IERC20 aToken = IERC20(aAddr);
             prevBalance = aToken.balanceOf(address(this));
-            IAaveV3(POOL).supply(uAddr, amount, address(this), 0); // 0 = referralCode
+            IAaveV3(AAVE_V3_POOL).supply(uAddr, amount, address(this), 0); // 0 = referralCode
             supplied = amount;
         } else {
             address cAddr = cAddrMap[currentMarket[uAddr]][uAddr];
@@ -176,10 +181,12 @@ contract LendingOptimizer is
         uint256 shares = (userShare[uAddr][msg.sender] * basisPoint) / 10000;
 
         if (currentMarket[uAddr] == Market.AAVE) {
-            address aAddr = IAaveV3(POOL).getReserveData(uAddr).aTokenAddress;
+            address aAddr = IAaveV3(AAVE_V3_POOL)
+                .getReserveData(uAddr)
+                .aTokenAddress;
             uint256 amount = (IERC20(aAddr).balanceOf(address(this)) * shares) /
                 totalShare[uAddr];
-            IAaveV3(POOL).withdraw(uAddr, amount, msg.sender);
+            IAaveV3(AAVE_V3_POOL).withdraw(uAddr, amount, msg.sender);
         } else {
             address cAddr = cAddrMap[currentMarket[uAddr]][uAddr];
             uint256 amount = (ICompound(cAddr).balanceOf(address(this)) *
@@ -196,13 +203,15 @@ contract LendingOptimizer is
         totalShare[uAddr] -= shares;
     }
 
-    function optimizeToken(address uAddr) external {
-        Market market;
+    function optimizeToken(address uAddr) external returns (bool) {
+        Market market = currentMarket[uAddr];
+        Market newMarket = bestMarket(uAddr);
+        if (market == newMarket) return false;
+
         uint256 balance;
-        IAaveV3 pool = IAaveV3(POOL);
+        IAaveV3 pool = IAaveV3(AAVE_V3_POOL);
 
         // withdraw
-        market = currentMarket[uAddr];
         if (market == Market.AAVE) {
             IERC20 aToken = IERC20(pool.getReserveData(uAddr).aTokenAddress);
             balance = aToken.balanceOf(address(this));
@@ -216,35 +225,17 @@ contract LendingOptimizer is
         // supply
         IERC20 uToken = IERC20(uAddr);
         balance = uToken.balanceOf(address(this));
+        currentMarket[uAddr] = newMarket;
 
-        market = bestMarket(uAddr);
-        currentMarket[uAddr] = market;
-        if (market == Market.AAVE) {
-            uToken.safeApprove(POOL, balance);
+        if (newMarket == Market.AAVE) {
+            uToken.safeApprove(AAVE_V3_POOL, balance);
             pool.supply(uAddr, balance, address(this), 0); // 0 = referralCode
         } else {
-            uToken.safeApprove(cAddrMap[market][uAddr], balance);
-            ICompound(cAddrMap[market][uAddr]).mint(balance);
+            uToken.safeApprove(cAddrMap[newMarket][uAddr], balance);
+            ICompound(cAddrMap[newMarket][uAddr]).mint(balance);
         }
-    }
 
-    function tokenBalance(address uAddr) external view returns (uint256) {
-        Market market = currentMarket[uAddr];
-        if (market == Market.NONE || totalShare[uAddr] == 0) return 0;
-
-        if (market == Market.AAVE) {
-            address aAddr = IAaveV3(POOL).getReserveData(uAddr).aTokenAddress;
-            IERC20 aToken = IERC20(aAddr);
-            uint256 userBalance = (aToken.balanceOf(address(this)) *
-                userShare[uAddr][msg.sender]) / totalShare[uAddr];
-            return userBalance;
-        } else {
-            address cAddr = cAddrMap[market][uAddr];
-            ICompound cToken = ICompound(cAddr);
-            uint256 userBalance = (cToken.balanceOf(address(this)) *
-                userShare[uAddr][msg.sender]) / totalShare[uAddr];
-            return compoundToUnderlying(cAddr, userBalance);
-        }
+        return true;
     }
 
     /* AVAX FUNCTIONS */
@@ -261,11 +252,13 @@ contract LendingOptimizer is
 
         // token exchange
         if (market == Market.AAVE) {
-            address aAddr = IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress;
+            address aAddr = IAaveV3(AAVE_V3_POOL)
+                .getReserveData(AVAX[0])
+                .aTokenAddress;
             IERC20 aToken = IERC20(aAddr);
             prevBalance = aToken.balanceOf(address(this));
             IAaveV3(AVAX[uint256(market)]).depositETH{value: amount}(
-                POOL,
+                AAVE_V3_POOL,
                 address(this),
                 0 // referralCode
             );
@@ -298,12 +291,14 @@ contract LendingOptimizer is
         Market market = currentMarket[AVAX[0]];
 
         if (market == Market.AAVE) {
-            address aAddr = IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress;
+            address aAddr = IAaveV3(AAVE_V3_POOL)
+                .getReserveData(AVAX[0])
+                .aTokenAddress;
             uint256 amount = (IERC20(aAddr).balanceOf(address(this)) * shares) /
                 totalShare[AVAX[0]];
             IERC20(aAddr).safeApprove(AVAX[uint256(market)], amount);
             IAaveV3(AVAX[uint256(Market.AAVE)]).withdrawETH(
-                POOL,
+                AAVE_V3_POOL,
                 amount,
                 msg.sender
             );
@@ -323,18 +318,22 @@ contract LendingOptimizer is
         totalShare[AVAX[0]] -= shares;
     }
 
-    function optimizeAvax() external payable {
-        Market market;
+    function optimizeAvax() external payable returns (bool) {
+        Market market = currentMarket[AVAX[0]];
+        Market newMarket = bestMarket(AVAX[0]);
+        if (market == newMarket) return false;
+
         uint256 amount;
 
         // withdraw
-        market = currentMarket[AVAX[0]];
         if (market == Market.AAVE) {
-            address aAddr = IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress;
+            address aAddr = IAaveV3(AAVE_V3_POOL)
+                .getReserveData(AVAX[0])
+                .aTokenAddress;
             amount = IERC20(aAddr).balanceOf(address(this));
             IERC20(aAddr).safeApprove(AVAX[uint256(market)], amount);
             IAaveV3(AVAX[uint256(market)]).withdrawETH(
-                POOL,
+                AAVE_V3_POOL,
                 amount,
                 address(this)
             );
@@ -349,19 +348,21 @@ contract LendingOptimizer is
 
         // supply
         amount = address(this).balance;
-        market = bestMarket(AVAX[0]);
-        currentMarket[AVAX[0]] = market;
-        if (market == Market.AAVE) {
-            IAaveV3(AVAX[uint256(market)]).depositETH{value: amount}(
-                POOL,
+        currentMarket[AVAX[0]] = newMarket;
+
+        if (newMarket == Market.AAVE) {
+            IAaveV3(AVAX[uint256(newMarket)]).depositETH{value: amount}(
+                AAVE_V3_POOL,
                 address(this),
                 0 // referralCode
             );
         } else {
-            ICompound cToken = ICompound(AVAX[uint256(market)]);
-            if (market == Market.BENQI) cToken.mint{value: amount}();
+            ICompound cToken = ICompound(AVAX[uint256(newMarket)]);
+            if (newMarket == Market.BENQI) cToken.mint{value: amount}();
             else cToken.mintNative{value: amount}();
         }
+
+        return true;
     }
 
     function avaxBalance() external view returns (uint256) {
@@ -369,7 +370,9 @@ contract LendingOptimizer is
         if (market == Market.NONE || totalShare[AVAX[0]] == 0) return 0;
 
         if (market == Market.AAVE) {
-            address aAddr = IAaveV3(POOL).getReserveData(AVAX[0]).aTokenAddress;
+            address aAddr = IAaveV3(AAVE_V3_POOL)
+                .getReserveData(AVAX[0])
+                .aTokenAddress;
             IERC20 aToken = IERC20(aAddr);
             uint256 userBalance = (aToken.balanceOf(address(this)) *
                 userShare[AVAX[0]][msg.sender]) / totalShare[AVAX[0]];
@@ -379,6 +382,31 @@ contract LendingOptimizer is
             ICompound cToken = ICompound(cAddr);
             uint256 userBalance = (cToken.balanceOf(address(this)) *
                 userShare[AVAX[0]][msg.sender]) / totalShare[AVAX[0]];
+            return compoundToUnderlying(cAddr, userBalance);
+        }
+    }
+
+    /* GET BALANCE */
+
+    function getBalance(address uAddr) external view returns (uint256) {
+        Market market = currentMarket[uAddr];
+        if (market == Market.NONE || totalShare[uAddr] == 0) return 0;
+
+        if (market == Market.AAVE) {
+            address aAddr = IAaveV3(AAVE_V3_POOL)
+                .getReserveData(uAddr)
+                .aTokenAddress;
+            IERC20 aToken = IERC20(aAddr);
+            uint256 userBalance = (aToken.balanceOf(address(this)) *
+                userShare[uAddr][msg.sender]) / totalShare[uAddr];
+            return userBalance;
+        } else {
+            address cAddr = uAddr == AVAX[0]
+                ? AVAX[uint256(market)]
+                : cAddrMap[market][uAddr];
+            ICompound cToken = ICompound(cAddr);
+            uint256 userBalance = (cToken.balanceOf(address(this)) *
+                userShare[uAddr][msg.sender]) / totalShare[uAddr];
             return compoundToUnderlying(cAddr, userBalance);
         }
     }
