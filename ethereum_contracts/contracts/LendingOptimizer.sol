@@ -365,30 +365,13 @@ contract LendingOptimizer is
         return true;
     }
 
-    function avaxBalance() external view returns (uint256) {
-        Market market = currentMarket[AVAX[0]];
-        if (market == Market.NONE || totalShare[AVAX[0]] == 0) return 0;
-
-        if (market == Market.AAVE) {
-            address aAddr = IAaveV3(AAVE_V3_POOL)
-                .getReserveData(AVAX[0])
-                .aTokenAddress;
-            IERC20 aToken = IERC20(aAddr);
-            uint256 userBalance = (aToken.balanceOf(address(this)) *
-                userShare[AVAX[0]][msg.sender]) / totalShare[AVAX[0]];
-            return userBalance;
-        } else {
-            address cAddr = AVAX[uint256(market)];
-            ICompound cToken = ICompound(cAddr);
-            uint256 userBalance = (cToken.balanceOf(address(this)) *
-                userShare[AVAX[0]][msg.sender]) / totalShare[AVAX[0]];
-            return compoundToUnderlying(cAddr, userBalance);
-        }
-    }
-
     /* GET BALANCE */
 
-    function getBalance(address uAddr) external view returns (uint256) {
+    function getBalance(address uAddr, address user)
+        external
+        view
+        returns (uint256)
+    {
         Market market = currentMarket[uAddr];
         if (market == Market.NONE || totalShare[uAddr] == 0) return 0;
 
@@ -398,7 +381,7 @@ contract LendingOptimizer is
                 .aTokenAddress;
             IERC20 aToken = IERC20(aAddr);
             uint256 userBalance = (aToken.balanceOf(address(this)) *
-                userShare[uAddr][msg.sender]) / totalShare[uAddr];
+                userShare[uAddr][user]) / totalShare[uAddr];
             return userBalance;
         } else {
             address cAddr = uAddr == AVAX[0]
@@ -406,7 +389,7 @@ contract LendingOptimizer is
                 : cAddrMap[market][uAddr];
             ICompound cToken = ICompound(cAddr);
             uint256 userBalance = (cToken.balanceOf(address(this)) *
-                userShare[uAddr][msg.sender]) / totalShare[uAddr];
+                userShare[uAddr][user]) / totalShare[uAddr];
             return compoundToUnderlying(cAddr, userBalance);
         }
     }

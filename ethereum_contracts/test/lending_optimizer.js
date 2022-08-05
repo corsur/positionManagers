@@ -61,8 +61,8 @@ describe.only("LendingOptimizer tests", function () {
       await optimizer.connect(user2).supplyToken(tokens[i], 5e6);
       await optimizer.connect(user2).supplyToken(tokens[i], 5e6);
 
-      console.log("user 1: " + await optimizer.connect(user1).getBalance(tokens[i]));
-      console.log("user 2: " + await optimizer.connect(user2).getBalance(tokens[i]));
+      console.log("user 1: " + await optimizer.connect(user1).getBalance(tokens[i], user1.address));
+      console.log("user 2: " + await optimizer.connect(user2).getBalance(tokens[i], user2.address));
 
       await optimizer.optimizeToken(tokens[i]);
 
@@ -71,8 +71,8 @@ describe.only("LendingOptimizer tests", function () {
       await optimizer.connect(user1).withdrawToken(tokens[i], 1000);
       await optimizer.connect(user2).withdrawToken(tokens[i], 1000);
 
-      console.log("user 1: " + await optimizer.connect(user1).getBalance(tokens[i]));
-      console.log("user 2: " + await optimizer.connect(user2).getBalance(tokens[i]));
+      console.log("user 1: " + await optimizer.connect(user1).getBalance(tokens[i], user1.address));
+      console.log("user 2: " + await optimizer.connect(user2).getBalance(tokens[i], user2.address));
 
       console.log(tokenString[i] + " test complete.\n");
     }
@@ -86,8 +86,8 @@ describe.only("LendingOptimizer tests", function () {
     await optimizer.connect(user1).supplyAvax({ value: ethers.utils.parseUnits('500000000', 'gwei') });
     await optimizer.connect(user2).supplyAvax({ value: ethers.utils.parseUnits('500000000', 'gwei') });
 
-    console.log("After supply, user 1: " + await optimizer.connect(user1).getBalance(WAVAX));
-    console.log("After supply, user 2: " + await optimizer.connect(user2).getBalance(WAVAX) + "\n");
+    console.log("After supply, user 1: " + await optimizer.connect(user1).getBalance(WAVAX, user1.address));
+    console.log("After supply, user 2: " + await optimizer.connect(user2).getBalance(WAVAX, user2.address) + "\n");
 
     await optimizer.optimizeAvax();
 
@@ -96,8 +96,8 @@ describe.only("LendingOptimizer tests", function () {
     await optimizer.connect(user1).withdrawAvax(1000);
     await optimizer.connect(user2).withdrawAvax(1000);
 
-    console.log("After withdraw, user 1: " + await optimizer.connect(user1).getBalance(WAVAX));
-    console.log("After withdraw, user 2: " + await optimizer.connect(user2).getBalance(WAVAX));
+    console.log("After withdraw, user 1: " + await optimizer.connect(user1).getBalance(WAVAX, user1.address));
+    console.log("After withdraw, user 2: " + await optimizer.connect(user2).getBalance(WAVAX, user2.address));
   });
 
 });
