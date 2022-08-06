@@ -5,6 +5,11 @@ import "hardhat/console.sol";
 import "../interfaces/IUniswapPair.sol";
 
 library VaultLib {
+    uint256 public constant feeRate = 30;
+    uint256 public constant unity = 10000;
+    uint256 public constant unityMinusFee = 9970;
+    uint256 public constant someLargeNumber = 1000000000000000000;
+
     struct RebalanceHelper {
         uint256 Ka;
         uint256 Kb;
@@ -100,39 +105,35 @@ library VaultLib {
     {
         // feeRate = 0.3%
         RebalanceHelper memory vars;
-        // Ka << 1, multiply by 1e18
-        vars.Ka = (pos.debtAmtB - pos.amtB) * 1000 * 1000000000000000000 /
-            ((reserveB - pos.debtAmtB) * 997);
-        vars.collWithdrawAmt = leverageLevel * (pos.debtAmtA * 1000000000000000000 + (vars.Ka * reserveA)) /
-            (2 * (1000000000000000000 + vars.Ka)) * pos.collateralSize / pos.amtA - 
+        // Ka << 1, multiply by someLargeNumber 1e18
+        vars.Ka = (pos.debtAmtB - pos.amtB) * unity * someLargeNumber /
+            ((reserveB - pos.debtAmtB) * unityMinusFee);
+        vars.collWithdrawAmt = leverageLevel * (pos.debtAmtA * someLargeNumber + vars.Ka * reserveA) /
+            (2 * (someLargeNumber + vars.Ka)) * pos.collateralSize / pos.amtA -
             (leverageLevel - 2) * pos.collateralSize / 2;
-        vars.amtAWithdraw = (pos.amtA * vars.collWithdrawAmt) / pos.collateralSize;
+        vars.amtAWithdraw = pos.amtA * vars.collWithdrawAmt / pos.collateralSize;
         vars.reserveAAfter = reserveA - vars.amtAWithdraw;
-        vars.Sa = (vars.reserveAAfter * vars.Ka) / 1000000000000000000;
-        if (vars.amtAWithdraw >= vars.Sa) {
+        vars.Sa = vars.reserveAAfter * vars.Ka / someLargeNumber;
+        if (vars.amtAWithdraw > vars.Sa) {
             vars.amtARepay = vars.amtAWithdraw - vars.Sa;
         } else {
             vars.amtARepay = 0;
-            vars.collWithdrawAmt =
-                (reserveA * pos.collateralSize) * vars.Ka /
-                ((1000000000000000000 + vars.Ka) * pos.amtA);
+            vars.collWithdrawAmt = (reserveA * pos.collateralSize * vars.Ka) /
+                ((someLargeNumber + vars.Ka) * pos.amtA);
         }
-        vars.amtBWithdraw =
-            (pos.amtB * vars.collWithdrawAmt) / pos.collateralSize;
+        vars.amtBWithdraw = (pos.amtB * vars.collWithdrawAmt) / pos.collateralSize;
         vars.reserveBAfter = reserveB - vars.amtBWithdraw;
         vars.Sb = vars.reserveBAfter * (pos.debtAmtB - pos.amtB) / (reserveB - pos.amtB);
         vars.amtBRepay = vars.amtBWithdraw + vars.Sb;
 
-        vars.collWithdrawErr = reserveA * pos.collateralSize / 1000000000000000000 / pos.amtA;
-        vars.amtARepayErr = vars.reserveAAfter / 1000000000000000000 + vars.collWithdrawErr * pos.amtA / pos.collateralSize;
-        vars.amtBRepayErr = vars.reserveBAfter / 1000000000000000000 + vars.collWithdrawErr * pos.amtB / pos.collateralSize;
-        vars.amtARepayErr = vars.amtARepayErr > 0 ? vars.amtARepayErr : 1;
-        vars.amtBRepayErr = vars.amtBRepayErr > 0 ? vars.amtBRepayErr : 1;
+        vars.collWithdrawErr = (leverageLevel * reserveA * pos.collateralSize) / (2 * someLargeNumber * pos.amtA) + 1;
+        vars.amtARepayErr = vars.reserveAAfter / someLargeNumber + 1;
+        vars.amtARepay = vars.amtARepay > vars.amtARepayErr ? vars.amtARepay - vars.amtARepayErr : 0;
 
         return (
-            vars.collWithdrawAmt,
-            vars.amtARepay - vars.amtARepayErr,
-            vars.amtBRepay - vars.amtBRepayErr
+            vars.collWithdrawAmt + vars.collWithdrawErr,
+            vars.amtARepay,
+            vars.amtBRepay
         );
     }
 
@@ -155,16 +156,19 @@ library VaultLib {
         // feeRate = 0.3%
         RebalanceHelper memory vars;
         vars.Sb = (pos.amtB - pos.debtAmtB) * reserveB / (reserveB - pos.amtB);
-        vars.Sa = (997 * (pos.amtB - pos.debtAmtB) * reserveA) / (1000 * reserveB - 3 * pos.amtB - 997 * pos.debtAmtB);
-        vars.amtAAfter = (leverageLevel * (pos.amtA * (reserveA - vars.Sa) / reserveA - pos.debtAmtA + vars.Sa + amtAReward)) / 2; // n_af
+        vars.Sa = (unityMinusFee * (pos.amtB - pos.debtAmtB) * reserveA) /
+            (unity * reserveB - feeRate * pos.amtB - unityMinusFee * pos.debtAmtB);
+        vars.amtAAfter = leverageLevel * (pos.amtA * (reserveA - vars.Sa) / reserveA - pos.debtAmtA + vars.Sa + amtAReward) / 2; // n_af
         vars.amtBAfter = pos.amtB * reserveA / (reserveA - vars.Sa) * (reserveB + vars.Sb) / reserveB * vars.amtAAfter / pos.amtA;
-        if (((leverageLevel - 2) * vars.amtAAfter) / leverageLevel > pos.debtAmtA) {
-            vars.amtABorrow = ((leverageLevel - 2) * vars.amtAAfter) / leverageLevel - pos.debtAmtA;
+
+        uint256 debtAAfter = (leverageLevel - 2) * vars.amtAAfter / leverageLevel;
+        if (debtAAfter > pos.debtAmtA) {
+            vars.amtABorrow = debtAAfter - pos.debtAmtA;
             vars.amtBBorrow = vars.amtBAfter - pos.debtAmtB;
         } else {
             vars.amtABorrow = 0;
-            uint256 sqrt = (1997 * reserveB - 3 * pos.amtB - 2 * 997 * pos.debtAmtB) * reserveB / (reserveB - pos.amtB); // * 1000
-            vars.amtBBorrow = ((sqrt **2 - 1997 **2 * reserveB **2) * (reserveA + amtAReward)) / (4000 * 997 * reserveA * reserveB) + amtAReward * reserveB / reserveA;
+            vars.amtBBorrow = (sqrt **2 - (2 * unity - feeRate) **2 * reserveB **2) * (reserveA + amtAReward) /
+                (4 * unity * unityMinusFee * reserveA * reserveB) + amtAReward * reserveB / reserveA;
         }
         vars.amtAmin = vars.amtABorrow + vars.Sa + amtAReward;
         vars.amtBmin = vars.amtBBorrow - vars.Sb;

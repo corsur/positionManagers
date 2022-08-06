@@ -51,10 +51,10 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     IUniswapPair public pair;
     IHomoraAvaxRouter public router;
 
-    uint256 private _TR; // target debt ratio * 10000
-    uint256 private _MR; // maximum debt ratio * 10000
-    uint256 public dnThreshold; // offset percentage * 10000
-    uint256 public leverageThreshold; // offset percentage * 10000
+    uint256 private _targetDebtRatio; // target debt ratio * 10000
+    uint256 private _minDebtRatio; // minimum debt ratio * 10000
+    uint256 private _maxDebtRatio; // maximum debt ratio * 10000
+    uint256 private _dnThreshold; // offset percentage * 10000
 
     // --- state ---
     // positions[chainId][positionId] stores share information about the position identified by (chainId, positionId).
@@ -62,7 +62,6 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     uint256 public homoraBankPosId;
     uint256 public totalCollShareAmount;
     bool isDeltaNeutral;
-    bool isLeverageHealthy;
     bool isDebtRatioHealthy;
     VaultLib.VaultPosition pos;
 
@@ -116,10 +115,10 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         router = IHomoraAvaxRouter(IHomoraSpell(spell).router());
 
         // set config values
-        _TR = 9500;
-        _MR = 9900;
-        dnThreshold = 100;
-        leverageThreshold = 500;
+        _targetDebtRatio = 9200;
+        _minDebtRatio = 9100;
+        _maxDebtRatio = 9300;
+        _dnThreshold = 300;
     }
 
     fallback() external payable {}
@@ -174,14 +173,16 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     function setConfig(
         uint256 targetR,
+        uint256 minR,
         uint256 maxR,
-        uint256 dnThr,
-        uint256 leverageThr
+        uint256 dnThr
     ) public onlyAdmin {
-        _TR = targetR;
-        _MR = maxR;
-        dnThreshold = dnThr;
-        leverageThreshold = leverageThr;
+        require(minR < targetR && targetR < maxR, "Invalid debt ratios");
+        _targetDebtRatio = targetR;
+        _minDebtRatio = minR;
+        _maxDebtRatio = maxR;
+        require(0 < dnThr && dnThr < 10000, "Invalid delta threshold");
+        _dnThreshold = dnThr;
     }
 
     function deltaNeutral(
@@ -437,30 +438,24 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         );
     }
 
-    function rebalance() external {
+    function rebalance(
+        uint256 expectedLP
+    ) external onlyApertureManager nonReentrant {
         _getPositionInfo();
         // check if the position need rebalance
         // assume token A is the stable token
         // 1. delta-neutrality check
-        if (VaultLib.getOffset(pos.amtB, pos.debtAmtB) < dnThreshold) {
+        if (VaultLib.getOffset(pos.amtB, pos.debtAmtB) < _dnThreshold) {
             isDeltaNeutral = true;
         }
 
-        // 2. leverage check
-        //// offset larger than 5%
-        if (
-            VaultLib.getOffset(getLeverage(), leverageLevel * 10000) <
-            leverageThreshold
-        ) {
-            isLeverageHealthy = true;
-        }
-
-        // 3. debtRatio check
-        if (getDebtRatio() <= _TR) {
+        debtRatio = getDebtRatio();
+        // 2. debtRatio check
+        if ((_minDebtRatio < debtRatio) && (debtRatio < _maxDebtRatio)) {
             isDebtRatioHealthy = true;
         }
 
-        if (isDeltaNeutral && isLeverageHealthy && isDebtRatioHealthy) {
+        if (isDeltaNeutral && isDebtRatioHealthy) {
             revert HomoraPDNVault_PositionIsHealthy();
         }
 
@@ -477,27 +472,16 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
             _rebalanceLong();
         }
 
+        _getPositionInfo();
+        require(VaultLib.getOffset(pos.amtB, pos.debtAmtB) < _dnThreshold, "Delta still not neutral");
+
+        debtRatio = getDebtRatio();
+        require((_minDebtRatio < debtRatio) && (debtRatio < _maxDebtRatio), "Debt ratio still unhealthy");
+
         emit LogRebalance(pos.collateralSize, getCollateralSize());
     }
 
     function _reBalanceShort() internal {
-        uint256 amtAReward = IERC20(stableToken).balanceOf(address(this));
-
-        IERC20(stableToken).approve(address(homoraBank), amtAReward * 2);
-        bytes memory data0 = abi.encodeWithSelector(
-            bytes4(
-                keccak256(
-                    "addLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256),uint256)"
-                )
-            ),
-            stableToken,
-            assetToken,
-            [amtAReward, 0, 0, 0, 0, 0, 0, 0],
-            pid
-        );
-        homoraBank.execute(homoraBankPosId, spell, data0);
-        IERC20(stableToken).approve(address(homoraBank), 0);
-
         (uint256 reserveA, uint256 reserveB) = _getReserves();
         _getPositionInfo();
 
@@ -555,7 +539,9 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         IERC20(stableToken).approve(address(homoraBank), 0);
     }
 
-    function reinvest() external {
+    function reinvest(
+        uint256 expectedLP
+    ) external onlyApertureManager nonReentrant {
         uint256 equityBefore = getCollateralSize();
 
         // 1. claim rewards
@@ -565,7 +551,11 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         // 2. reinvest with the current balance
         _reinvestInternal();
 
-        emit LogReinvest(equityBefore, getCollateralSize());
+        uint256 equityAfter = getCollateralSize();
+
+        require((equityAfter - equityBefore) > expectedLP, "Received less LP than expected");
+
+        emit LogReinvest(equityBefore, equityAfter);
     }
 
     function _harvest() internal {
@@ -687,9 +677,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     /// @notice Calculate the debt ratio and return the ratio, multiplied by 1e4
     function getDebtRatio() public view returns (uint256) {
-        uint256 collateralValue = homoraBank.getCollateralETHValue(
-            homoraBankPosId
-        );
+        uint256 collateralValue = homoraBank.getCollateralETHValue;
         uint256 borrowValue = homoraBank.getBorrowETHValue(homoraBankPosId);
         return (borrowValue * 10000) / collateralValue;
     }
