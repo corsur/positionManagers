@@ -215,39 +215,39 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         for (uint256 i = 0; i < assetInfos.length; i++) {
             if (assetInfos[i].assetType == AssetType.NativeToken) {
                 revert("unsupported cross-chain native token");
-            } else {
-                // Collect cross-chain fees if applicable.
-                uint256 amount = assetInfos[i].amount;
-                uint256 crossChainFee = (amount * CROSS_CHAIN_FEE_BPS) / BPS;
-                if (crossChainFee > 0) {
-                    IERC20(assetInfos[i].assetAddr).safeTransfer(
-                        FEE_SINK,
-                        crossChainFee
-                    );
-                    amount -= crossChainFee;
-                }
+            }
+            
+            // Collect cross-chain fees if applicable.
+            uint256 amount = assetInfos[i].amount;
+            uint256 crossChainFee = (amount * CROSS_CHAIN_FEE_BPS) / BPS;
+            if (crossChainFee > 0) {
+                IERC20(assetInfos[i].assetAddr).safeTransfer(
+                    FEE_SINK,
+                    crossChainFee
+                );
+                amount -= crossChainFee;
+            }
 
-                // Allow wormhole token bridge contract to transfer this token out of here.
-                IERC20(assetInfos[i].assetAddr).safeIncreaseAllowance(
-                    WORMHOLE_TOKEN_BRIDGE,
-                    amount
+            // Allow wormhole token bridge contract to transfer this token out of here.
+            IERC20(assetInfos[i].assetAddr).safeIncreaseAllowance(
+                WORMHOLE_TOKEN_BRIDGE,
+                amount
+            );
+
+            // Initiate token transfer.
+            uint64 transferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
+                .transferTokens(
+                    assetInfos[i].assetAddr,
+                    amount,
+                    strategyChainId,
+                    strategyChainApertureManager,
+                    /*arbiterFee=*/
+                    0,
+                    WORMHOLE_NONCE
                 );
 
-                // Initiate token transfer.
-                uint64 transferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
-                    .transferTokens(
-                        assetInfos[i].assetAddr,
-                        amount,
-                        strategyChainId,
-                        strategyChainApertureManager,
-                        /*arbiterFee=*/
-                        0,
-                        WORMHOLE_NONCE
-                    );
-
-                // Append sequence to payload.
-                payload = payload.concat(abi.encodePacked(transferSequence));
-            }
+            // Append sequence to payload.
+            payload = payload.concat(abi.encodePacked(transferSequence));
         }
 
         // Append encoded data: the length as a uint32, followed by the encoded bytes themselves.
@@ -314,7 +314,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
                     IERC20(assetAddr).approve(strategy.strategyManager, amount);
                 }
             }
-            console.log("recipient: %s", msg.sender);
+
             IStrategyManager(strategy.strategyManager).openPosition{value: msg.value}
             (
                 msg.sender,

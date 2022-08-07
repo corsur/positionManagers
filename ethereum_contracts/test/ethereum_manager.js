@@ -180,7 +180,7 @@ async function testUSTDeltaNeutralInvest(signer, ethereumManager) {
   await ethereumManager.createPosition(
     CHAIN_ID_TERRA,
     DELTA_NEUTRAL,
-    [[WORMHOLE_UST_TOKEN_ADDR, whUSTAmount]],
+    [[/*assetType=*/0, WORMHOLE_UST_TOKEN_ADDR, whUSTAmount]],
     encodedPositionOpenData,
     {}
   );

@@ -30,7 +30,7 @@ struct Config {
     address feeSink; // Fee collecting address.
 }
 
-enum AssetType{
+enum AssetType {
     Token,
     NativeToken
 }
