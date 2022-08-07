@@ -83,6 +83,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     // --- error ---
     error HomoraPDNVault_PositionIsHealthy();
+    error HomoraPDNVault_DeltaIsNeutral();
+    error HomoraPDNVault_DebtRatioIsHealthy();
     error Insufficient_Liquidity_Mint();
 
     constructor(
@@ -103,6 +105,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         stableToken = _stableToken;
         assetToken = _assetToken;
         homoraBank = IHomoraBank(_homoraBank);
+        require(_leverageLevel >= 2, "Leverage at least 2");
         leverageLevel = _leverageLevel;
         spell = _spell;
         rewardToken = _rewardToken;
@@ -439,7 +442,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     }
 
     function rebalance(
-        uint256 expectedLP
+        uint256 expectedRewardsLP
     ) external onlyApertureManager nonReentrant {
         _getPositionInfo();
         // check if the position need rebalance
@@ -459,10 +462,9 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
             revert HomoraPDNVault_PositionIsHealthy();
         }
 
-        // collect and swap rewards
-        _harvest();
-        _swapReward();
+        reinvest(expectedRewardsLP);
 
+        _getPositionInfo();
         // 1. short: amtB < debtAmtB, R > Rt
         if (pos.debtAmtB > pos.amtB) {
             _reBalanceShort();
@@ -473,26 +475,27 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         }
 
         _getPositionInfo();
-        require(VaultLib.getOffset(pos.amtB, pos.debtAmtB) < _dnThreshold, "Delta still not neutral");
+        if (VaultLib.getOffset(pos.amtB, pos.debtAmtB) >= _dnThreshold) {
+            revert HomoraPDNVault_DeltaIsNeutral();
+        }
 
         debtRatio = getDebtRatio();
-        require((_minDebtRatio < debtRatio) && (debtRatio < _maxDebtRatio), "Debt ratio still unhealthy");
+        if ((debtRatio <= _minDebtRatio) || (debtRatio >= _maxDebtRatio)) {
+            revert HomoraPDNVault_DebtRatioIsHealthy();
+        }
 
         emit LogRebalance(pos.collateralSize, getCollateralSize());
     }
 
     function _reBalanceShort() internal {
         (uint256 reserveA, uint256 reserveB) = _getReserves();
-        _getPositionInfo();
 
         (
             uint256 collWithdrawAmt,
             uint256 amtARepay,
             uint256 amtBRepay
-            // uint256 amtA,
-            // uint256 amtB
         ) = VaultLib.rebalanceShort(pos, leverageLevel, reserveA, reserveB);
-        
+
         bytes memory data1 = abi.encodeWithSelector(
             bytes4(
                 keccak256(
@@ -513,9 +516,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
         (
             uint256 amtABorrow,
-            uint256 amtBBorrow,
-            uint256 amtAmin,
-            uint256 amtBmin
+            uint256 amtBBorrow
         ) = VaultLib.rebalanceLong(
                 pos,
                 leverageLevel,
@@ -532,7 +533,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
             ),
             stableToken,
             assetToken,
-            [amtAReward, 0, 0, amtABorrow, amtBBorrow, 0, amtAmin, amtBmin],
+            [amtAReward, 0, 0, amtABorrow, amtBBorrow, 0, 0, 0],
             pid
         );
         homoraBank.execute(homoraBankPosId, spell, data0);
