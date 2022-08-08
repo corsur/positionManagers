@@ -282,6 +282,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         uint256 _stableTokenDepositAmount,
         uint256 _assetTokenDepositAmount
     ) internal {
+        reinvest();
+
         // Record the balance state before transfer fund.
 
         uint256[] memory balanceArray = new uint256[](3);
@@ -389,9 +391,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
             "not enough share amount to withdraw"
         );
 
-        // Harvest reward token and swap to stable token.
-        _harvest();
-        _swapReward();
+        reinvest();
 
         // Record the balance state before remove liquidity.
 
@@ -578,34 +578,30 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     function reinvest(
         uint256 expectedLP
-    ) external onlyApertureManager nonReentrant {
-        uint256 equityBefore = getCollateralSize();
-
-        // 1. claim rewards
-        _harvest();
-        _swapReward();
-
-        // 2. reinvest with the current balance
-        _reinvestInternal();
-
-        uint256 equityAfter = getCollateralSize();
-
-        require((equityAfter - equityBefore) > expectedLP, "Received less LP than expected");
-
-        emit LogReinvest(equityBefore, equityAfter);
+    ) external onlyController {
+        _reinvestInternal(expectedLP);
     }
 
     function _harvest() internal {
         homoraBank.execute(homoraBankPosId, spell, HARVEST_DATA);
     }
 
-    function _reinvestInternal() internal {
-        uint256 avaxBalance = address(this).balance;
+    function _reinvestInternal(
+        uint256 expectedLP
+    ) internal {
+        uint256 equityBefore = getCollateralSize();
 
+        // 1. claim rewards
+        _harvest();
+        _swapReward();
+
+        // 3. swap any AVAX leftover
+        uint256 avaxBalance = address(this).balance;
         if (avaxBalance > 0) {
             _swapAVAX(avaxBalance, stableToken);
         }
 
+        // 2. reinvest with the current balance
         uint256 stableTokenBalance = IERC20(stableToken).balanceOf(address(this));
         uint256 assetTokenBalance = IERC20(assetToken).balanceOf(address(this));
 
@@ -652,6 +648,12 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         // Cancel HomoraBank's allowance.
         IERC20(stableToken).approve(address(homoraBank), 0);
         IERC20(assetToken).approve(address(homoraBank), 0);
+
+        uint256 equityAfter = getCollateralSize();
+
+        require((equityAfter - equityBefore) > expectedLP, "Received less LP than expected");
+
+        emit LogReinvest(equityBefore, equityAfter);
     }
 
     /// @dev Homora position info
@@ -718,7 +720,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     /// @notice Calculate the debt ratio and return the ratio, multiplied by 1e4
     function getDebtRatio() public view returns (uint256) {
-        uint256 collateralValue = homoraBank.getCollateralETHValue;
+        uint256 collateralValue = homoraBank.getCollateralETHValue(homoraBankPosId);
         uint256 borrowValue = homoraBank.getBorrowETHValue(homoraBankPosId);
         return (borrowValue * 10000) / collateralValue;
     }
