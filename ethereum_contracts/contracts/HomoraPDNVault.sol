@@ -715,6 +715,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         (borrowFactor,,) = oracle.tokenFactors(token);
     }
 
+    /// @dev Total position value not weighted by the collateral factor
     function getCollateralETHValue() public view returns (uint256) {
         if (homoraBankPosId == _NO_ID) {
             return 0;
@@ -744,6 +745,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         return (stableTokenDebtAmount, assetTokenDebtAmount);
     }
 
+    /// @dev Total debt value not weighted by the borrow factors
     function getBorrowETHValue() public view returns (uint256) {
         if (homoraBankPosId == _NO_ID) {
             return 0;
@@ -753,6 +755,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         + homoraBank.asETHBorrow(assetToken, assetTokenDebtAmount, msg.sender) * 10**4 / getBorrowFactor(assetToken);
     }
 
+    /// @dev Net equity value of the PDN position
     function getEquityETHValue() public view returns (uint256) {
         return getCollateralETHValue() - getBorrowETHValue();
     }
@@ -801,15 +804,6 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         returns (uint256 amount0, uint256 amount1)
     {
         (amount0, amount1) = VaultLib.convertCollateralToTokens(lpToken, stableToken, collAmount);
-    }
-
-    function quote(address token, uint256 amount) public view returns(uint256) {
-        (uint256 reserve0, uint256 reserve1) = _getReserves();
-        if (token == stableToken) {
-            return router.quote(amount, reserve0, reserve1);
-        } else {
-            return router.quote(amount, reserve1, reserve0);
-        }
     }
 
     /// @notice swap function for external tests, swap stableToken into assetToken

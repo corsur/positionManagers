@@ -3,7 +3,7 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import "hardhat/console.sol";
 import "../interfaces/IUniswapPair.sol";
-import "./libraries/Math.sol";
+import "./libraries/HomoraMath.sol";
 
 library VaultLib {
     uint256 public constant feeRate = 30;   // feeRate = 0.3%
@@ -89,40 +89,43 @@ library VaultLib {
         amount1 = (collAmount * reserve1) / totalLPSupply;
     }
 
-    function quadraticRoot(
-        uint256 a,
-        uint256 b,
-        uint256 c
-    ) public view returns (uint256 root) {
-        uint256 squareRoot = Math.sqrt(b * b - 4 * a *c);
-        require(squareRoot > b, "No positive root");
-        root = (squareRoot - b) / (2 * a);
-    }
-
     /// @dev Calculate the params passed to Homora to create PDN position
-    /// @param stableTokenSupply The amount of stable token supplied by user
-    /// @param assetTokenSupply The amount of asset token supplied by user
+    /// @param Ua The amount of stable token supplied by user
+    /// @param Ub The amount of asset token supplied by user
+    /// @param Na Stable token pool reserve
+    /// @param Nb Asset token pool reserve
+    /// @param L Leverage
     function deltaNeutral(
-        uint256 stableTokenSupply,
-        uint256 assetTokenSupply,
-        uint256 stableTokenReserve,
-        uint256 assetTokenReserve
+        uint256 Ua,
+        uint256 Ub,
+        uint256 Na,
+        uint256 Nb,
+        uint256 L
     )
         internal
         returns (
-            uint256 stableTokenAmount,
-            uint256 assetTokenAmount,
             uint256 stableTokenBorrowAmount,
             uint256 assetTokenBorrowAmount
         )
     {
-        uint256 b = 2 * assetTokenReserve;
-        assetTokenBorrowAmount = quadraticRoot(2, b, c);
-        stableTokenBorrowAmount;
+        uint256 b = 2 * Nb + (2 * unity - unityMinusFee * L) * Ub / unity
+            - L * (unityMinusFee * (Na + Ua) * Ub**2 + (unity * Nb + (unity + unityMinusFee) * Ub) * Ua * Nb)
+            / (unity * Na * Nb);
+        uint256 c = L * (unityMinusFee * (Na + Ua) * Ub + unity * Nb * Ua) * (Nb + Ub)**2
+            / (unity * Na * Nb);
+        uint256 squareRoot = HomoraMath.sqrt(b * b + 8 * c);
+        require(squareRoot > b, "No positive root");
+        assetTokenBorrowAmount = (squareRoot - b) / 4;
+        stableTokenBorrowAmount = (L - 2) * (Na + Ua) * assetTokenBorrowAmount
+            / (L * (Nb + Ub) + 2 * assetTokenBorrowAmount);
     }
 
     /// @dev Calculate the amount of collateral to withdraw and the amount of each token to repay by Homora to reach DN
     /// @dev Assume `pos.debtAmtB > pos.amtB`. Check before calling
+    /// @param pos HomoraBank's position info
+    /// @param leverageLevel Target leverage
+    /// @param reserveA Token A's pool reserve
+    /// @param reserveB Token B's pool reserve
     function rebalanceShort(
         VaultPosition memory pos,
         uint256 leverageLevel,
@@ -139,12 +142,12 @@ library VaultLib {
     {
         RebalanceHelper memory vars;
         // Ka << 1, multiply by someLargeNumber 1e18
-        vars.Ka = unity * (pos.debtAmtB - pos.amtB) * someLargeNumber /
-            (unityMinusFee * (reserveB - pos.debtAmtB));
+        vars.Ka = unity * (pos.debtAmtB - pos.amtB) * someLargeNumber
+            / (unityMinusFee * (reserveB - pos.debtAmtB));
         vars.Kb = (pos.debtAmtB - pos.amtB) * someLargeNumber / (reserveB - pos.amtB);
-        vars.collWithdrawAmt = leverageLevel * (pos.debtAmtA * someLargeNumber + vars.Ka * reserveA) /
-            (2 * (someLargeNumber + vars.Ka)) * pos.collateralSize / pos.amtA -
-            (leverageLevel - 2) * pos.collateralSize / 2;
+        vars.collWithdrawAmt = leverageLevel * (pos.debtAmtA * someLargeNumber + vars.Ka * reserveA)
+            / (2 * (someLargeNumber + vars.Ka)) * pos.collateralSize / pos.amtA
+            - (leverageLevel - 2) * pos.collateralSize / 2;
         require(vars.collWithdrawAmt > 0, "Invalid collateral withdraw amount");
 
         vars.amtAWithdraw = pos.amtA * vars.collWithdrawAmt / pos.collateralSize;
@@ -154,8 +157,8 @@ library VaultLib {
             vars.amtARepay = vars.amtAWithdraw - vars.Sa;
         } else {
             vars.amtARepay = 0;
-            vars.collWithdrawAmt = (reserveA * pos.collateralSize * vars.Ka) /
-                ((someLargeNumber + vars.Ka) * pos.amtA);
+            vars.collWithdrawAmt = (reserveA * pos.collateralSize * vars.Ka)
+                / ((someLargeNumber + vars.Ka) * pos.amtA);
         }
         vars.amtBWithdraw = (pos.amtB * vars.collWithdrawAmt) / pos.collateralSize;
         vars.reserveBAfter = reserveB - vars.amtBWithdraw;
@@ -164,8 +167,8 @@ library VaultLib {
 
         vars.collWithdrawErr = (leverageLevel * reserveA * pos.collateralSize) / (2 * someLargeNumber * pos.amtA) + 1;
         vars.amtARepayErr = vars.reserveAAfter / someLargeNumber + 1;
-        vars.amtBRepayErr = vars.Kb * ((leverageLevel * reserveB * pos.collateralSize + 2 * someLargeNumber * pos.amtB) /
-            (2 * someLargeNumber * pos.collateralSize) + 2) / someLargeNumber + 1;
+        vars.amtBRepayErr = vars.Kb * ((leverageLevel * reserveB * pos.collateralSize + 2 * someLargeNumber * pos.amtB)
+            / (2 * someLargeNumber * pos.collateralSize) + 2) / someLargeNumber + 1;
         require(vars.amtBRepay >= vars.amtBRepayErr, "Invalid token B repay amount");
 
         return (
@@ -177,6 +180,11 @@ library VaultLib {
 
     /// @dev Calculate the amount of each token to borrow by Homora to reach DN
     /// @dev Assume `pos.debtAmtB < pos.amtB`. Check before calling
+    /// @param pos HomoraBank's position info
+    /// @param leverageLevel Target leverage
+    /// @param reserveA Token A's pool reserve
+    /// @param reserveB Token B's pool reserve
+    /// @param amtAReward The amount of rewards in token A
     function rebalanceLong(        
         VaultPosition memory pos,
         uint256 leverageLevel,
@@ -193,24 +201,25 @@ library VaultLib {
     {
         RebalanceHelper memory vars;
         vars.Sb = (pos.amtB - pos.debtAmtB) * reserveB / (reserveB - pos.amtB);
-        vars.Sa = (unityMinusFee * (pos.amtB - pos.debtAmtB) * reserveA) /
-            (unity * reserveB - feeRate * pos.amtB - unityMinusFee * pos.debtAmtB);
-        vars.amtAAfter = leverageLevel * (pos.amtA * (reserveA - vars.Sa) / reserveA - pos.debtAmtA + vars.Sa + amtAReward) / 2; // n_af
+        vars.Sa = (unityMinusFee * (pos.amtB - pos.debtAmtB) * reserveA)
+            / (unity * reserveB - feeRate * pos.amtB - unityMinusFee * pos.debtAmtB);
+        vars.amtAAfter = leverageLevel * (pos.amtA * (reserveA - vars.Sa) / reserveA
+            - pos.debtAmtA + vars.Sa + amtAReward) / 2; // n_af
 
         uint256 debtAAfter = (leverageLevel - 2) * vars.amtAAfter / leverageLevel;
 
         if (debtAAfter > pos.debtAmtA) {
             vars.amtABorrow = debtAAfter - pos.debtAmtA;
-            vars.amtBAfter = pos.amtB * reserveA / (reserveA - vars.Sa) * (reserveB + vars.Sb) / reserveB *
-                vars.amtAAfter / pos.amtA;
+            vars.amtBAfter = pos.amtB * reserveA / (reserveA - vars.Sa) * (reserveB + vars.Sb) / reserveB
+                * vars.amtAAfter / pos.amtA;
             vars.amtBBorrow = vars.amtBAfter - pos.debtAmtB;
             vars.amtABorrowErr = (leverageLevel - 2) / 2 + 1;
             vars.amtBBorrowErr = (leverageLevel + 2) * reserveB / (2 * reserveA) + 2;
         } else {
             vars.amtABorrow = 0;
-            vars.amtBBorrow = vars.Sb * ((unity + unityMinusFee) * reserveB - pos.amtB - unityMinusFee * pos.debtAmtB) *
-                (reserveA + amtAReward) / ((reserveB - pos.amtB) * reserveA) +
-                amtAReward * reserveB / reserveA;
+            vars.amtBBorrow = vars.Sb * ((unity + unityMinusFee) * reserveB - pos.amtB - unityMinusFee * pos.debtAmtB)
+                * (reserveA + amtAReward) / (unity * (reserveB - pos.amtB) * reserveA)
+                + amtAReward * reserveB / reserveA;
             vars.amtABorrowErr = 0;
             vars.amtBBorrowErr = 3;
         }
