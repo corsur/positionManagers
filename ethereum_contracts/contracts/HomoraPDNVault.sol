@@ -122,8 +122,6 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         assetToken = _assetToken;
         homoraBank = IHomoraBank(_homoraBank);
         oracle = IHomoraOracle(homoraBank.oracle);
-        (,, uint16 liqIncentive) = oracle.tokenFactors(lpToken);
-        require(liqIncentive != 0, "Oracle doesn't support lpToken.");
         require(oracle.support(_stableToken), "Oracle doesn't support stable token.");
         require(oracle.support(_assetToken), "Oracle doesn't support asset token.");
 
@@ -134,10 +132,44 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         totalCollShareAmount = 0;
         lpToken = IHomoraSpell(spell).pairs(stableToken, assetToken);
         require(lpToken != address(0), "Pair does not match the spell.");
+        (,, uint16 liqIncentive) = oracle.tokenFactors(lpToken);
+        require(liqIncentive != 0, "Oracle doesn't support lpToken.");
         pair = IUniswapPair(lpToken);
         router = IHomoraAvaxRouter(IHomoraSpell(spell).router());
 
         setConfig(_leverageLevel, _targetDebtRatio, _minDebtRatio, _maxDebtRatio, _dnThreshold);
+    }
+
+    function setControllers(
+        address[] calldata controllers,
+        bool[] calldata statuses
+    ) public onlyAdmin {
+        require(controllers.length == statuses.length, 'controllers & statuses length mismatched');
+        for (uint i = 0; i < controllers.length; i++) {
+            isController[controllers[i]] = statuses[i];
+        }
+    }
+
+    /// @dev Set config for delta neutral valut.
+    /// @param targetR target debt ratio * 10000
+    /// @param minR minimum debt ratio * 10000
+    /// @param maxR maximum debt ratio * 10000
+    /// @param dnThr delta deviation percentage * 10000
+    function setConfig(
+        uint256 targetLeverage,
+        uint256 targetR,
+        uint256 minR,
+        uint256 maxR,
+        uint256 dnThr
+    ) public onlyAdmin {
+        require(targetLeverage >= 2, "Leverage at least 2");
+        leverageLevel = targetLeverage;
+        require(minR < targetR && targetR < maxR, "Invalid debt ratios");
+        targetDebtRatio = targetR;
+        minDebtRatio = minR;
+        maxDebtRatio = maxR;
+        require(0 < dnThr && dnThr < 10000, "Invalid delta threshold");
+        dnThreshold = dnThr;
     }
 
     fallback() external payable {}
@@ -188,38 +220,6 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         // console.log('amount %d:', amount);
         // console.log('recipient %s', recipient);
         withdrawInternal(position_info, amount, recipient);
-    }
-
-    function setControllers(
-        address[] calldata controllers,
-        bool[] calldata statuses
-    ) public onlyAdmin {
-        require(controllers.length == statuses.length, 'controllers & statuses length mismatched');
-        for (uint i = 0; i < controllers.length; i++) {
-            isController[controllers[i]] = statuses[i];
-        }
-    }
-
-    /// @dev Set config for delta neutral valut.
-    /// @param targetR target debt ratio * 10000
-    /// @param minR minimum debt ratio * 10000
-    /// @param maxR maximum debt ratio * 10000
-    /// @param dnThr delta deviation percentage * 10000
-    function setConfig(
-        uint256 targetLeverage,
-        uint256 targetR,
-        uint256 minR,
-        uint256 maxR,
-        uint256 dnThr
-    ) public onlyAdmin {
-        require(targetLeverage >= 2, "Leverage at least 2");
-        leverageLevel = targetLeverage;
-        require(minR < targetR && targetR < maxR, "Invalid debt ratios");
-        targetDebtRatio = targetR;
-        minDebtRatio = minR;
-        maxDebtRatio = maxR;
-        require(0 < dnThr && dnThr < 10000, "Invalid delta threshold");
-        dnThreshold = dnThr;
     }
 
     function deltaNeutral(
