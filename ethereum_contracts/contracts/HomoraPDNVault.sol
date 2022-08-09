@@ -11,8 +11,6 @@ import "./interfaces/IHomoraAvaxRouter.sol";
 import "./interfaces/IHomoraBank.sol";
 import "./interfaces/IHomoraOracle.sol";
 import "./interfaces/IHomoraSpell.sol";
-import "./interfaces/IUniswapPair.sol";
-import "./interfaces/IUniswapV2Factory.sol";
 import "./libraries/VaultLib.sol";
 
 contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
@@ -45,6 +43,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     // --- config ---
     address public admin;
     address public apertureManager;
+    mapping(address => bool) public isController;
     address public stableToken; // token 0
     address public assetToken; // token 1
     address public spell;
@@ -56,7 +55,6 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     uint256 public pid; // pool id
     IHomoraBank public homoraBank;
     IHomoraOracle public oracle; // HomoraBank's oracle for determining prices.
-    IUniswapPair public pair;
     IHomoraAvaxRouter public router;
 
     uint256 public targetDebtRatio; // target debt ratio * 10000, 92% -> 9200
@@ -64,7 +62,9 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     uint256 public maxDebtRatio; // maximum debt ratio * 10000
     uint256 public dnThreshold; // delta deviation percentage * 10000
 
-    mapping(address => bool) public isController;
+    uint256 public MAX_OPEN_AMOUNT;
+    uint256 public MAX_WITHDRAW_AMOUNT;
+
 
     // --- state ---
     // positions[chainId][positionId] stores share information about the position identified by (chainId, positionId).
@@ -72,8 +72,6 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     // Position id of the PDN vault in HomoraBank. Zero for new position.
     uint256 public homoraBankPosId;
     uint256 public totalCollShareAmount;
-    bool isDeltaNeutral;
-    bool isDebtRatioHealthy;
 
     // --- event ---
     event LogDeposit(
@@ -108,12 +106,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         address _homoraBank,
         address _spell,
         address _rewardToken,
-        uint256 _pid,
-        uint256 _leverageLevel,
-        uint256 _targetDebtRatio,
-        uint256 _minDebtRatio,
-        uint256 _maxDebtRatio,
-        uint256 _dnThreshold
+        uint256 _pid
     ) ERC20(_name, _symbol) {
         admin = _admin;
         apertureManager = _apertureManager;
@@ -121,7 +114,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         stableToken = _stableToken;
         assetToken = _assetToken;
         homoraBank = IHomoraBank(_homoraBank);
-        oracle = IHomoraOracle(homoraBank.oracle);
+        oracle = IHomoraOracle(homoraBank.oracle());
         require(oracle.support(_stableToken), "Oracle doesn't support stable token.");
         require(oracle.support(_assetToken), "Oracle doesn't support asset token.");
 
@@ -134,9 +127,16 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         require(lpToken != address(0), "Pair does not match the spell.");
         (,, uint16 liqIncentive) = oracle.tokenFactors(lpToken);
         require(liqIncentive != 0, "Oracle doesn't support lpToken.");
-        pair = IUniswapPair(lpToken);
         router = IHomoraAvaxRouter(IHomoraSpell(spell).router());
+    }
 
+    function initialize(
+        uint256 _leverageLevel,
+        uint256 _targetDebtRatio,
+        uint256 _minDebtRatio,
+        uint256 _maxDebtRatio,
+        uint256 _dnThreshold
+    ) external onlyAdmin {
         setConfig(_leverageLevel, _targetDebtRatio, _minDebtRatio, _maxDebtRatio, _dnThreshold);
     }
 
@@ -151,10 +151,10 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     }
 
     /// @dev Set config for delta neutral valut.
-    /// @param targetR target debt ratio * 10000
-    /// @param minR minimum debt ratio * 10000
-    /// @param maxR maximum debt ratio * 10000
-    /// @param dnThr delta deviation percentage * 10000
+    /// @param targetR: Target debt ratio * 10000
+    /// @param minR: Minimum debt ratio * 10000
+    /// @param maxR: Maximum debt ratio * 10000
+    /// @param dnThr: Delta deviation threshold in percentage * 10000
     function setConfig(
         uint256 targetLeverage,
         uint256 targetR,
@@ -176,6 +176,10 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     receive() external payable {}
 
+    /// @dev Open a new Aperture position for `recipient`
+    /// @param recipient: Owner of the position on Aperture
+    /// @param position_info: Aperture position info
+    /// @param data: Amount of assets supplied by user
     function openPosition(
         address recipient,
         PositionInfo memory position_info,
@@ -183,32 +187,42 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     ) external payable onlyApertureManager nonReentrant {
         (
             uint256 stableTokenDepositAmount,
-            uint256 assetTokenDepositAmount
-        ) = abi.decode(data, (uint256, uint256));
+            uint256 assetTokenDepositAmount,
+            uint256 minETHReceived
+        ) = abi.decode(data, (uint256, uint256, uint256));
         depositInternal(
             recipient,
             position_info,
             stableTokenDepositAmount,
-            assetTokenDepositAmount
+            assetTokenDepositAmount,
+            minETHReceived
         );
     }
 
+    /// @dev Increase an existing Aperture position
+    /// @param position_info: Aperture position info
+    /// @param data: Amount of assets supplied by user
     function increasePosition(
         PositionInfo memory position_info,
         bytes calldata data
     ) external payable onlyApertureManager nonReentrant {
         (
             uint256 stableTokenDepositAmount,
-            uint256 assetTokenDepositAmount
-        ) = abi.decode(data, (uint256, uint256));
+            uint256 assetTokenDepositAmount,
+            uint256 minETHReceived
+        ) = abi.decode(data, (uint256, uint256, uint256));
         depositInternal(
             address(0),
             position_info,
             stableTokenDepositAmount,
-            assetTokenDepositAmount
+            assetTokenDepositAmount,
+            minETHReceived
         );
     }
 
+    /// @dev Decrease an existing Aperture position
+    /// @param position_info: Aperture position info
+    /// @param data: Amount of shares to withdraw and the recipient
     function decreasePosition(
         PositionInfo memory position_info,
         bytes calldata data
@@ -222,6 +236,24 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         withdrawInternal(position_info, amount, recipient);
     }
 
+    /// @dev Close an existing Aperture position
+    /// @param position_info: Aperture position info
+    /// @param data: Owner of the position on Aperture
+    function closePosition(
+        PositionInfo memory position_info,
+        bytes calldata data
+    ) external onlyApertureManager nonReentrant {
+        (address recipient) = abi.decode(
+            data,
+            (address)
+        );
+        // console.log('recipient %s', recipient);
+        withdrawInternal(position_info, VaultLib.MAX_INT, recipient);
+    }
+
+    /// @dev Calculate the params passed to Homora to create PDN position
+    /// @param stableTokenDepositAmount: The amount of stable token supplied by user
+    /// @param assetTokenDepositAmount: The amount of asset token supplied by user
     function deltaNeutral(
         uint256 stableTokenDepositAmount,
         uint256 assetTokenDepositAmount
@@ -264,7 +296,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         address recipient,
         PositionInfo memory position_info,
         uint256 _stableTokenDepositAmount,
-        uint256 _assetTokenDepositAmount
+        uint256 _assetTokenDepositAmount,
+        uint256 minETHReceived
     ) internal {
         _reinvestInternal();
 
@@ -296,8 +329,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
             uint256 _assetTokenBorrowAmount
         ) = deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount);
 
-        // Record original collateral size.
-        uint256 originalCollSize = getCollateralSize();
+        // Record original position equity
+        uint256 equityBefore = getEquityETHValue();
 
         // Approve HomoraBank transferring tokens.
         IERC20(stableToken).approve(address(homoraBank), _stableTokenAmount);
@@ -330,18 +363,18 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
             data
         );
 
-        uint256 finalCollSize;
-        (, collToken, collId, finalCollSize) = homoraBank.getPositionInfo(homoraBankPosId);
+//        uint256 finalCollSize;
+//        (, collToken, collId, finalCollSize) = homoraBank.getPositionInfo(homoraBankPosId);
 
         // Cancel HomoraBank's allowance.
         IERC20(stableToken).approve(address(homoraBank), 0);
         IERC20(assetToken).approve(address(homoraBank), 0);
 
         // Calculate user share amount.
-        uint256 collSize = finalCollSize - originalCollSize;
-        uint256 collShareAmount = originalCollSize == 0
-            ? collSize
-            : (collSize * totalCollShareAmount) / originalCollSize;
+        uint256 equityChange = getEquityETHValue() - equityBefore;
+        uint256 collShareAmount = equityBefore == 0
+            ? equityChange
+            : (equityChange * totalCollShareAmount) / equityBefore;
 
         // Update vault position state.
         totalCollShareAmount += collShareAmount;
@@ -361,7 +394,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         );
         payable(recipient).transfer(address(this).balance - balanceArray[2]);
 
-        emit LogDeposit(recipient, collSize, collShareAmount);
+        emit LogDeposit(recipient, equityChange, collShareAmount);
     }
 
     function withdrawInternal(
@@ -460,26 +493,30 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         );
     }
 
+    /// @dev Check if the farming position is delta neutral
+    /// @param pos: Farming position in Homora Bank
+    function isDeltaNeutral(
+        VaultLib.VaultPosition memory pos
+    ) public view returns (bool) {
+        // Assume token A is the stable token
+        return (VaultLib.getOffset(pos.amtB, pos.debtAmtB) < dnThreshold);
+    }
+
+    /// @dev Check if the debt ratio is healthy
+    function isDebtRatioHealthy() public view returns (bool) {
+        uint256 debtRatio = getDebtRatio();
+        // 2. debtRatio check
+        return (minDebtRatio < debtRatio) && (debtRatio < maxDebtRatio);
+    }
+
     function rebalance(
         uint256 expectedRewardsLP
     ) external onlyController {
-        _reinvestInternal(expectedRewardsLP);
+        _reinvestInternal();
 
         VaultLib.VaultPosition memory pos = getPositionInfo();
-        // check if the position need rebalance
-        // assume token A is the stable token
-        // 1. delta-neutrality check
-        if (VaultLib.getOffset(pos.amtB, pos.debtAmtB) < _dnThreshold) {
-            isDeltaNeutral = true;
-        }
-
-        debtRatio = getDebtRatio();
-        // 2. debtRatio check
-        if ((_minDebtRatio < debtRatio) && (debtRatio < _maxDebtRatio)) {
-            isDebtRatioHealthy = true;
-        }
-
-        if (isDeltaNeutral && isDebtRatioHealthy) {
+        // Check if the position need rebalance
+        if (isDeltaNeutral(pos) && isDebtRatioHealthy()) {
             revert HomoraPDNVault_PositionIsHealthy();
         }
 
@@ -493,18 +530,19 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         }
 
         pos = getPositionInfo();
-        if (VaultLib.getOffset(pos.amtB, pos.debtAmtB) >= _dnThreshold) {
+        // Check if the rebalance succeeded
+        if (!isDeltaNeutral(pos)) {
             revert HomoraPDNVault_DeltaIsNeutral();
         }
 
-        debtRatio = getDebtRatio();
-        if ((debtRatio <= _minDebtRatio) || (debtRatio >= _maxDebtRatio)) {
+        if (!isDebtRatioHealthy()) {
             revert HomoraPDNVault_DebtRatioIsHealthy();
         }
 
         emit LogRebalance(pos.collateralSize, getCollateralSize());
     }
 
+    /// @param pos: Farming position in Homora Bank
     function _reBalanceShort(
         VaultLib.VaultPosition memory pos
     ) internal {
@@ -530,6 +568,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         homoraBank.execute(homoraBankPosId, spell, data1);
     }
 
+    /// @param pos: Farming position in Homora Bank
     function _rebalanceLong(
         VaultLib.VaultPosition memory pos
     ) internal {
@@ -563,23 +602,28 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     }
 
     function reinvest(
-        uint256 expectedLP
+        uint256 minReinvestETH
     ) external onlyController {
-        _reinvestInternal(expectedLP);
+        uint256 equityBefore = getEquityETHValue();
+
+        _reinvestInternal();
+
+        uint256 equityAfter = getEquityETHValue();
+
+        require((equityAfter - equityBefore) > minReinvestETH, "Received less equity than expected");
+
+        emit LogReinvest(equityBefore, equityAfter);
     }
 
     function _harvest() internal {
         homoraBank.execute(homoraBankPosId, spell, HARVEST_DATA);
     }
 
-    function _reinvestInternal(
-        uint256 expectedLP
-    ) internal {
+    function _reinvestInternal() internal {
         // Position nonexistent
         if (homoraBankPosId == _NO_ID) {
             return;
         }
-        uint256 equityBefore = getCollateralSize();
 
         // 1. claim rewards
         _harvest();
@@ -638,17 +682,13 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         // Cancel HomoraBank's allowance.
         IERC20(stableToken).approve(address(homoraBank), 0);
         IERC20(assetToken).approve(address(homoraBank), 0);
-
-        uint256 equityAfter = getCollateralSize();
-
-        require((equityAfter - equityBefore) > expectedLP, "Received less LP than expected");
-
-        emit LogReinvest(equityBefore, equityAfter);
     }
 
     /// @dev Homora position info
     function getPositionInfo()
-        internal returns (VaultLib.VaultPosition memory pos) {
+        internal view
+        returns (VaultLib.VaultPosition memory pos)
+    {
         pos.collateralSize = getCollateralSize();
         (pos.amtA, pos.amtB) = convertCollateralToTokens(pos.collateralSize);
         (pos.debtAmtA, pos.debtAmtB) = currentDebtAmount();
@@ -707,22 +747,6 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         (reserve0, reserve1) = VaultLib.getReserves(lpToken, stableToken);
     }
 
-    function getCollateralFactor() public view returns (uint16 collateralFactor) {
-        (, collateralFactor,) = oracle.tokenFactors(lpToken);
-    }
-
-    function getBorrowFactor(address token) public view returns (uint16 borrowFactor) {
-        (borrowFactor,,) = oracle.tokenFactors(token);
-    }
-
-    /// @dev Total position value not weighted by the collateral factor
-    function getCollateralETHValue() public view returns (uint256) {
-        if (homoraBankPosId == _NO_ID) {
-            return 0;
-        }
-        return homoraBank.getCollateralETHValue(homoraBankPosId) * 10**4 / getCollateralFactor();
-    }
-
     /// @dev Query the current debt amount for both tokens. Stable first
     function currentDebtAmount()
         public view
@@ -745,14 +769,33 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         return (stableTokenDebtAmount, assetTokenDebtAmount);
     }
 
+    /// @dev Query the collateral factor of the LP token on Homora
+    function getCollateralFactor() public view returns (uint16 collateralFactor) {
+        (, collateralFactor,) = oracle.tokenFactors(lpToken);
+    }
+
+    /// @dev Query the borrow factor of the debt token on Homora
+    /// @param token: Address of the ERC-20 debt token
+    function getBorrowFactor(address token) public view returns (uint16 borrowFactor) {
+        (borrowFactor,,) = oracle.tokenFactors(token);
+    }
+
+    /// @dev Total position value not weighted by the collateral factor
+    function getCollateralETHValue() public view returns (uint256) {
+        if (homoraBankPosId == _NO_ID) {
+            return 0;
+        }
+        return homoraBank.getCollateralETHValue(homoraBankPosId) * 10**4 / getCollateralFactor();
+    }
+
     /// @dev Total debt value not weighted by the borrow factors
     function getBorrowETHValue() public view returns (uint256) {
         if (homoraBankPosId == _NO_ID) {
             return 0;
         }
-        (stableTokenDebtAmount, assetTokenDebtAmount) = currentDebtAmount();
-        return homoraBank.asETHBorrow(stableToken, stableTokenDebtAmount, msg.sender) * 10**4 / getBorrowFactor(stableToken)
-        + homoraBank.asETHBorrow(assetToken, assetTokenDebtAmount, msg.sender) * 10**4 / getBorrowFactor(assetToken);
+        (uint256 stableTokenDebtAmount, uint256 assetTokenDebtAmount) = currentDebtAmount();
+        return oracle.asETHBorrow(stableToken, stableTokenDebtAmount, msg.sender) * 10**4 / getBorrowFactor(stableToken)
+        + oracle.asETHBorrow(assetToken, assetTokenDebtAmount, msg.sender) * 10**4 / getBorrowFactor(assetToken);
     }
 
     /// @dev Net equity value of the PDN position
@@ -798,6 +841,7 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     }
 
     /// @notice Evalute the current collateral's amount in terms of 2 tokens
+    /// @param collAmount: Amount of LP token
     function convertCollateralToTokens(uint256 collAmount)
         public
         view

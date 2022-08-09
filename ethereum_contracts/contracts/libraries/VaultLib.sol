@@ -2,14 +2,16 @@
 pragma solidity >=0.8.0 <0.9.0;
 
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "../interfaces/IUniswapPair.sol";
-import "./libraries/HomoraMath.sol";
 
 library VaultLib {
     uint256 public constant feeRate = 30;   // feeRate = 0.3%
     uint256 public constant unity = 10000;
     uint256 public constant unityMinusFee = 9970;
     uint256 public constant someLargeNumber = 10**18;
+    uint256 public constant MAX_INT = 2**256 - 1;
 
     struct RebalanceHelper {
         uint256 Ka;
@@ -52,13 +54,18 @@ library VaultLib {
         uint256 diff = currentVal > targetVal
             ? currentVal - targetVal
             : targetVal - currentVal;
-        if (targetVal == 0) {
-            if (diff == 0) return 0;
-            else return 2**64;
-        } else return (diff * 10000) / targetVal;
+        if (diff == 0) {
+            return 0;
+        } else if (targetVal == 0) {
+            return MAX_INT;
+        } else {
+            return (diff * 10000) / targetVal;
+        }
     }
 
     /// @notice Return pool reserves. Stable token first
+    /// @param lpToken: LP token address
+    /// @param stableToken: Stable token address
     function getReserves(address lpToken, address stableToken) 
         public 
         view 
@@ -76,6 +83,9 @@ library VaultLib {
     }
 
     /// @notice Evalute the current collateral's amount in terms of 2 tokens. Stable token first
+    /// @param lpToken: LP token address
+    /// @param stableToken: Stable token address
+    /// @param collAmount: Amount of LP token
     function convertCollateralToTokens(address lpToken, address stableToken, uint256 collAmount)
         public
         view
@@ -90,11 +100,11 @@ library VaultLib {
     }
 
     /// @dev Calculate the params passed to Homora to create PDN position
-    /// @param Ua The amount of stable token supplied by user
-    /// @param Ub The amount of asset token supplied by user
-    /// @param Na Stable token pool reserve
-    /// @param Nb Asset token pool reserve
-    /// @param L Leverage
+    /// @param Ua: The amount of stable token supplied by user
+    /// @param Ub: The amount of asset token supplied by user
+    /// @param Na: Stable token pool reserve
+    /// @param Nb: Asset token pool reserve
+    /// @param L: Leverage
     function deltaNeutral(
         uint256 Ua,
         uint256 Ub,
@@ -102,7 +112,7 @@ library VaultLib {
         uint256 Nb,
         uint256 L
     )
-        internal
+        public pure
         returns (
             uint256 stableTokenBorrowAmount,
             uint256 assetTokenBorrowAmount
@@ -113,7 +123,7 @@ library VaultLib {
             / (unity * Na * Nb);
         uint256 c = L * (unityMinusFee * (Na + Ua) * Ub + unity * Nb * Ua) * (Nb + Ub)**2
             / (unity * Na * Nb);
-        uint256 squareRoot = HomoraMath.sqrt(b * b + 8 * c);
+        uint256 squareRoot = Math.sqrt(b * b + 8 * c);
         require(squareRoot > b, "No positive root");
         assetTokenBorrowAmount = (squareRoot - b) / 4;
         stableTokenBorrowAmount = (L - 2) * (Na + Ua) * assetTokenBorrowAmount
@@ -122,18 +132,17 @@ library VaultLib {
 
     /// @dev Calculate the amount of collateral to withdraw and the amount of each token to repay by Homora to reach DN
     /// @dev Assume `pos.debtAmtB > pos.amtB`. Check before calling
-    /// @param pos HomoraBank's position info
-    /// @param leverageLevel Target leverage
-    /// @param reserveA Token A's pool reserve
-    /// @param reserveB Token B's pool reserve
+    /// @param pos: Farming position in Homora Bank
+    /// @param leverageLevel: Target leverage
+    /// @param reserveA: Token A's pool reserve
+    /// @param reserveB: Token B's pool reserve
     function rebalanceShort(
         VaultPosition memory pos,
         uint256 leverageLevel,
         uint256 reserveA,
         uint256 reserveB
     )
-        public
-        view
+        public pure
         returns (
             uint256,
             uint256,
@@ -180,11 +189,11 @@ library VaultLib {
 
     /// @dev Calculate the amount of each token to borrow by Homora to reach DN
     /// @dev Assume `pos.debtAmtB < pos.amtB`. Check before calling
-    /// @param pos HomoraBank's position info
-    /// @param leverageLevel Target leverage
-    /// @param reserveA Token A's pool reserve
-    /// @param reserveB Token B's pool reserve
-    /// @param amtAReward The amount of rewards in token A
+    /// @param pos: Farming position in Homora Bank
+    /// @param leverageLevel: Target leverage
+    /// @param reserveA: Token A's pool reserve
+    /// @param reserveB: Token B's pool reserve
+    /// @param amtAReward: The amount of rewards swapped in token A
     function rebalanceLong(        
         VaultPosition memory pos,
         uint256 leverageLevel,
@@ -192,8 +201,7 @@ library VaultLib {
         uint256 reserveB,
         uint256 amtAReward
     )
-        public
-        view
+        public pure
         returns (
             uint256,
             uint256
