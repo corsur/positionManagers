@@ -17,7 +17,6 @@ contract CrossChain is Ownable, ICrossChain {
 
     address public MANAGER;
 
-    uint16 private constant TERRA_CHAIN_ID = 3;
     uint256 private constant BPS = 10000;
     // The maximum allowed CROSS_CHAIN_FEE_BPS value (100 basis points, i.e. 1%).
     uint32 private constant MAX_CROSS_CHAIN_FEE_BPS = 100;
@@ -102,7 +101,7 @@ contract CrossChain is Ownable, ICrossChain {
             INSTRUCTION_VERSION,
             instructionType,
             positionId,
-            strategyChainInfo.strategyChainId,
+            strategyChainInfo.chainId,
             uint32(assetInfos.length)
         );
         for (uint256 i = 0; i < assetInfos.length; i++) {
@@ -141,8 +140,8 @@ contract CrossChain is Ownable, ICrossChain {
                 .transferTokens(
                     assetInfos[i].assetAddr,
                     amountAndFee.amount,
-                    strategyChainInfo.strategyChainId,
-                    strategyChainInfo.strategyChainApertureManager,
+                    strategyChainInfo.chainId,
+                    strategyChainInfo.managerAddr,
                     /*arbiterFee=*/
                     0,
                     WORMHOLE_NONCE

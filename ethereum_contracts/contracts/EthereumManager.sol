@@ -39,7 +39,6 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     address public CROSS_CHAIN;
     // Address of the Curve swap router contract.
     address public CURVE_SWAP;
-   
 
     // Information about positions held by users of this chain.
     uint128 public nextPositionId;

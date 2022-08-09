@@ -5,8 +5,8 @@ import "./IApertureCommon.sol";
 
 interface ICrossChain {
     struct StrategyChainInfo {
-        bytes32 strategyChainApertureManager;
-        uint16 strategyChainId;
+        bytes32 managerAddr;
+        uint16 chainId;
     }
     struct AmountAndFee {
         uint256 amount;
