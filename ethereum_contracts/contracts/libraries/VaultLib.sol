@@ -3,6 +3,7 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import "hardhat/console.sol";
 import "../interfaces/IUniswapPair.sol";
+import "./libraries/Math.sol";
 
 library VaultLib {
     uint256 public constant feeRate = 30;   // feeRate = 0.3%
@@ -86,6 +87,38 @@ library VaultLib {
 
         amount0 = (collAmount * reserve0) / totalLPSupply;
         amount1 = (collAmount * reserve1) / totalLPSupply;
+    }
+
+    function quadraticRoot(
+        uint256 a,
+        uint256 b,
+        uint256 c
+    ) public view returns (uint256 root) {
+        uint256 squareRoot = Math.sqrt(b * b - 4 * a *c);
+        require(squareRoot > b, "No positive root");
+        root = (squareRoot - b) / (2 * a);
+    }
+
+    /// @dev Calculate the params passed to Homora to create PDN position
+    /// @param stableTokenSupply The amount of stable token supplied by user
+    /// @param assetTokenSupply The amount of asset token supplied by user
+    function deltaNeutral(
+        uint256 stableTokenSupply,
+        uint256 assetTokenSupply,
+        uint256 stableTokenReserve,
+        uint256 assetTokenReserve
+    )
+        internal
+        returns (
+            uint256 stableTokenAmount,
+            uint256 assetTokenAmount,
+            uint256 stableTokenBorrowAmount,
+            uint256 assetTokenBorrowAmount
+        )
+    {
+        uint256 b = 2 * assetTokenReserve;
+        assetTokenBorrowAmount = quadraticRoot(2, b, c);
+        stableTokenBorrowAmount;
     }
 
     /// @dev Calculate the amount of collateral to withdraw and the amount of each token to repay by Homora to reach DN

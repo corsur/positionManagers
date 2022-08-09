@@ -223,37 +223,37 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     }
 
     function deltaNeutral(
-        uint256 _stableTokenDepositAmount,
-        uint256 _assetTokenDepositAmount
+        uint256 stableTokenDepositAmount,
+        uint256 assetTokenDepositAmount
     )
         internal
         returns (
-            uint256 _stableTokenAmount,
-            uint256 _assetTokenAmount,
-            uint256 _stableTokenBorrowAmount,
-            uint256 _assetTokenBorrowAmount
+            uint256 stableTokenAmount,
+            uint256 assetTokenAmount,
+            uint256 stableTokenBorrowAmount,
+            uint256 assetTokenBorrowAmount
         )
     {
-        _stableTokenAmount = _stableTokenDepositAmount;
+        stableTokenAmount = stableTokenDepositAmount;
 
         // swap all assetTokens into stableTokens
-        if (_assetTokenDepositAmount > 0) {
+        if (assetTokenDepositAmount > 0) {
             uint256 amount = _swap(
-                _assetTokenDepositAmount,
+                assetTokenDepositAmount,
                 assetToken,
                 stableToken
             );
             // update the stableToken amount
-            _stableTokenAmount += amount;
+            stableTokenAmount += amount;
         }
-        _assetTokenAmount = 0;
+        assetTokenAmount = 0;
 
         // total stableToken leveraged amount
         (uint256 reserve0, uint256 reserve1) = _getReserves();
-        uint256 totalAmount = _stableTokenAmount * leverageLevel;
+        uint256 totalAmount = stableTokenAmount * leverageLevel;
         uint256 desiredAmount = totalAmount / 2;
-        _stableTokenBorrowAmount = desiredAmount - _stableTokenAmount;
-        _assetTokenBorrowAmount = router.quote(
+        stableTokenBorrowAmount = desiredAmount - stableTokenAmount;
+        assetTokenBorrowAmount = router.quote(
             desiredAmount,
             reserve0,
             reserve1
@@ -774,12 +774,14 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
         (uint256 debtAmt0, uint256 debtAmt1) = currentDebtAmount();
         (uint256 reserve0, uint256 reserve1) = _getReserves();
 
-        uint256 totalEquity = amount0 +
+        uint256 collateralValue = amount0 +
             (amount1 > 0 ? router.quote(amount1, reserve1, reserve0) : 0);
-        uint256 debtEquity = debtAmt0 +
+        uint256 debtValue = debtAmt0 +
             (debtAmt1 > 0 ? router.quote(debtAmt1, reserve1, reserve0) : 0);
+//        uint256 collateralValue = getCollateralETHValue();
+//        uint256 debtValue = getBorrowETHValue();
 
-        return (totalEquity * 10000) / (totalEquity - debtEquity);
+        return (collateralValue * 10000) / (collateralValue - debtValue);
     }
 
     function getCollateralSize() public view returns (uint256) {
