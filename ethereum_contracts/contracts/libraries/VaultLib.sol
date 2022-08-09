@@ -8,7 +8,7 @@ library VaultLib {
     uint256 public constant feeRate = 30;   // feeRate = 0.3%
     uint256 public constant unity = 10000;
     uint256 public constant unityMinusFee = 9970;
-    uint256 public constant someLargeNumber = 1000000000000000000;
+    uint256 public constant someLargeNumber = 10**18;
 
     struct RebalanceHelper {
         uint256 Ka;
