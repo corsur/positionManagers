@@ -261,7 +261,7 @@ async function testNativeTokenSupport(managerContract, strategyContract) {
     .createPosition(
       /*strategyChainId=*/ AVAX_CHAIN_ID,
       /*strategyId=*/ 0,
-      [[/*assetType=*/0, USDC_TOKEN_ADDRESS, usdcDepositAmount0], [1, ZERO_ADDR, avaxAmount]],
+      [[/*assetType=*/ 0, USDC_TOKEN_ADDRESS, usdcDepositAmount0], [/*assetType=*/ 1, ZERO_ADDR, avaxAmount]],
       openPositionBytesArray,
       txOptions
     );
@@ -297,7 +297,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     .createPosition(
       /*strategyChainId=*/ AVAX_CHAIN_ID,
       /*strategyId=*/ 0,
-      [[/*assetType=*/0, USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
+      [[/*assetType=*/ 0, USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
       openPositionBytesArray,
       txOptions
     );
@@ -315,7 +315,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     .createPosition(
       /*strategyChainId=*/ AVAX_CHAIN_ID,
       /*strategyId=*/ 0,
-      [[/*assetType=*/0, USDC_TOKEN_ADDRESS, usdcDepositAmount1]],
+      [[/*assetType=*/ 0, USDC_TOKEN_ADDRESS, usdcDepositAmount1]],
       openPositionBytesArray1,
       txOptions
     );
