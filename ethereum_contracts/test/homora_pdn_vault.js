@@ -110,11 +110,7 @@ async function initialize() {
     "0x42d6ce661bb2e5f5cc639e7befe74ff9fd649541"
   );
 
-  await USDC.connect(signer).transfer(
-    wallets[0].address,
-    1000 * 1e6,
-    txOptions
-  );
+  await USDC.connect(signer).transfer(wallets[0].address, 5e6 * 1e6, txOptions);
   await USDC.connect(signer).transfer(
     wallets[1].address,
     1000 * 1e6,
@@ -122,106 +118,110 @@ async function initialize() {
   );
 }
 
-// testing function for rebalance()
-async function testRebalance(contract) {
-  const usdcDepositAmt = 300 * 1e6;
+// testing function to swap amount of USDC into WAVAX
+async function swapUSDC(contract, swapAmt=1e6 * 1e6) {
   await USDC.connect(wallets[0]).approve(
     contract.address,
-    usdcDepositAmt * 10,
+    1e8 * 1e6,
     txOptions
   );
 
-  // deposit 300 USDC
-  await contract.connect(wallets[0]).deposit(usdcDepositAmt, 0, txOptions);
+  let wavaxBalance0 = await WAVAX.balanceOf(wallets[0].address);
 
-  let usdcExpect = (300 * 1e6 * 3) / 2;
-  let wavaxExpect = await contract
-    .connect(wallets[0])
-    .getEquivalentTokenB(usdcExpect, txOptions);
+  // console.log("Token price before swap");
+  // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
+  await contract.connect(wallets[0]).swapExternal(USDC_TOKEN_ADDRESS, swapAmt, txOptions);
+  // console.log("Token price after swap");
+  // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
 
+  let wavaxBalance1 = await WAVAX.balanceOf(wallets[0].address);
+
+  return wavaxBalance1 - wavaxBalance0;
+}
+
+// testing function to swap amount of USDC into WAVAX
+async function swapWAVAX(contract, swapAmt) {
+  await WAVAX.connect(wallets[0]).approve(
+    contract.address,
+    BigNumber.from(500000).mul("1000000000000000000"),
+    txOptions
+  );
+
+  let usdcBalance0 = await USDC.balanceOf(wallets[0].address);
+
+  // console.log("Token price before swap");
+  // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
+  await contract.connect(wallets[0]).swapExternal(WAVAX_TOKEN_ADDRESS, BigNumber.from(swapAmt).mul("1000000000000000000"), txOptions);
+  // console.log("Token price after swap");
+  // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
+
+  let usdcBalance1 = await USDC.balanceOf(wallets[0].address);
+
+  return usdcBalance1 - usdcBalance0;
+}
+
+// testing function for rebalance()
+async function testRebalance(managerContract, strategyContract) {
+  await deposit(managerContract, strategyContract);
   // check collateral
-  let collSize = await contract
+  let collSize = await strategyContract
     .connect(wallets[0])
     .getCollateralSize(txOptions);
-  let [usdcHold, wavaxHold] = await contract
+  let [usdcHold, wavaxHold] = await strategyContract
     .connect(wallets[0])
     .convertCollateralToTokens(collSize, txOptions);
   console.log("collateral: usdc: %d, wavax: %d", usdcHold, wavaxHold);
-  console.log("    expect: usdc: %d, wavax: %d", usdcExpect, wavaxExpect);
-  assert(
-    Math.abs(usdcExpect - usdcHold) / usdcExpect < 1e-6,
-    "collateral USDC not equal to the expected amount"
-  );
-  assert(
-    Math.abs(wavaxExpect - wavaxHold) / wavaxExpect < 1e-6,
-    "collateral WAVAX not equal to the expected amount"
-  );
 
   // check debt
-  let [usdcDebt, wavaxDebt] = await contract
+  let [usdcDebt, wavaxDebt] = await strategyContract
     .connect(wallets[0])
     .currentDebtAmount(txOptions);
-  let usdcDebtExpect = (300 * 1e6) / 2;
-  let wavaxDebtExpect = wavaxExpect;
   console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
-  console.log(
-    " expect debt: usdc: %d, wavax: %d",
-    usdcDebtExpect,
-    wavaxDebtExpect
-  );
-  assert(
-    Math.abs(usdcDebtExpect - usdcDebt) / usdcDebtExpect < 1e-6,
-    "USDC debt not equal to the expected amount"
-  );
-  assert(
-    Math.abs(wavaxDebtExpect - wavaxDebt) / wavaxDebtExpect < 1e-6,
-    "WAVAX debt not equal to the expected amount"
-  );
 
   // check if position state is healthy (no need to rebalance)
   await expect(
-    contract.connect(wallets[0]).rebalance(txOptions)
+    strategyContract.connect(wallets[0]).rebalance(txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
-  // set delta-neutral threshold to 0 to force executing rebalance
-  console.log("Temporarily set delta-neutral offset threshold to 0");
-  await contract.connect(wallets[0]).setDNThreshold(0, txOptions);
-  await contract.connect(wallets[0]).rebalance(txOptions);
+  // swap USDC and rebalance (short)
+  let res = await swapUSDC(strategyContract, 3e12) / 1e18;
+  await strategyContract.connect(wallets[0]).rebalance(txOptions);
 
-  await contract.connect(wallets[0]).setDNThreshold(500, txOptions);
-  // check if position state is healthy after rebalance
+  // expect to be in delta-neutral after rebalance
   await expect(
-    contract.connect(wallets[0]).rebalance(txOptions)
+    strategyContract.connect(wallets[0]).rebalance(txOptions)
+  ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
+
+  // swap WAVAX and rebalance (long)
+  await swapWAVAX(strategyContract, 0 | res);
+  await strategyContract.connect(wallets[0]).rebalance(txOptions);
+
+  // expect to be in delta-neutral after rebalance
+  await expect(
+    strategyContract.connect(wallets[0]).rebalance(txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 }
 
-async function testReinvest(contract) {
-  const usdcDepositAmt = 300 * 1e6;
-  await USDC.connect(wallets[0]).approve(
-    contract.address,
-    usdcDepositAmt * 10,
-    txOptions
-  );
+async function testReinvest(managerContract, strategyContract) {
+  await deposit(managerContract, strategyContract);
 
-  // deposit 300 USDC
-  await contract.connect(wallets[0]).deposit(usdcDepositAmt, 0, txOptions);
-
-  let collateralBefore = await contract
+  let collateralBefore = await strategyContract
     .connect(wallets[0])
     .getCollateralSize(txOptions);
+  console.log("Collateral Before reinvest: %d", collateralBefore);
 
   let reinvested = false;
   try {
-    await contract.connect(wallets[0]).reinvest(txOptions);
+    await strategyContract.connect(wallets[0]).reinvest(txOptions);
     reinvested = true;
   } catch (err) {
     await expect(
-      contract.connect(wallets[0]).reinvest(txOptions)
+      strategyContract.connect(wallets[0]).reinvest(txOptions)
     ).to.be.revertedWith("Insufficient liquidity minted");
     reinvested = false;
   }
 
-  let collateralAfter = await contract
+  let collateralAfter = await strategyContract
     .connect(wallets[0])
     .getCollateralSize(txOptions);
 
@@ -270,6 +270,53 @@ async function testNativeTokenSupport(managerContract, strategyContract) {
     expect(await provider.getBalance(managerContract.address)).to.equal(0);
     // Strategy contract is designed to receive native tokens but not handle them.
     expect(await provider.getBalance(strategyContract.address)).to.equal(avaxAmount);
+}
+
+async function deposit(managerContract, strategyContract) {
+  const usdcDepositAmount0 = 1000e6;
+  const usdcDepositAmount1 = 500e6;
+
+  // Deposit 1000 USDC to vault from wallet 0.
+  await USDC.connect(wallets[0]).approve(
+    managerContract.address,
+    usdcDepositAmount0
+  );
+  console.log("using wallet: ", wallets[0].address);
+
+  // Craft open position data.
+  const buffer = new ArrayBuffer(32 * 2); // two uint256.
+  const view = new DataView(buffer);
+  // This is an encoding hack.
+  view.setUint32(28, usdcDepositAmount0);
+  const openPositionBytesArray = new Uint8Array(buffer);
+
+  // Deposit 1000 USDC to vault from wallet 0.
+  await managerContract
+    .connect(wallets[0])
+    .createPosition(
+      /*strategyChainId=*/ AVAX_CHAIN_ID,
+      /*strategyId=*/ 0,
+      [[USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
+      openPositionBytesArray,
+      txOptions
+    );
+
+  // Deposit 500 USDC to vault from wallet 1.
+  await USDC.connect(wallets[1]).approve(
+    managerContract.address,
+    usdcDepositAmount1
+  );
+  view.setUint32(28, usdcDepositAmount1);
+  const openPositionBytesArray1 = new Uint8Array(buffer);
+  await managerContract
+    .connect(wallets[1])
+    .createPosition(
+      /*strategyChainId=*/ AVAX_CHAIN_ID,
+      /*strategyId=*/ 0,
+      [[USDC_TOKEN_ADDRESS, usdcDepositAmount1]],
+      openPositionBytesArray1,
+      txOptions
+    );
 }
 
 async function testDepositAndWithdraw(managerContract, strategyContract) {
@@ -344,10 +391,10 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     await strategyContract.convertCollateralToTokens(collSize1);
 
   var totalAmount0InUsdc = usdcAmount0.add(
-    await strategyContract.getEquivalentTokenA(wavaxAmount0)
+    await strategyContract.quote(WAVAX_TOKEN_ADDRESS, wavaxAmount0)
   );
   var totalAmount1InUsdc = usdcAmount1.add(
-    await strategyContract.getEquivalentTokenA(wavaxAmount1)
+    await strategyContract.quote(WAVAX_TOKEN_ADDRESS, wavaxAmount1)
   );
 
   expect(totalAmount0InUsdc).to.be.closeTo(
@@ -423,7 +470,11 @@ describe("HomoraPDNVault Initialization", function () {
     console.log("Aperture manager deployed at: ", managerContract.address);
 
     // HomoraPDNVault contract.
-    strategyFactory = await ethers.getContractFactory("HomoraPDNVault");
+    library = await ethers.getContractFactory("VaultLib");
+    lib = await library.deploy();
+    strategyFactory = await ethers.getContractFactory("HomoraPDNVault", {
+      libraries: { VaultLib: lib.address },
+    });
     strategyContract = await strategyFactory
       .connect(mainWallet)
       .deploy(
@@ -472,17 +523,17 @@ describe("HomoraPDNVault Initialization", function () {
     await testNativeTokenSupport(managerContract, strategyContract);
   });
 
-  // it("Deposit and test rebalance", async function () {
-  //   await testRebalance(contract);
-  // });
+  it("Deposit and test rebalance", async function () {
+    await testRebalance(managerContract, strategyContract);
+  });
 
-  // it("Deposit and test reinvest", async function () {
-  //   await testReinvest(contract);
-  // });
+  it("Deposit and test reinvest", async function () {
+    await testReinvest(managerContract, strategyContract);
+  });
 
-  // it("Should fail for doing unauthorized operations", async function () {
-  //   await expect(
-  //     contract.connect(mainWallet).setDNThreshold(0, txOptions)
-  //   ).to.be.revertedWith("unauthorized ops");
-  // });
+  it("Should fail for doing unauthorized operations", async function () {
+    await expect(
+      strategyContract.connect(wallets[1]).setConfig(0, 0, 0, 0, txOptions)
+    ).to.be.revertedWith("unauthorized admin op");
+  });
 });
