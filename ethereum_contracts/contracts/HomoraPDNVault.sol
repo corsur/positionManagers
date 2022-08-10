@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
-//import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
@@ -35,8 +35,17 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
 
     // --- constants ---
     uint256 private constant _NO_ID = 0;
-    bytes private constant HARVEST_DATA =
-        abi.encodeWithSelector(bytes4(keccak256("harvestWMasterChef()")));
+    bytes private constant HARVEST_DATA = abi.encodeWithSignature("harvestWMasterChef()");
+    bytes4 private constant addLiquiditySig = bytes4(
+        keccak256(
+            "addLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256),uint256)"
+        )
+    );
+    bytes4 private constant removeLiquiditySig = bytes4(
+        keccak256(
+            "removeLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256))"
+        )
+    );
 
     // --- accounts ---
     address public admin;
@@ -240,25 +249,25 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
             data,
             (uint256, address)
         );
-        // console.log('amount %d:', amount);
-        // console.log('recipient %s', recipient);
+        console.log('amount %d', amount);
+        console.log('recipient %s', recipient);
         withdrawInternal(position_info, amount, recipient);
     }
 
     /// @dev Close an existing Aperture position
     /// @param position_info: Aperture position info
     /// @param data: Owner of the position on Aperture
-    function closePosition(
-        PositionInfo memory position_info,
-        bytes calldata data
-    ) external onlyApertureManager nonReentrant {
-        (address recipient) = abi.decode(
-            data,
-            (address)
-        );
-        // console.log('recipient %s', recipient);
-        withdrawInternal(position_info, VaultLib.MAX_UINT, recipient);
-    }
+//    function closePosition(
+//        PositionInfo memory position_info,
+//        bytes calldata data
+//    ) external onlyApertureManager nonReentrant {
+//        (address recipient) = abi.decode(
+//            data,
+//            (address)
+//        );
+//        // console.log('recipient %s', recipient);
+//        withdrawInternal(position_info, VaultLib.MAX_UINT, recipient);
+//    }
 
     /// @dev Calculate the params passed to Homora to create PDN position
     /// @param stableTokenDepositAmount: The amount of stable token supplied by user
@@ -301,11 +310,17 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         );
     }
 
+    /// @dev Internal deposit function
+    /// @param recipient:
+    /// @param position_info:
+    /// @param stableTokenDepositAmount:
+    /// @param assetTokenDepositAmount:
+    /// @param minETHReceived:
     function depositInternal(
         address recipient,
         PositionInfo memory position_info,
-        uint256 _stableTokenDepositAmount,
-        uint256 _assetTokenDepositAmount,
+        uint256 stableTokenDepositAmount,
+        uint256 assetTokenDepositAmount,
         uint256 minETHReceived
     ) internal {
         uint256[3] memory equities;
@@ -322,47 +337,55 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         balanceArray[2] = address(this).balance;
 
         // Transfer user's deposit.
-        if (_stableTokenDepositAmount > 0)
+        if (stableTokenDepositAmount > 0)
             IERC20(stableToken).transferFrom(
                 msg.sender,
                 address(this),
-                _stableTokenDepositAmount
+                stableTokenDepositAmount
             );
-        if (_assetTokenDepositAmount > 0)
+        if (assetTokenDepositAmount > 0)
             IERC20(assetToken).transferFrom(
                 msg.sender,
                 address(this),
-                _assetTokenDepositAmount
+                assetTokenDepositAmount
             );
 
+//        (uint256 reserve0, uint256 reserve1) = _getReserves();
         (
-            uint256 _stableTokenAmount,
-            uint256 _assetTokenAmount,
-            uint256 _stableTokenBorrowAmount,
-            uint256 _assetTokenBorrowAmount
-        ) = deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount);
+            uint256 stableTokenAmount,
+            uint256 assetTokenAmount,
+            uint256 stableTokenBorrowAmount,
+            uint256 assetTokenBorrowAmount
+        ) = deltaNeutral(stableTokenDepositAmount, assetTokenDepositAmount);
+
+//        (
+//            uint256 _stableTokenBorrowAmount,
+//            uint256 _assetTokenBorrowAmount
+//        ) = VaultLib.deltaNeutral(
+//            stableTokenDepositAmount,
+//            assetTokenDepositAmount,
+//            reserve0,
+//            reserve1,
+//            leverageLevel
+//        );
 
         // Record original position equity before adding liquidity
         equities[1] = getEquityETHValue();
 
         // Approve HomoraBank transferring tokens.
-        IERC20(stableToken).approve(address(homoraBank), _stableTokenAmount);
-        IERC20(assetToken).approve(address(homoraBank), _assetTokenAmount);
+        IERC20(stableToken).approve(address(homoraBank), stableTokenAmount);
+        IERC20(assetToken).approve(address(homoraBank), assetTokenAmount);
 
         bytes memory data = abi.encodeWithSelector(
-            bytes4(
-                keccak256(
-                    "addLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256),uint256)"
-                )
-            ),
+            addLiquiditySig,
             stableToken,
             assetToken,
             [
-                _stableTokenAmount,
-                _assetTokenAmount,
+                stableTokenAmount,
+                assetTokenAmount,
                 0,
-                _stableTokenBorrowAmount,
-                _assetTokenBorrowAmount,
+                stableTokenBorrowAmount,
+                assetTokenBorrowAmount,
                 0,
                 0,
                 0
@@ -425,6 +448,8 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
                     .collShareAmount,
             "not enough share amount to withdraw"
         );
+        console.log('share amount %d', positions[position_info.chainId][position_info.positionId]
+                    .collShareAmount);
 
         _reinvestInternal();
 
@@ -448,19 +473,15 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
 
         // Encode removeLiqiduity call.
         bytes memory data = abi.encodeWithSelector(
-            bytes4(
-                keccak256(
-                    "removeLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256))"
-                )
-            ),
+            removeLiquiditySig,
             stableToken,
             assetToken,
             [
                 collWithdrawSize,
                 0,
-                (stableTokenDebtAmount * collWithdrawSize) /
+                (stableTokenDebtAmount * withdrawShareAmount) /
                     totalCollShareAmount,
-                (assetTokenDebtAmount * collWithdrawSize) /
+                (assetTokenDebtAmount * withdrawShareAmount) /
                     totalCollShareAmount,
                 0,
                 0,
@@ -571,11 +592,7 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         ) = VaultLib.rebalanceShort(pos, leverageLevel, reserveA, reserveB);
 
         bytes memory data1 = abi.encodeWithSelector(
-            bytes4(
-                keccak256(
-                    "removeLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256))"
-                )
-            ),
+            removeLiquiditySig,
             stableToken,
             assetToken,
             [collWithdrawAmt, 0, amtARepay, amtBRepay, 0, 0, 0]
@@ -603,11 +620,7 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
             );
         IERC20(stableToken).approve(address(homoraBank), VaultLib.MAX_UINT);
         bytes memory data0 = abi.encodeWithSelector(
-            bytes4(
-                keccak256(
-                    "addLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256),uint256)"
-                )
-            ),
+            addLiquiditySig,
             stableToken,
             assetToken,
             [amtAReward, 0, 0, amtABorrow, amtBBorrow, 0, 0, 0],
@@ -655,17 +668,28 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         uint256 stableTokenBalance = IERC20(stableToken).balanceOf(address(this));
         uint256 assetTokenBalance = IERC20(assetToken).balanceOf(address(this));
 
-        (uint256 reserve0, ) = _getReserves();
+        (uint256 reserve0, uint256 reserve1) = _getReserves();
         uint256 liquidity = (((stableTokenBalance * leverageLevel) / 2) *
             IERC20(lpToken).totalSupply()) / reserve0;
         require(liquidity > 0, "Insufficient liquidity minted");
 
         (
-            uint256 _stableTokenAmount,
-            uint256 _assetTokenAmount,
-            uint256 _stableTokenBorrowAmount,
-            uint256 _assetTokenBorrowAmount
+            uint256 stableTokenAmount,
+            uint256 assetTokenAmount,
+            uint256 stableTokenBorrowAmount,
+            uint256 assetTokenBorrowAmount
         ) = deltaNeutral(stableTokenBalance, assetTokenBalance);
+
+//        (
+//            uint256 stableTokenBorrowAmount,
+//            uint256 assetTokenBorrowAmount
+//        ) = VaultLib.deltaNeutral(
+//            stableTokenBalance,
+//            assetTokenBalance,
+//            reserve0,
+//            reserve1,
+//            leverageLevel
+//        );
 
         // Approve HomoraBank transferring tokens.
         IERC20(stableToken).approve(address(homoraBank), VaultLib.MAX_UINT);
@@ -673,19 +697,15 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
 
         // Encode the calling function.
         bytes memory data = abi.encodeWithSelector(
-            bytes4(
-                keccak256(
-                    "addLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256),uint256)"
-                )
-            ),
+            addLiquiditySig,
             stableToken,
             assetToken,
             [
-                _stableTokenAmount,
-                _assetTokenAmount,
+                stableTokenAmount,
+                assetTokenAmount,
                 0,
-                _stableTokenBorrowAmount,
-                _assetTokenBorrowAmount,
+                stableTokenBorrowAmount,
+                assetTokenBorrowAmount,
                 0,
                 0,
                 0
@@ -865,28 +885,28 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         (amount0, amount1) = VaultLib.convertCollateralToTokens(lpToken, stableToken, collAmount);
     }
 
-    function quote(address token, uint256 amount) public view returns(uint256) {
-        (uint256 reserve0, uint256 reserve1) = _getReserves();
-        if (token == stableToken) {
-            return router.quote(amount, reserve0, reserve1);
-        } else {
-            return router.quote(amount, reserve1, reserve0);
-        }
-    }
-
-    /// @notice swap function for external tests, swap stableToken into assetToken
-    function swapExternal(address token, uint256 amount0)
-        external
-        returns (uint256 amt)
-    {
-        IERC20(token).transferFrom(msg.sender, address(this), amount0);
-        if (token == stableToken) {
-            amt = _swap(amount0, stableToken, assetToken);
-            IERC20(assetToken).transfer(msg.sender, amt);
-        } else if (token == assetToken) {
-            amt = _swap(amount0, assetToken, stableToken);
-            IERC20(stableToken).transfer(msg.sender, amt);
-        }
-        return amt;
-    }
+//    function quote(address token, uint256 amount) public view returns(uint256) {
+//        (uint256 reserve0, uint256 reserve1) = _getReserves();
+//        if (token == stableToken) {
+//            return router.quote(amount, reserve0, reserve1);
+//        } else {
+//            return router.quote(amount, reserve1, reserve0);
+//        }
+//    }
+//
+//    /// @notice swap function for external tests, swap stableToken into assetToken
+//    function swapExternal(address token, uint256 amount0)
+//        external
+//        returns (uint256 amt)
+//    {
+//        IERC20(token).transferFrom(msg.sender, address(this), amount0);
+//        if (token == stableToken) {
+//            amt = _swap(amount0, stableToken, assetToken);
+//            IERC20(assetToken).transfer(msg.sender, amt);
+//        } else if (token == assetToken) {
+//            amt = _swap(amount0, assetToken, stableToken);
+//            IERC20(stableToken).transfer(msg.sender, amt);
+//        }
+//        return amt;
+//    }
 }

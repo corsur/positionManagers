@@ -283,7 +283,11 @@ async function deposit(managerContract, strategyContract) {
 
 async function testDepositAndWithdraw(managerContract, strategyContract) {
   const usdcDepositAmount0 = 1000e6;
+  const avaxDepositAmount0 = 0;
+  const minEquityReceived0 = 0;
   const usdcDepositAmount1 = 500e6;
+  const avaxDepositAmount1 = 0;
+  const minEquityReceived1 = 0;
 
   // Deposit 1000 USDC to vault from wallet 0.
   await USDC.connect(wallets[0]).approve(
@@ -293,15 +297,22 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
   console.log("using wallet: ", wallets[0].address);
 
   // Craft open position data.
-  const buffer = new ArrayBuffer(32 * 3); // 3 uint256.
-  // uint256 stableTokenDepositAmount,
+  // (uint256 stableTokenDepositAmount,
   // uint256 assetTokenDepositAmount,
-  // uint256 minETHReceived
-  const view = new DataView(buffer);
-  // This is an encoding hack.
-  view.setUint32(28, usdcDepositAmount0);
-  const openPositionBytesArray = new Uint8Array(buffer);
-  console.log("print out uint8 array: ", openPositionBytesArray);
+  // uint256 minETHReceived)
+  // const buffer = new ArrayBuffer(32 * 3); // 3 uint256.
+  // const view = new DataView(buffer);
+  // // This is an encoding hack.
+  // view.setUint32(28, usdcDepositAmount0);
+  // const openPositionBytesArray = new Uint8Array(buffer);
+  let openPositionBytesArray = ethers.utils.arrayify(
+      ethers.utils.defaultAbiCoder
+      .encode(
+          ["uint256", "uint256", "uint256"],
+          [usdcDepositAmount0, avaxDepositAmount0, minEquityReceived0]
+      )
+  );
+  // console.log("print out uint8 array: ", openPositionBytesArray);
 
   // Deposit 1000 USDC to vault from wallet 0.
   await managerContract
@@ -319,9 +330,16 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     managerContract.address,
     usdcDepositAmount1
   );
-  view.setUint32(28, usdcDepositAmount1);
-  const openPositionBytesArray1 = new Uint8Array(buffer);
-  console.log("print out uint8 array: ", openPositionBytesArray1);
+  // view.setUint32(28, usdcDepositAmount1);
+  // const openPositionBytesArray1 = new Uint8Array(buffer);
+  // console.log("print out uint8 array: ", openPositionBytesArray1);
+  let openPositionBytesArray1 = ethers.utils.arrayify(
+      ethers.utils.defaultAbiCoder
+      .encode(
+          ["uint256", "uint256", "uint256"],
+          [usdcDepositAmount1, avaxDepositAmount1, minEquityReceived1]
+      )
+  );
   await managerContract
     .connect(wallets[1])
     .createPosition(
@@ -350,17 +368,17 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
   var collSize0 = shareAmount0.mul(totalCollateralSize).div(totalShareAmount);
   var collSize1 = shareAmount1.mul(totalCollateralSize).div(totalShareAmount);
 
+  // Check debt ratio
+  let debtRatio = await strategyContract.getDebtRatio();
+  console.log("Debt ratio is ", debtRatio / 10000);
+
   [usdcAmount0, wavaxAmount0] =
     await strategyContract.convertCollateralToTokens(collSize0);
   [usdcAmount1, wavaxAmount1] =
     await strategyContract.convertCollateralToTokens(collSize1);
 
-  var totalAmount0InUsdc = usdcAmount0.add(
-    await strategyContract.quote(WAVAX_TOKEN_ADDRESS, wavaxAmount0)
-  );
-  var totalAmount1InUsdc = usdcAmount1.add(
-    await strategyContract.quote(WAVAX_TOKEN_ADDRESS, wavaxAmount1)
-  );
+  var totalAmount0InUsdc = 2 * usdcAmount0;
+  var totalAmount1InUsdc = 2 * usdcAmount1;
 
   expect(totalAmount0InUsdc).to.be.closeTo(
     BigNumber.from(usdcDepositAmount0 * leverageLevel),
@@ -371,27 +389,41 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     100
   );
 
-  console.log(
-    ethers.utils.arrayify("0x689961608D2d7047F5411F9d9004D440449CbD27")
-  );
+  // console.log(
+  //   ethers.utils.arrayify("0x689961608D2d7047F5411F9d9004D440449CbD27")
+  // );
 
   // Withdraw half amount from vault for wallet 0.
   var withdrawAmount0 = shareAmount0.div(2);
-  console.log("withdraw amount 0: ", withdrawAmount0.toNumber());
+  console.log("withdraw amount 0: ", withdrawAmount0);
   var usdcBalance0 = await USDC.balanceOf(wallets[0].address);
 
   // First byte is Action enum.
   // 0 -> Open, 1 -> Increase, 2 -> Decrease, 3 -> Close (not yet supported).
-  const withdrawBuffer = new ArrayBuffer(1 + 32);
-  const withdrawView = new DataView(withdrawBuffer);
-  withdrawView.setUint8(0, 2); // Set action to be Decrease.
-  withdrawView.setUint32(29, withdrawAmount0.toNumber()); // Hack: set the last 4 bytes to be withdraw amount.
+  // const withdrawBuffer = new ArrayBuffer(1 + 32);
+  // const withdrawView = new DataView(withdrawBuffer);
+  // withdrawView.setUint8(0, 2); // Set action to be Decrease.
+  // withdrawView.setUint32(29, withdrawAmount0.toNumber()); // Hack: set the last 4 bytes to be withdraw amount.
+  // const encodedWithdrawData = ethers.utils.concat([
+  //   new Uint8Array(withdrawBuffer),
+  //   ethers.utils.zeroPad(ethers.utils.arrayify(wallets[0].address), 32),
+  // ]);
+  // console.log("encoded withdraw data: ", encodedWithdrawData);
+  let decreasePositionBytesArray = ethers.utils.arrayify(
+      ethers.utils.defaultAbiCoder
+      .encode(
+          ["uint256", "address"],
+          [withdrawAmount0, wallets[0].address]
+      )
+  );
+  let action = new Uint8Array(1);
+  action.set([2]);
   const encodedWithdrawData = ethers.utils.concat([
-    new Uint8Array(withdrawBuffer),
-    ethers.utils.zeroPad(ethers.utils.arrayify(wallets[0].address), 32),
+      action,
+      decreasePositionBytesArray
   ]);
-
   console.log("encoded withdraw data: ", encodedWithdrawData);
+  console.log(ethers.utils.hexlify(encodedWithdrawData));
 
   await managerContract
     .connect(wallets[0])
