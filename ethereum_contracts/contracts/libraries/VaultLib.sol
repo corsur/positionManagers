@@ -10,7 +10,7 @@ library VaultLib {
     uint256 public constant unity = 10000;
     uint256 public constant unityMinusFee = 9970;
     uint256 public constant someLargeNumber = 10**18;
-    uint256 public constant MAX_INT = 2**256 - 1;
+    uint256 public constant MAX_UINT = 2**256 - 1;
 
     struct RebalanceHelper {
         uint256 Ka;
@@ -56,7 +56,7 @@ library VaultLib {
         if (diff == 0) {
             return 0;
         } else if (targetVal == 0) {
-            return MAX_INT;
+            return MAX_UINT;
         } else {
             return (diff * 10000) / targetVal;
         }

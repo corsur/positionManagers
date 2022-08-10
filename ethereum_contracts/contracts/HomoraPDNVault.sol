@@ -35,7 +35,6 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
 
     // --- constants ---
     uint256 private constant _NO_ID = 0;
-    uint256 private constant MAX_UINT256 = 2**256 - 1;
     bytes private constant HARVEST_DATA =
         abi.encodeWithSelector(bytes4(keccak256("harvestWMasterChef()")));
 
@@ -66,10 +65,13 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
 
     uint256 public MAX_OPEN_AMOUNT;
     uint256 public MAX_WITHDRAW_AMOUNT;
-    uint256 public WITHDRAW_FEE; // multiplied by 1e4
-    uint256 public MANAGEMENT_FEE; // multiplied by 1e4
-    uint256 public HARVEST_FEE; // multiplied by 1e4
 
+    struct FEES {
+        uint256 WITHDRAW_FEE; // multiplied by 1e4
+        uint256 MANAGEMENT_FEE; // multiplied by 1e4
+        uint256 HARVEST_FEE; // multiplied by 1e4
+    }
+    FEES public Fees;
 
     // --- state ---
     // positions[chainId][positionId] stores share information about the position identified by (chainId, positionId).
@@ -255,7 +257,7 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
             (address)
         );
         // console.log('recipient %s', recipient);
-        withdrawInternal(position_info, VaultLib.MAX_INT, recipient);
+        withdrawInternal(position_info, VaultLib.MAX_UINT, recipient);
     }
 
     /// @dev Calculate the params passed to Homora to create PDN position
@@ -306,6 +308,10 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         uint256 _assetTokenDepositAmount,
         uint256 minETHReceived
     ) internal {
+        uint256[3] memory equities;
+        // Record original position equity before reinvest
+        equities[0] = getEquityETHValue();
+
         _reinvestInternal();
 
         // Record the balance state before transfer fund.
@@ -336,8 +342,8 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
             uint256 _assetTokenBorrowAmount
         ) = deltaNeutral(_stableTokenDepositAmount, _assetTokenDepositAmount);
 
-        // Record original position equity
-        uint256 equityBefore = getEquityETHValue();
+        // Record original position equity before adding liquidity
+        equities[1] = getEquityETHValue();
 
         // Approve HomoraBank transferring tokens.
         IERC20(stableToken).approve(address(homoraBank), _stableTokenAmount);
@@ -378,10 +384,13 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         IERC20(assetToken).approve(address(homoraBank), 0);
 
         // Calculate user share amount.
-        uint256 equityChange = getEquityETHValue() - equityBefore;
-        uint256 collShareAmount = equityBefore == 0
+        equities[2] = getEquityETHValue();
+        uint256 equityChange = equities[2] - equities[1];
+        uint256 collShareAmount = equities[1] == 0
             ? equityChange
-            : (equityChange * totalCollShareAmount) / equityBefore;
+            : (equityChange * totalCollShareAmount) / equities[1];
+
+        require((equities[2] - equities[0]) > minETHReceived, "Received less equity than expected");
 
         // Update vault position state.
         totalCollShareAmount += collShareAmount;
@@ -517,7 +526,7 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
     }
 
     function rebalance(
-        uint256 expectedRewardsLP
+        uint256 minReinvestETH
     ) external onlyController {
         _reinvestInternal();
 
@@ -592,7 +601,7 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
                 reserveB,
                 amtAReward
             );
-        IERC20(stableToken).approve(address(homoraBank), MAX_UINT256);
+        IERC20(stableToken).approve(address(homoraBank), VaultLib.MAX_UINT);
         bytes memory data0 = abi.encodeWithSelector(
             bytes4(
                 keccak256(
@@ -659,8 +668,8 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         ) = deltaNeutral(stableTokenBalance, assetTokenBalance);
 
         // Approve HomoraBank transferring tokens.
-        IERC20(stableToken).approve(address(homoraBank), MAX_UINT256);
-        IERC20(assetToken).approve(address(homoraBank), MAX_UINT256);
+        IERC20(stableToken).approve(address(homoraBank), VaultLib.MAX_UINT);
+        IERC20(assetToken).approve(address(homoraBank), VaultLib.MAX_UINT);
 
         // Encode the calling function.
         bytes memory data = abi.encodeWithSelector(
@@ -747,8 +756,7 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
 
     /// @notice Get the amount of each of the two tokens in the pool. Stable token first
     function _getReserves()
-        internal
-        view
+        internal view
         returns (uint256 reserve0, uint256 reserve1)
     {
         (reserve0, reserve1) = VaultLib.getReserves(lpToken, stableToken);
@@ -855,6 +863,15 @@ contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
         returns (uint256 amount0, uint256 amount1)
     {
         (amount0, amount1) = VaultLib.convertCollateralToTokens(lpToken, stableToken, collAmount);
+    }
+
+    function quote(address token, uint256 amount) public view returns(uint256) {
+        (uint256 reserve0, uint256 reserve1) = _getReserves();
+        if (token == stableToken) {
+            return router.quote(amount, reserve0, reserve1);
+        } else {
+            return router.quote(amount, reserve1, reserve0);
+        }
     }
 
     /// @notice swap function for external tests, swap stableToken into assetToken

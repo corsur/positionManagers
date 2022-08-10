@@ -293,7 +293,10 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
   console.log("using wallet: ", wallets[0].address);
 
   // Craft open position data.
-  const buffer = new ArrayBuffer(32 * 2); // two uint256.
+  const buffer = new ArrayBuffer(32 * 3); // 3 uint256.
+  // uint256 stableTokenDepositAmount,
+  // uint256 assetTokenDepositAmount,
+  // uint256 minETHReceived
   const view = new DataView(buffer);
   // This is an encoding hack.
   view.setUint32(28, usdcDepositAmount0);
@@ -442,11 +445,10 @@ describe.only("HomoraPDNVault Initialization", function () {
       .deploy(
         wallets[0].address,
         managerContract.address,
-        "WAVAX-USDC TraderJoe",
-        "L3x-WAVAXUSDC-TJ1",
+        wallets[0].address,
+        wallets[0].address,
         USDC_TOKEN_ADDRESS,
         WAVAX_TOKEN_ADDRESS,
-        3,
         HOMORA_BANK_ADDRESS,
         TJ_SPELLV3_WAVAX_USDC_ADDRESS,
         JOE_TOKEN_ADDRESS,
@@ -454,6 +456,16 @@ describe.only("HomoraPDNVault Initialization", function () {
         txOptions
       );
     console.log("Homora PDN contract deployed at: ", strategyContract.address);
+    await strategyContract.connect(wallets[0]).initialize(
+        3, // _leverageLevel
+        9206, // _targetDebtRatio
+        9100, // _minDebtRatio
+        9300, // _maxDebtRatio
+        300, // _dnThreshold
+        txOptions
+    );
+    console.log("Homora PDN contract initialized");
+
     await whitelistContractAndAddCredit(strategyContract.address);
     await initialize(strategyContract);
 
