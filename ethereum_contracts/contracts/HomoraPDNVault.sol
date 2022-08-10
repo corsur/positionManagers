@@ -1,9 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
+//import "hardhat/console.sol";
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 import "./interfaces/IApertureCommon.sol";
@@ -13,7 +12,7 @@ import "./interfaces/IHomoraOracle.sol";
 import "./interfaces/IHomoraSpell.sol";
 import "./libraries/VaultLib.sol";
 
-contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
+contract HomoraPDNVault is ReentrancyGuard, IStrategyManager {
     struct Position {
         uint256 collShareAmount;
     }
@@ -40,10 +39,13 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     bytes private constant HARVEST_DATA =
         abi.encodeWithSelector(bytes4(keccak256("harvestWMasterChef()")));
 
-    // --- config ---
+    // --- accounts ---
     address public admin;
     address public apertureManager;
+    address public feeCollector;
     mapping(address => bool) public isController;
+
+    // --- config ---
     address public stableToken; // token 0
     address public assetToken; // token 1
     address public spell;
@@ -64,6 +66,9 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
 
     uint256 public MAX_OPEN_AMOUNT;
     uint256 public MAX_WITHDRAW_AMOUNT;
+    uint256 public WITHDRAW_FEE; // multiplied by 1e4
+    uint256 public MANAGEMENT_FEE; // multiplied by 1e4
+    uint256 public HARVEST_FEE; // multiplied by 1e4
 
 
     // --- state ---
@@ -72,6 +77,8 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     // Position id of the PDN vault in HomoraBank. Zero for new position.
     uint256 public homoraBankPosId;
     uint256 public totalCollShareAmount;
+    // Last timestamp when collecting management fee
+    uint256 public lastManFeeColTime;
 
     // --- event ---
     event LogDeposit(
@@ -98,18 +105,18 @@ contract HomoraPDNVault is ERC20, ReentrancyGuard, IStrategyManager {
     constructor(
         address _admin,
         address _apertureManager,
+        address _feeCollector,
         address _controller,
-        string memory _name,
-        string memory _symbol,
         address _stableToken,
         address _assetToken,
         address _homoraBank,
         address _spell,
         address _rewardToken,
         uint256 _pid
-    ) ERC20(_name, _symbol) {
+    ) {
         admin = _admin;
         apertureManager = _apertureManager;
+        feeCollector = _feeCollector;
         isController[_controller] = true;
         stableToken = _stableToken;
         assetToken = _assetToken;
