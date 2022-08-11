@@ -1,8 +1,6 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
-
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
@@ -301,7 +299,6 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
                 uint256 amount = assetInfos[i].amount;
                 IERC20(assetAddr).approve(strategy.strategyManager, amount);
             }
-            console.log("recipient: %s", msg.sender);
             IStrategyManager(strategy.strategyManager).openPosition(
                 PositionInfo(positionId, strategyChainId),
                 encodedPositionOpenData
