@@ -118,16 +118,9 @@ async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
 
 async function initialize() {
   // Impersonate USDC holder.
-  const signer = await getImpersonatedSigner(
-    "0x42d6ce661bb2e5f5cc639e7befe74ff9fd649541"
-  );
-
+  let signer = await getImpersonatedSigner("0x42d6ce661bb2e5f5cc639e7befe74ff9fd649541");
   await USDC.connect(signer).transfer(wallets[0].address, 5e6 * 1e6, txOptions);
-  await USDC.connect(signer).transfer(
-    wallets[1].address,
-    1000 * 1e6,
-    txOptions
-  );
+  await USDC.connect(signer).transfer(wallets[1].address, 1000 * 1e6, txOptions);
 }
 
 // testing function to swap USDC into WAVAX
@@ -148,7 +141,7 @@ async function swapUSDC(contract, swapAmt=1e6 * 1e6) {
 
   let wavaxBalance1 = await WAVAX.balanceOf(wallets[0].address);
 
-  return wavaxBalance1 - wavaxBalance0;
+  return wavaxBalance1.sub(wavaxBalance0);
 }
 
 // testing function to swap WAVAX into USDC
@@ -163,13 +156,13 @@ async function swapWAVAX(contract, swapAmt) {
 
   // console.log("Token price before swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
-  await contract.connect(wallets[0]).swapExactTokensForTokens(BigNumber.from(swapAmt).mul("1000000000000000000"), 0, [WAVAX_TOKEN_ADDRESS, USDC_TOKEN_ADDRESS], wallets[0].address, 10**12, txOptions);
+  await contract.connect(wallets[0]).swapExactTokensForTokens(swapAmt, 0, [WAVAX_TOKEN_ADDRESS, USDC_TOKEN_ADDRESS], wallets[0].address, 10**12, txOptions);
   // console.log("Token price after swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
 
   let usdcBalance1 = await USDC.balanceOf(wallets[0].address);
 
-  return usdcBalance1 - usdcBalance0;
+  return usdcBalance1.sub(usdcBalance0);
 }
 
 // testing function for rebalance()
@@ -197,9 +190,9 @@ async function testRebalance(managerContract, strategyContract) {
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
   // Flash swap USDC and rebalance (short)
-  let swapAmt = 3e6 * 1e6;
-  let recvAmt = await swapUSDC(router, swapAmt) / 1e18;
-  console.log("Swap %d USDC to %d AVAX", swapAmt, recvAmt);
+  let swapAmt = BigNumber.from(3e6).mul(1e6);
+  let recvAmt = await swapUSDC(router, swapAmt);
+  console.log("Swap %s USDC to %s AVAX", swapAmt.div(1e6).toString(), recvAmt.div("1000000000000000000").toString());
 
   await expect(
     strategyContract.connect(wallets[0])
@@ -208,7 +201,7 @@ async function testRebalance(managerContract, strategyContract) {
   // Swap back
   swapAmt = recvAmt;
   recvAmt = await swapWAVAX(router, swapAmt);
-  console.log("Swap %d AVAX to %d USDC", swapAmt, recvAmt);
+  console.log("Swap %s AVAX to %s USDC", swapAmt.div("1000000000000000000").toString(), recvAmt.div(1e6).toString());
 
   // Decrease leverage to trigger rebalance
   await strategyContract.connect(wallets[0]).setConfig(
@@ -229,9 +222,13 @@ async function testRebalance(managerContract, strategyContract) {
         .rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
+  // Impersonate WAVAX holder.
+  signer = await getImpersonatedSigner("0x0e082F06FF657D94310cB8cE8B0D9a04541d8052");
+  await WAVAX.connect(signer).transfer(wallets[0].address, BigNumber.from(200000).mul("1000000000000000000"), txOptions);
+
   // Flash swap WAVAX and rebalance (long)
   recvAmt = await swapWAVAX(router, swapAmt);
-  console.log("Swap %d AVAX to %d USDC", swapAmt, recvAmt);
+  console.log("Swap %s AVAX to %s USDC", swapAmt.div("1000000000000000000").toString(), recvAmt.div(1e6).toString());
   await expect(
     strategyContract.connect(wallets[0])
         .rebalance(10, 0, txOptions)
@@ -239,8 +236,8 @@ async function testRebalance(managerContract, strategyContract) {
 
   // Swap back
   swapAmt = recvAmt;
-  recvAmt = await swapUSDC(router, swapAmt) / 1e18;
-  console.log("Swap %d USDC to %d AVAX", swapAmt, recvAmt);
+  recvAmt = await swapUSDC(router, swapAmt);
+  console.log("Swap %s USDC to %s AVAX", swapAmt.div(1e6).toString(), recvAmt.div("1000000000000000000").toString());
   await expect(
     strategyContract.connect(wallets[0])
         .rebalance(10, 0, txOptions)
@@ -399,10 +396,6 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     BigNumber.from(usdcDepositAmount1 * leverageLevel),
     100
   );
-
-  // console.log(
-  //   ethers.utils.arrayify("0x689961608D2d7047F5411F9d9004D440449CbD27")
-  // );
 
   // Withdraw half amount from vault for wallet 0.
   var withdrawAmount0 = shareAmount0.div(2);

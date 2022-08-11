@@ -19,11 +19,6 @@ struct PositionInfo {
     uint16 chainId; // Chain id, following Wormhole's design.
 }
 
-struct ManagementFeeInfo {
-    uint256 managementFee; // multiplied by 1e4
-    uint256 lastCollectionTimestamp; // Last timestamp when collecting management fee
-}
-
 struct StrategyMetadata {
     string name;
     string version;
