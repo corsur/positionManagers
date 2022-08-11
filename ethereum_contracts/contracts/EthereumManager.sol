@@ -1,8 +1,6 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
-
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -198,11 +196,16 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
                 "invalid strategyId"
             );
 
+            // Approve strategy manager to move assets.
+            for (uint256 i = 0; i < assetInfos.length; i++) {
+                address assetAddr = assetInfos[i].assetAddr;
+                uint256 amount = assetInfos[i].amount;
+                IERC20(assetAddr).approve(strategy.strategyManager, amount);
+            }
             approveAssetTransferToTarget(assetInfos, strategy.strategyManager);
 
             IStrategyManager(strategy.strategyManager).openPosition{value: msg.value}
             (
-                msg.sender,
                 PositionInfo(positionId, strategyChainId),
                 encodedPositionOpenData
             );
