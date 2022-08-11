@@ -192,59 +192,77 @@ async function testRebalance(managerContract, strategyContract) {
 
   // check if position state is healthy (no need to rebalance)
   await expect(
-    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
+    strategyContract.connect(wallets[0])
+        .rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
   // Flash swap USDC and rebalance (short)
-  let res = await swapUSDC(router, 3e12) / 1e18;
+  let swapAmt = 3e6 * 1e6;
+  let recvAmt = await swapUSDC(router, swapAmt) / 1e18;
+  console.log("Swap %d USDC to %d AVAX", swapAmt, recvAmt);
+
   await expect(
-    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
+    strategyContract.connect(wallets[0])
+        .rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_DebtRatioNotHealthy");
   // Swap back
-  await swapWAVAX(router, 0 | res);
+  swapAmt = recvAmt;
+  recvAmt = await swapWAVAX(router, swapAmt);
+  console.log("Swap %d AVAX to %d USDC", swapAmt, recvAmt);
 
   // Decrease leverage to trigger rebalance
   await strategyContract.connect(wallets[0]).setConfig(
       2, // _leverageLevel
-      7142, // _targetDebtRatio
-      6785, // _minDebtRatio
+      7154, // _targetDebtRatio
+      6800, // _minDebtRatio
       7500, // _maxDebtRatio
       500, // _dnThreshold
       txOptions
   );
   console.log("Leverage changed to 2");
-  await strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions);
+  await strategyContract.connect(wallets[0])
+      .rebalance(10, 0, txOptions);
 
   // expect to be in delta-neutral after rebalance
   await expect(
-    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
+    strategyContract.connect(wallets[0])
+        .rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
   // Flash swap WAVAX and rebalance (long)
-  await swapWAVAX(router, 0 | res);
+  recvAmt = await swapWAVAX(router, swapAmt);
+  console.log("Swap %d AVAX to %d USDC", swapAmt, recvAmt);
   await expect(
-    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
+    strategyContract.connect(wallets[0])
+        .rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_DebtRatioNotHealthy");
 
   // Swap back
-  await swapUSDC(router, 3e12) / 1e18;
-  await strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions);
+  swapAmt = recvAmt;
+  recvAmt = await swapUSDC(router, swapAmt) / 1e18;
+  console.log("Swap %d USDC to %d AVAX", swapAmt, recvAmt);
+  await expect(
+    strategyContract.connect(wallets[0])
+        .rebalance(10, 0, txOptions)
+  ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
-  // Decrease leverage to trigger rebalance
+  // Increase leverage to trigger rebalance
   await strategyContract.connect(wallets[0]).setConfig(
       3, // _leverageLevel
-      9206, // _targetDebtRatio
-      9106, // _minDebtRatio
-      9306, // _maxDebtRatio
+      9231, // _targetDebtRatio
+      9130, // _minDebtRatio
+      9330, // _maxDebtRatio
       300, // _dnThreshold
       txOptions
   );
   console.log("Leverage changed to 3");
-  await strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions);
+  await strategyContract.connect(wallets[0])
+      .rebalance(10, 0, txOptions);
 
   // expect to be in delta-neutral after rebalance
   await expect(
-    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
+    strategyContract.connect(wallets[0])
+        .rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 }
 
@@ -315,6 +333,8 @@ async function deposit(managerContract, strategyContract) {
       txOptions
     );
 
+  console.log("using wallet: ", wallets[1].address);
+
   // Deposit 500 USDC to vault from wallet 1.
   await USDC.connect(wallets[1]).approve(
     managerContract.address,
@@ -323,7 +343,7 @@ async function deposit(managerContract, strategyContract) {
   let openPositionBytesArray1 = ethers.utils.arrayify(
       ethers.utils.defaultAbiCoder
       .encode(
-          ["uint256", "uint256", "uint256"],
+          ["uint256", "uint256", "uint256", "uint256"],
           [usdcDepositAmount1, avaxDepositAmount1, minEquityReceived1, 0]
       )
   );
@@ -351,7 +371,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
 
   // // Colletral size of each wallet.
   var totalCollateralSize = res.collateralSize;
-  var totalShareAmount = await strategyContract.totalCollShareAmount();
+  var totalShareAmount = await strategyContract.totalShareAmount();
   var shareAmount0 = await strategyContract.positions(CHAIN_ID_AVAX, 0); // position id 0
   console.log("share amount 0: ", shareAmount0.toString());
   var shareAmount1 = await strategyContract.positions(CHAIN_ID_AVAX, 1); // position id 1
@@ -469,10 +489,13 @@ describe.only("HomoraPDNVault Initialization", function () {
     console.log("Homora PDN contract deployed at: ", strategyContract.address);
     await strategyContract.connect(wallets[0]).initialize(
         3, // _leverageLevel
-        9206, // _targetDebtRatio
-        9106, // _minDebtRatio
-        9306, // _maxDebtRatio
+        9231, // _targetDebtRatio
+        9130, // _minDebtRatio
+        9330, // _maxDebtRatio
         300, // _dnThreshold
+        0, // _harvestFee
+        0, // _withdrawFee
+        0, // _managementFee
         txOptions
     );
     console.log("Homora PDN contract initialized");

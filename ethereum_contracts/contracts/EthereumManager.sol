@@ -303,7 +303,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             }
             console.log("recipient: %s", msg.sender);
             IStrategyManager(strategy.strategyManager).openPosition(
-                msg.sender,
+//                msg.sender,
                 PositionInfo(positionId, strategyChainId),
                 encodedPositionOpenData
             );

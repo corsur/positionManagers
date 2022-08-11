@@ -87,12 +87,16 @@ library VaultLib {
         public view
         returns (uint256 amount0, uint256 amount1)
     {
-        uint256 totalLPSupply = IERC20(lpToken).totalSupply();
-
-        (uint256 reserve0, uint256 reserve1) = getReserves(lpToken, stableToken);
-
-        amount0 = (collAmount * reserve0) / totalLPSupply;
-        amount1 = (collAmount * reserve1) / totalLPSupply;
+        if (collAmount == 0) {
+            amount0 = 0;
+            amount1 = 0;
+        } else {
+            uint256 totalLPSupply = IERC20(lpToken).totalSupply();
+            require(totalLPSupply > 0, "Invalid LP supply");
+            (uint256 reserve0, uint256 reserve1) = getReserves(lpToken, stableToken);
+            amount0 = (collAmount * reserve0) / totalLPSupply;
+            amount1 = (collAmount * reserve1) / totalLPSupply;
+        }
     }
 
     /// @dev Calculate the params passed to Homora to create PDN position

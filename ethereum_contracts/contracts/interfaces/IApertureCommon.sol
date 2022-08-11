@@ -20,8 +20,8 @@ struct PositionInfo {
 }
 
 struct ManagementFeeInfo {
-    uint256 MANAGEMENT_FEE; // multiplied by 1e4
-    uint256 lastColTime; // Last timestamp when collecting management fee
+    uint256 managementFee; // multiplied by 1e4
+    uint256 lastCollectionTimestamp; // Last timestamp when collecting management fee
 }
 
 struct StrategyMetadata {
@@ -42,18 +42,16 @@ struct AssetInfo {
 
 interface IStrategyManager {
     /// @dev Open a new Aperture position for `recipient`
-    /// @param recipient: Owner of the position on Aperture
     /// @param position_info: Aperture position info
-    /// @param data: Amount of assets supplied by user and minimum equity received after adding liquidity
+    /// @param data: Amount of assets supplied by user and minimum equity received after adding liquidity, etc
     function openPosition(
-        address recipient,
         PositionInfo memory position_info,
         bytes calldata data
     ) external payable;
 
     /// @dev Increase an existing Aperture position
     /// @param position_info: Aperture position info
-    /// @param data: Amount of assets supplied by user and minimum equity received after adding liquidity
+    /// @param data: Amount of assets supplied by user and minimum equity received after adding liquidity, etc
     function increasePosition(
         PositionInfo memory position_info,
         bytes calldata data
@@ -61,7 +59,7 @@ interface IStrategyManager {
 
     /// @dev Decrease an existing Aperture position
     /// @param position_info: Aperture position info
-    /// @param data: The recipient, the amount of shares to withdraw and the minimum amount of assets returned
+    /// @param data: The recipient, the amount of shares to withdraw and the minimum amount of assets returned, etc
     function decreasePosition(
         PositionInfo memory position_info,
         bytes calldata data
@@ -69,7 +67,7 @@ interface IStrategyManager {
 
     /// @dev Close an existing Aperture position
     /// @param position_info: Aperture position info
-    /// @param data: Owner of the position on Aperture and the minimum amount of assets returned
+    /// @param data: Owner of the position on Aperture and the minimum amount of assets returned, etc
     function closePosition(
         PositionInfo memory position_info,
         bytes calldata data
