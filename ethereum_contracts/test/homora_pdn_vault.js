@@ -11,12 +11,17 @@ const ERC20ABI = [
   "function transfer(address _to, uint256 value) returns(bool)",
 ];
 
+const JOEABI = [
+    "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)"
+];
+
 const {
   HOMORA_BANK_ADDRESS,
   TJ_SPELLV3_WAVAX_USDC_ADDRESS,
   WAVAX_TOKEN_ADDRESS,
   USDC_TOKEN_ADDRESS,
   JOE_TOKEN_ADDRESS,
+  JOE_ROUTER_ADDRESS,
   WAVAX_USDC_POOL_ID,
   AVAX_CHAIN_ID,
 } = require("./avax_constants");
@@ -25,12 +30,19 @@ const provider = ethers.provider;
 const WAVAX = new ethers.Contract(WAVAX_TOKEN_ADDRESS, ERC20ABI, provider);
 const USDC = new ethers.Contract(USDC_TOKEN_ADDRESS, ERC20ABI, provider);
 const JOE = new ethers.Contract(JOE_TOKEN_ADDRESS, ERC20ABI, provider);
+const router = new ethers.Contract(JOE_ROUTER_ADDRESS, JOEABI, provider);
 const homoraBank = new ethers.Contract(
   HOMORA_BANK_ADDRESS,
   homoraBankABI,
   provider
 );
 const leverageLevel = 3;
+const usdcDepositAmount0 = 1000e6;
+const avaxDepositAmount0 = 0;
+const minEquityReceived0 = 0;
+const usdcDepositAmount1 = 500e6;
+const avaxDepositAmount1 = 0;
+const minEquityReceived1 = 0;
 
 const mainWallet = new ethers.Wallet(
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
@@ -118,7 +130,7 @@ async function initialize() {
   );
 }
 
-// testing function to swap amount of USDC into WAVAX
+// testing function to swap USDC into WAVAX
 async function swapUSDC(contract, swapAmt=1e6 * 1e6) {
   await USDC.connect(wallets[0]).approve(
     contract.address,
@@ -130,7 +142,7 @@ async function swapUSDC(contract, swapAmt=1e6 * 1e6) {
 
   // console.log("Token price before swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
-  await contract.connect(wallets[0]).swapExternal(USDC_TOKEN_ADDRESS, swapAmt, txOptions);
+  await contract.connect(wallets[0]).swapExactTokensForTokens(swapAmt, 0, [USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS], wallets[0].address, 10**12, txOptions);
   // console.log("Token price after swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
 
@@ -139,7 +151,7 @@ async function swapUSDC(contract, swapAmt=1e6 * 1e6) {
   return wavaxBalance1 - wavaxBalance0;
 }
 
-// testing function to swap amount of USDC into WAVAX
+// testing function to swap WAVAX into USDC
 async function swapWAVAX(contract, swapAmt) {
   await WAVAX.connect(wallets[0]).approve(
     contract.address,
@@ -151,7 +163,7 @@ async function swapWAVAX(contract, swapAmt) {
 
   // console.log("Token price before swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
-  await contract.connect(wallets[0]).swapExternal(WAVAX_TOKEN_ADDRESS, BigNumber.from(swapAmt).mul("1000000000000000000"), txOptions);
+  await contract.connect(wallets[0]).swapExactTokensForTokens(BigNumber.from(swapAmt).mul("1000000000000000000"), 0, [WAVAX_TOKEN_ADDRESS, USDC_TOKEN_ADDRESS], wallets[0].address, 10**12, txOptions);
   // console.log("Token price after swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
 
@@ -180,25 +192,59 @@ async function testRebalance(managerContract, strategyContract) {
 
   // check if position state is healthy (no need to rebalance)
   await expect(
-    strategyContract.connect(wallets[0]).rebalance(txOptions)
+    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
-  // swap USDC and rebalance (short)
-  let res = await swapUSDC(strategyContract, 3e12) / 1e18;
-  await strategyContract.connect(wallets[0]).rebalance(txOptions);
+  // Flash swap USDC and rebalance (short)
+  let res = await swapUSDC(router, 3e12) / 1e18;
+  await expect(
+    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
+  ).to.be.revertedWith("HomoraPDNVault_DebtRatioNotHealthy");
+  // Swap back
+  await swapWAVAX(router, 0 | res);
+
+  // Decrease leverage to trigger rebalance
+  await strategyContract.connect(wallets[0]).setConfig(
+      2, // _leverageLevel
+      7142, // _targetDebtRatio
+      6785, // _minDebtRatio
+      7500, // _maxDebtRatio
+      500, // _dnThreshold
+      txOptions
+  );
+  console.log("Leverage changed to 2");
+  await strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions);
 
   // expect to be in delta-neutral after rebalance
   await expect(
-    strategyContract.connect(wallets[0]).rebalance(txOptions)
+    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
-  // swap WAVAX and rebalance (long)
-  await swapWAVAX(strategyContract, 0 | res);
-  await strategyContract.connect(wallets[0]).rebalance(txOptions);
+  // Flash swap WAVAX and rebalance (long)
+  await swapWAVAX(router, 0 | res);
+  await expect(
+    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
+  ).to.be.revertedWith("HomoraPDNVault_DebtRatioNotHealthy");
+
+  // Swap back
+  await swapUSDC(router, 3e12) / 1e18;
+  await strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions);
+
+  // Decrease leverage to trigger rebalance
+  await strategyContract.connect(wallets[0]).setConfig(
+      3, // _leverageLevel
+      9206, // _targetDebtRatio
+      9106, // _minDebtRatio
+      9306, // _maxDebtRatio
+      300, // _dnThreshold
+      txOptions
+  );
+  console.log("Leverage changed to 3");
+  await strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions);
 
   // expect to be in delta-neutral after rebalance
   await expect(
-    strategyContract.connect(wallets[0]).rebalance(txOptions)
+    strategyContract.connect(wallets[0]).rebalance(2**64, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 }
 
@@ -235,9 +281,6 @@ async function testReinvest(managerContract, strategyContract) {
 }
 
 async function deposit(managerContract, strategyContract) {
-  const usdcDepositAmount0 = 1000e6;
-  const usdcDepositAmount1 = 500e6;
-
   // Deposit 1000 USDC to vault from wallet 0.
   await USDC.connect(wallets[0]).approve(
     managerContract.address,
@@ -246,11 +289,20 @@ async function deposit(managerContract, strategyContract) {
   console.log("using wallet: ", wallets[0].address);
 
   // Craft open position data.
-  const buffer = new ArrayBuffer(32 * 2); // two uint256.
-  const view = new DataView(buffer);
-  // This is an encoding hack.
-  view.setUint32(28, usdcDepositAmount0);
-  const openPositionBytesArray = new Uint8Array(buffer);
+  let openPositionBytesArray = ethers.utils.arrayify(
+      ethers.utils.defaultAbiCoder
+      .encode(
+          ["uint256", "uint256", "uint256", "uint256"],
+          [
+              usdcDepositAmount0, // uint256 stableTokenDepositAmount
+              avaxDepositAmount0, // uint256 assetTokenDepositAmount
+              minEquityReceived0, // uint256 minEquityETH
+              0 // uint256 minReinvestETH
+          ]
+      )
+  );
+  // console.log("print out uint8 array: ", openPositionBytesArray);
+  console.log("openPositionBytesArray: ", ethers.utils.hexlify(openPositionBytesArray));
 
   // Deposit 1000 USDC to vault from wallet 0.
   await managerContract
@@ -268,8 +320,13 @@ async function deposit(managerContract, strategyContract) {
     managerContract.address,
     usdcDepositAmount1
   );
-  view.setUint32(28, usdcDepositAmount1);
-  const openPositionBytesArray1 = new Uint8Array(buffer);
+  let openPositionBytesArray1 = ethers.utils.arrayify(
+      ethers.utils.defaultAbiCoder
+      .encode(
+          ["uint256", "uint256", "uint256"],
+          [usdcDepositAmount1, avaxDepositAmount1, minEquityReceived1, 0]
+      )
+  );
   await managerContract
     .connect(wallets[1])
     .createPosition(
@@ -282,73 +339,7 @@ async function deposit(managerContract, strategyContract) {
 }
 
 async function testDepositAndWithdraw(managerContract, strategyContract) {
-  const usdcDepositAmount0 = 1000e6;
-  const avaxDepositAmount0 = 0;
-  const minEquityReceived0 = 0;
-  const usdcDepositAmount1 = 500e6;
-  const avaxDepositAmount1 = 0;
-  const minEquityReceived1 = 0;
-
-  // Deposit 1000 USDC to vault from wallet 0.
-  await USDC.connect(wallets[0]).approve(
-    managerContract.address,
-    usdcDepositAmount0
-  );
-  console.log("using wallet: ", wallets[0].address);
-
-  // Craft open position data.
-  // (uint256 stableTokenDepositAmount,
-  // uint256 assetTokenDepositAmount,
-  // uint256 minETHReceived)
-  // const buffer = new ArrayBuffer(32 * 3); // 3 uint256.
-  // const view = new DataView(buffer);
-  // // This is an encoding hack.
-  // view.setUint32(28, usdcDepositAmount0);
-  // const openPositionBytesArray = new Uint8Array(buffer);
-  let openPositionBytesArray = ethers.utils.arrayify(
-      ethers.utils.defaultAbiCoder
-      .encode(
-          ["uint256", "uint256", "uint256"],
-          [usdcDepositAmount0, avaxDepositAmount0, minEquityReceived0]
-      )
-  );
-  // console.log("print out uint8 array: ", openPositionBytesArray);
-
-  // Deposit 1000 USDC to vault from wallet 0.
-  await managerContract
-    .connect(wallets[0])
-    .createPosition(
-      /*strategyChainId=*/ AVAX_CHAIN_ID,
-      /*strategyId=*/ 0,
-      [[USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
-      openPositionBytesArray,
-      txOptions
-    );
-
-  // Deposit 500 USDC to vault from wallet 1.
-  await USDC.connect(wallets[1]).approve(
-    managerContract.address,
-    usdcDepositAmount1
-  );
-  // view.setUint32(28, usdcDepositAmount1);
-  // const openPositionBytesArray1 = new Uint8Array(buffer);
-  // console.log("print out uint8 array: ", openPositionBytesArray1);
-  let openPositionBytesArray1 = ethers.utils.arrayify(
-      ethers.utils.defaultAbiCoder
-      .encode(
-          ["uint256", "uint256", "uint256"],
-          [usdcDepositAmount1, avaxDepositAmount1, minEquityReceived1]
-      )
-  );
-  await managerContract
-    .connect(wallets[1])
-    .createPosition(
-      /*strategyChainId=*/ AVAX_CHAIN_ID,
-      /*strategyId=*/ 0,
-      [[USDC_TOKEN_ADDRESS, usdcDepositAmount1]],
-      openPositionBytesArray1,
-      txOptions
-    );
+  await deposit(managerContract, strategyContract);
 
   // Check whether it initiates a position in HomoraBank.
   var homoraBankPosId = (await strategyContract.homoraBankPosId()).toNumber();
@@ -362,9 +353,9 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
   var totalCollateralSize = res.collateralSize;
   var totalShareAmount = await strategyContract.totalCollShareAmount();
   var shareAmount0 = await strategyContract.positions(CHAIN_ID_AVAX, 0); // position id 0
-  console.log("share amount 0: ", shareAmount0);
+  console.log("share amount 0: ", shareAmount0.toString());
   var shareAmount1 = await strategyContract.positions(CHAIN_ID_AVAX, 1); // position id 1
-  console.log("share amount 1: ", shareAmount1);
+  console.log("share amount 1: ", shareAmount1.toString());
   var collSize0 = shareAmount0.mul(totalCollateralSize).div(totalShareAmount);
   var collSize1 = shareAmount1.mul(totalCollateralSize).div(totalShareAmount);
 
@@ -395,34 +386,22 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
 
   // Withdraw half amount from vault for wallet 0.
   var withdrawAmount0 = shareAmount0.div(2);
-  console.log("withdraw amount 0: ", withdrawAmount0);
+  console.log("withdraw amount 0: ", withdrawAmount0.toString());
   var usdcBalance0 = await USDC.balanceOf(wallets[0].address);
 
   // First byte is Action enum.
   // 0 -> Open, 1 -> Increase, 2 -> Decrease, 3 -> Close (not yet supported).
-  // const withdrawBuffer = new ArrayBuffer(1 + 32);
-  // const withdrawView = new DataView(withdrawBuffer);
-  // withdrawView.setUint8(0, 2); // Set action to be Decrease.
-  // withdrawView.setUint32(29, withdrawAmount0.toNumber()); // Hack: set the last 4 bytes to be withdraw amount.
-  // const encodedWithdrawData = ethers.utils.concat([
-  //   new Uint8Array(withdrawBuffer),
-  //   ethers.utils.zeroPad(ethers.utils.arrayify(wallets[0].address), 32),
-  // ]);
-  // console.log("encoded withdraw data: ", encodedWithdrawData);
-  let decreasePositionBytesArray = ethers.utils.arrayify(
-      ethers.utils.defaultAbiCoder
-      .encode(
-          ["uint256", "address"],
-          [withdrawAmount0, wallets[0].address]
-      )
-  );
-  let action = new Uint8Array(1);
-  action.set([2]);
   const encodedWithdrawData = ethers.utils.concat([
-      action,
-      decreasePositionBytesArray
+      new Uint8Array([2]),
+      ethers.utils.arrayify(
+          ethers.utils.defaultAbiCoder
+              .encode(
+                  ["address", "uint256", "uint256", "uint256", "uint256"],
+                  [wallets[0].address, withdrawAmount0, 0, 0, 0]
+              )
+      )
   ]);
-  console.log("encoded withdraw data: ", encodedWithdrawData);
+  // console.log("encoded withdraw data: ", encodedWithdrawData);
   console.log(ethers.utils.hexlify(encodedWithdrawData));
 
   await managerContract
@@ -491,8 +470,8 @@ describe.only("HomoraPDNVault Initialization", function () {
     await strategyContract.connect(wallets[0]).initialize(
         3, // _leverageLevel
         9206, // _targetDebtRatio
-        9100, // _minDebtRatio
-        9300, // _maxDebtRatio
+        9106, // _minDebtRatio
+        9306, // _maxDebtRatio
         300, // _dnThreshold
         txOptions
     );

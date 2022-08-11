@@ -46,8 +46,7 @@ library VaultLib {
 
     /// @notice Calculate offset ratio, multiplied by 1e4
     function getOffset(uint256 currentVal, uint256 targetVal)
-        public
-        pure
+        public pure
         returns (uint256)
     {
         uint256 diff = currentVal > targetVal
@@ -66,8 +65,7 @@ library VaultLib {
     /// @param lpToken: LP token address
     /// @param stableToken: Stable token address
     function getReserves(address lpToken, address stableToken) 
-        public 
-        view 
+        public view
         returns (
             uint256 reserve0,
             uint256 reserve1
@@ -86,8 +84,7 @@ library VaultLib {
     /// @param stableToken: Stable token address
     /// @param collAmount: Amount of LP token
     function convertCollateralToTokens(address lpToken, address stableToken, uint256 collAmount)
-        public
-        view
+        public view
         returns (uint256 amount0, uint256 amount1)
     {
         uint256 totalLPSupply = IERC20(lpToken).totalSupply();
