@@ -4,12 +4,8 @@
   "event Initialized(uint8)",
   "event OwnershipTransferred(address indexed,address indexed)",
   "event Upgraded(address indexed)",
-  "function AAVE_POOL() view returns (address)",
-  "function IBAVAX() view returns (address)",
-  "function QIAVAX() view returns (address)",
-  "function TJAVAX() view returns (address)",
-  "function WAVAX() view returns (address)",
-  "function WETH_GATE() view returns (address)",
+  "function AVAX(uint256) view returns (address)",
+  "function POOL() view returns (address)",
   "function addCompoundMapping(uint8,address,address)",
   "function avaxBalance() view returns (uint256)",
   "function initialize(address,address,address,address,address,address)",
@@ -24,6 +20,6 @@
   "function transferOwnership(address)",
   "function upgradeTo(address)",
   "function upgradeToAndCall(address,bytes) payable",
-  "function withdrawAvax(uint16) payable returns (uint256)",
-  "function withdrawToken(address,uint16) returns (uint256)"
+  "function withdrawAvax(uint16) payable",
+  "function withdrawToken(address,uint16)"
 ]

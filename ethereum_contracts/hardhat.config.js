@@ -41,14 +41,17 @@ module.exports = {
   },
   networks: {
     localhost: {
-      url: "http://0.0.0.0:8989/"
+      url: "http://0.0.0.0:8989/",
+    },
+    remote: {
+      url: "http://dev.hyperfocal.tech:8989/",
     },
     hardhat: {
       // for avax
       forking: {
         url: AVAX_MAINNET_FORK,
         blockNumber: 16681756,
-      }
+      },
       // for ethereum
       /*
       forking: {

@@ -3,6 +3,7 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -11,15 +12,12 @@ import "./interfaces/IWormhole.sol";
 import "./libraries/BytesLib.sol";
 import "./interfaces/IApertureCommon.sol";
 import "./interfaces/ICurveSwap.sol";
+import "./interfaces/ICrossChain.sol";
+import "./CrossChain.sol";
 
-contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
     using BytesLib for bytes;
-
-    uint16 private constant TERRA_CHAIN_ID = 3;
-    uint256 private constant BPS = 10000;
-    // The maximum allowed CROSS_CHAIN_FEE_BPS value (100 basis points, i.e. 1%).
-    uint32 private constant MAX_CROSS_CHAIN_FEE_BPS = 100;
 
     // Version 0 of the Aperture instructure payload format.
     // See https://github.com/Aperture-Finance/Aperture-Contracts/blob/instruction-dev/packages/aperture_common/src/instruction.rs.
@@ -27,9 +25,6 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     uint8 private constant INSTRUCTION_TYPE_POSITION_OPEN = 0;
     uint8 private constant INSTRUCTION_TYPE_EXECUTE_STRATEGY = 1;
     uint8 private constant INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT = 2;
-
-    // Nonce does not play a meaningful role as sequence numbers distingish different messages emitted by the same address.
-    uint32 private constant WORMHOLE_NONCE = 0;
 
     // isTokenWhitelistedForStrategy[chainId][strategyId][tokenAddress] represents whether the token is allowed for the specified strategy.
     mapping(uint16 => mapping(uint64 => mapping(address => bool)))
@@ -39,15 +34,10 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     address public WORMHOLE_TOKEN_BRIDGE;
     // Address of the Wormhole core bridge contract.
     address public WORMHOLE_CORE_BRIDGE;
+    // Address of the cross chain contract.
+    address public CROSS_CHAIN;
     // Address of the Curve swap router contract.
     address public CURVE_SWAP;
-    // Consistency level for published Aperture instruction message via Wormhole core bridge.
-    // The number of blocks to wait before Wormhole guardians consider a published message final.
-    uint8 public CONSISTENCY_LEVEL;
-    // Cross-chain fee in basis points (i.e. 0.01% or 0.0001)
-    uint32 public CROSS_CHAIN_FEE_BPS;
-    // Where fee is sent.
-    address public FEE_SINK;
 
     // Information about positions held by users of this chain.
     uint128 public nextPositionId;
@@ -70,24 +60,14 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // `initializer` is a modifier from OpenZeppelin to ensure contract is
     // only initialized once (thanks to Initializable).
     function initialize(
-        uint8 _consistencyLevel,
-        address _wormholeTokenBridge,
-        uint32 _crossChainFeeBPS,
-        address _feeSink,
+        address _crossChain,
         address _curveSwap
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
-        CONSISTENCY_LEVEL = _consistencyLevel;
-        WORMHOLE_TOKEN_BRIDGE = _wormholeTokenBridge;
-        WORMHOLE_CORE_BRIDGE = WormholeTokenBridge(_wormholeTokenBridge)
-            .wormhole();
-        require(
-            _crossChainFeeBPS <= MAX_CROSS_CHAIN_FEE_BPS,
-            "crossChainFeeBPS exceeds maximum allowed value"
-        );
-        CROSS_CHAIN_FEE_BPS = _crossChainFeeBPS;
-        FEE_SINK = _feeSink;
+        WORMHOLE_TOKEN_BRIDGE = ICrossChain(_crossChain).WORMHOLE_TOKEN_BRIDGE();
+        WORMHOLE_CORE_BRIDGE = ICrossChain(_crossChain).WORMHOLE_CORE_BRIDGE();
+        CROSS_CHAIN = _crossChain;
         CURVE_SWAP = _curveSwap;
     }
 
@@ -97,34 +77,18 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function addStrategy(
         string calldata _name,
         string calldata _version,
-        address _manager
+        address _strategyManager
     ) external onlyOwner {
         uint64 strategyId = nextStrategyId++;
         strategyIdToMetadata[strategyId] = StrategyMetadata(
             _name,
             _version,
-            _manager
+            _strategyManager
         );
     }
 
     function removeStrategy(uint64 _strategyId) external onlyOwner {
         delete strategyIdToMetadata[_strategyId];
-    }
-
-    function updateCrossChainFeeBPS(uint32 crossChainFeeBPS)
-        external
-        onlyOwner
-    {
-        require(
-            crossChainFeeBPS <= MAX_CROSS_CHAIN_FEE_BPS,
-            "crossChainFeeBPS exceeds maximum allowed value"
-        );
-        CROSS_CHAIN_FEE_BPS = crossChainFeeBPS;
-    }
-
-    function updateFeeSink(address feeSink) external onlyOwner {
-        require(feeSink != address(0), "feeSink address must be non-zero");
-        FEE_SINK = feeSink;
     }
 
     // Sets a new Aperture manager address for the specified chain.
@@ -154,23 +118,29 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         AssetInfo[] calldata assetInfos
     ) internal {
         for (uint256 i = 0; i < assetInfos.length; i++) {
-            require(
-                isTokenWhitelistedForStrategy[strategyChainId][strategyId][
-                    assetInfos[i].assetAddr
-                ],
-                "token not allowed"
-            );
-            IERC20(assetInfos[i].assetAddr).safeTransferFrom(
-                msg.sender,
-                address(this),
-                assetInfos[i].amount
-            );
+            if (assetInfos[i].assetType == AssetType.NativeToken) {
+                require(
+                    msg.value == assetInfos[i].amount,
+                    "insufficient native token amount"
+                );
+            } else {
+                require(
+                    isTokenWhitelistedForStrategy[strategyChainId][strategyId][
+                        assetInfos[i].assetAddr
+                    ],
+                    "token not allowed"
+                );
+                IERC20(assetInfos[i].assetAddr).safeTransferFrom(
+                    msg.sender,
+                    address(this),
+                    assetInfos[i].amount
+                );
+            }
         }
     }
 
-    // TODO: add re-entrancy guard that is compatible with UUPSUpgradable; OpenZeppelin's ReentrancyGuard isn't compatible since it has a constructor.
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
-        internal
+        internal nonReentrant
         returns (uint128)
     {
         uint128 positionId = nextPositionId++;
@@ -182,90 +152,18 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         return positionId;
     }
 
-    function sendTokensCrossChainAndConstructCommonPayload(
-        uint8 instructionType,
-        uint16 strategyChainId,
+    function approveAssetTransferToTarget(
         AssetInfo[] memory assetInfos,
-        uint128 positionId,
-        bytes calldata encodedData
-    ) internal returns (bytes memory) {
-        bytes32 strategyChainApertureManager = chainIdToApertureManager[
-            strategyChainId
-        ];
-        require(
-            strategyChainApertureManager != 0,
-            "unexpected strategyChainId"
-        );
-        bytes memory payload = abi.encodePacked(
-            INSTRUCTION_VERSION,
-            instructionType,
-            positionId,
-            strategyChainId,
-            uint32(assetInfos.length)
-        );
-        for (uint256 i = 0; i < assetInfos.length; i++) {
-            // Collect cross-chain fees if applicable.
-            uint256 amount = assetInfos[i].amount;
-            uint256 crossChainFee = (amount * CROSS_CHAIN_FEE_BPS) / BPS;
-            if (crossChainFee > 0) {
-                IERC20(assetInfos[i].assetAddr).safeTransfer(
-                    FEE_SINK,
-                    crossChainFee
-                );
-                amount -= crossChainFee;
-            }
-
-            // Allow wormhole token bridge contract to transfer this token out of here.
-            IERC20(assetInfos[i].assetAddr).safeIncreaseAllowance(
-                WORMHOLE_TOKEN_BRIDGE,
-                amount
-            );
-
-            // Initiate token transfer.
-            uint64 transferSequence = WormholeTokenBridge(WORMHOLE_TOKEN_BRIDGE)
-                .transferTokens(
-                    assetInfos[i].assetAddr,
-                    amount,
-                    strategyChainId,
-                    strategyChainApertureManager,
-                    /*arbiterFee=*/
-                    0,
-                    WORMHOLE_NONCE
-                );
-
-            // Append sequence to payload.
-            payload = payload.concat(abi.encodePacked(transferSequence));
-        }
-
-        // Append encoded data: the length as a uint32, followed by the encoded bytes themselves.
-        return
-            payload.concat(
-                abi.encodePacked(uint32(encodedData.length), encodedData)
-            );
-    }
-
-    function publishPositionOpenInstruction(
-        uint16 strategyChainId,
-        uint64 strategyId,
-        uint128 positionId,
-        AssetInfo[] memory assetInfos,
-        bytes calldata encodedPositionOpenData
+        address target
     ) internal {
-        // // Initiate token transfers and construct partial instruction payload.
-        // bytes
-        //     memory partial_payload = sendTokensCrossChainAndConstructCommonPayload(
-        //         INSTRUCTION_TYPE_POSITION_OPEN,
-        //         strategyChainId,
-        //         assetInfos,
-        //         positionId,
-        //         encodedPositionOpenData
-        //     );
-        // // Append `strategyId` to the instruction to complete the payload and publish it via Wormhole.
-        // WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).publishMessage(
-        //     WORMHOLE_NONCE,
-        //     partial_payload.concat(abi.encodePacked(strategyId)),
-        //     CONSISTENCY_LEVEL
-        // );
+        for (uint256 i = 0; i < assetInfos.length; i++) {
+            if (assetInfos[i].assetType != AssetType.NativeToken) {
+                // Approve target contract (strategy manager/cross chain) to move assets.
+                address assetAddr = assetInfos[i].assetAddr;
+                uint256 amount = assetInfos[i].amount;
+                IERC20(assetAddr).approve(target, amount);
+            }
+        }
     }
 
     function createPositionInternal(
@@ -279,8 +177,13 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             strategyChainId !=
             WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).chainId()
         ) {
-            publishPositionOpenInstruction(
-                strategyChainId,
+            require(
+                chainIdToApertureManager[strategyChainId] != 0,
+                "unexpected strategyChainId"
+            );
+            approveAssetTransferToTarget(assetInfos, CROSS_CHAIN);
+            ICrossChain(CROSS_CHAIN).publishPositionOpenInstruction(
+                ICrossChain.StrategyChainInfo(chainIdToApertureManager[strategyChainId], strategyChainId),
                 strategyId,
                 positionId,
                 assetInfos,
@@ -299,7 +202,10 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
                 uint256 amount = assetInfos[i].amount;
                 IERC20(assetAddr).approve(strategy.strategyManager, amount);
             }
-            IStrategyManager(strategy.strategyManager).openPosition(
+            approveAssetTransferToTarget(assetInfos, strategy.strategyManager);
+
+            IStrategyManager(strategy.strategyManager).openPosition{value: msg.value}
+            (
                 PositionInfo(positionId, strategyChainId),
                 encodedPositionOpenData
             );
@@ -311,7 +217,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         uint64 strategyId,
         AssetInfo[] calldata assetInfos,
         bytes calldata encodedPositionOpenData
-    ) external {
+    ) external payable {
         uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
         validateAndTransferAssetFromSender(
             strategyChainId,
@@ -350,7 +256,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             address(this)
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
-        assetInfos[0] = AssetInfo(toToken, toTokenAmount);
+        assetInfos[0] = AssetInfo(AssetType.Token, toToken, toTokenAmount);
         createPositionInternal(
             positionId,
             strategyChainId,
@@ -360,24 +266,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         );
     }
 
-    function publishExecuteStrategyInstruction(
-        uint16 strategyChainId,
-        uint128 positionId,
-        AssetInfo[] memory assetInfos,
-        bytes calldata encodedActionData
-    ) internal {
-        // WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).publishMessage(
-        //     WORMHOLE_NONCE,
-        //     sendTokensCrossChainAndConstructCommonPayload(
-        //         INSTRUCTION_TYPE_EXECUTE_STRATEGY,
-        //         strategyChainId,
-        //         assetInfos,
-        //         positionId,
-        //         encodedActionData
-        //     ),
-        //     CONSISTENCY_LEVEL
-        // );
-    }
+    
 
     // TODO: implement a same-chain version of executeStrategy.
     // Plan to have separate external functions for increase and decrease positions rather than encoding the action in a byte array.
@@ -412,8 +301,13 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             strategyChainId !=
             WormholeCoreBridge(WORMHOLE_CORE_BRIDGE).chainId()
         ) {
-            publishExecuteStrategyInstruction(
-                strategyChainId,
+            require(
+                chainIdToApertureManager[strategyChainId] != 0,
+                "unexpected strategyChainId"
+            );
+            approveAssetTransferToTarget(assetInfos, CROSS_CHAIN);
+            ICrossChain(CROSS_CHAIN).publishExecuteStrategyInstruction(
+                ICrossChain.StrategyChainInfo(chainIdToApertureManager[strategyChainId], strategyChainId),
                 positionId,
                 assetInfos,
                 encodedActionData
@@ -434,7 +328,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             Action action = Action(uint8(encodedActionData[0]));
             require(action != Action.Open, "invalid open action in execute");
             if (action == Action.Increase) {
-                IStrategyManager(strategy.strategyManager).increasePosition(
+                IStrategyManager(strategy.strategyManager).increasePosition{value: msg.value}(
                     PositionInfo(positionId, strategyChainId),
                     encodedActionData[1:]
                 );
@@ -467,9 +361,9 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable {
             address(this)
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
-        assetInfos[0] = AssetInfo(toToken, toTokenAmount);
-        publishExecuteStrategyInstruction(
-            positionIdToInfo[positionId].strategyChainId,
+        assetInfos[0] = AssetInfo(AssetType.Token, toToken, toTokenAmount);
+        ICrossChain(CROSS_CHAIN).publishExecuteStrategyInstruction(
+            ICrossChain.StrategyChainInfo(chainIdToApertureManager[positionIdToInfo[positionId].strategyChainId], positionIdToInfo[positionId].strategyChainId),
             positionId,
             assetInfos,
             encodedActionData

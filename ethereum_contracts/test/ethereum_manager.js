@@ -44,6 +44,24 @@ async function getImpersonatedSigner() {
   });
   return await ethers.getSigner(accountToImpersonate);
 }
+
+async function deployCrossChain(signer) {
+  const address = await signer.getAddress();
+  console.log("Using impersonated wallet address:", address);
+
+  const CrossChain = await ethers.getContractFactory("CrossChain", signer);
+  const crossChain = await CrossChain.deploy(
+      /*_consistencyLevel=*/ 1,
+      WORMHOLE_TOKEN_BRIDGE_ADDR,
+      /*_crossChainFeeBPS=*/ 0,
+      /*_feeSink=*/ address,
+  );
+  
+  await crossChain.deployed();
+  console.log("crossChain.deployed at:", crossChain.address);
+  return crossChain;
+}
+
 async function deployCurveSwap(signer) {
   const address = await signer.getAddress();
   console.log("Using impersonated wallet address:", address);
@@ -56,7 +74,7 @@ async function deployCurveSwap(signer) {
 
   return curveSwap;
 }
-async function deployEthereumManager(signer, curveSwap) {
+async function deployEthereumManager(signer, crossChain, curveSwap) {
   const address = await signer.getAddress();
   console.log("Using impersonated wallet address:", address);
 
@@ -68,10 +86,7 @@ async function deployEthereumManager(signer, curveSwap) {
   const ethereumManager = await upgrades.deployProxy(
     EthereumManager,
     [
-      /*_consistencyLevel=*/ 1,
-      WORMHOLE_TOKEN_BRIDGE_ADDR,
-      /*_crossChainFeeBPS=*/ 0,
-      /*_feeSink=*/ address,
+      crossChain,
       curveSwap,
     ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
@@ -180,22 +195,26 @@ async function testUSTDeltaNeutralInvest(signer, ethereumManager) {
   await ethereumManager.createPosition(
     CHAIN_ID_TERRA,
     DELTA_NEUTRAL,
-    [[WORMHOLE_UST_TOKEN_ADDR, whUSTAmount]],
+    [[/*assetType=*/ 0, WORMHOLE_UST_TOKEN_ADDR, whUSTAmount]],
     encodedPositionOpenData,
     {}
   );
   console.log("createPosition(%d UST) completed.", whUSTAmount);
 }
 
-describe("Aperture Ethereum Manager unit tests", function () {
+describe.only("Aperture Ethereum Manager unit tests", function () {
   var signer = undefined;
   var ethereumManager = undefined;
+  var crossChain = undefined;
   var curveSwap = undefined;
 
   before("Setup before each test", async function () {
     signer = await getImpersonatedSigner();
+    crossChain = await deployCrossChain(signer);
     curveSwap = await deployCurveSwap(signer);
-    ethereumManager = await deployEthereumManager(signer, curveSwap.address);
+    ethereumManager = await deployEthereumManager(signer, crossChain.address, curveSwap.address);
+    // Update manager for cross chain contract.
+    await crossChain.updateManager(ethereumManager.address);
   });
 
   it("Should add/remove a strategy", async function () {
@@ -216,12 +235,12 @@ describe("Aperture Ethereum Manager unit tests", function () {
   });
 
   it("Should update cross-chain fee", async function () {
-    await ethereumManager.updateCrossChainFeeBPS(20);
-    expect(await ethereumManager.CROSS_CHAIN_FEE_BPS()).to.equal(20);
+    await crossChain.updateCrossChainFeeBPS(20);
+    expect(await crossChain.CROSS_CHAIN_FEE_BPS()).to.equal(20);
   });
 
   it("Should not be able to set cross-chain fee above 100 bps", async function () {
-    ethereumManager
+    crossChain
       .updateCrossChainFeeBPS(101)
       .catch((error) =>
         expect(error)
@@ -234,16 +253,16 @@ describe("Aperture Ethereum Manager unit tests", function () {
   });
 
   it("Should update fee sink address", async function () {
-    await ethereumManager.updateFeeSink(
+    await crossChain.updateFeeSink(
       "0x16be88fa89e7ff500a5b6854faea2d9a4b2f7383"
     );
-    expect(await ethereumManager.FEE_SINK()).to.equal(
+    expect(await crossChain.FEE_SINK()).to.equal(
       "0x16be88Fa89e7FF500A5B6854fAea2d9a4B2f7383"
     );
   });
 
   it("Should update fee sink address", async function () {
-    ethereumManager
+    crossChain
       .updateFeeSink("0x0000000000000000000000000000000000000000")
       .catch((error) =>
         expect(error)
@@ -256,11 +275,11 @@ describe("Aperture Ethereum Manager unit tests", function () {
   });
 
   it("Non-owner should not have access to updateCrossChainFeeBPS", async function () {
-    ethereumManager = ethereumManager.connect(
+    crossChain = crossChain.connect(
       (await ethers.getSigners())[2] // Use a different wallet.
     );
 
-    return ethereumManager
+    return crossChain
       .updateCrossChainFeeBPS(2000)
       .catch((error) =>
         expect(error)
@@ -273,11 +292,11 @@ describe("Aperture Ethereum Manager unit tests", function () {
   });
 
   it("Non-owner should not have access to updateFeeSink", async function () {
-    ethereumManager = ethereumManager.connect(
+    crossChain = crossChain.connect(
       (await ethers.getSigners())[2] // Use a different wallet.
     );
 
-    return ethereumManager
+    return crossChain
       .updateFeeSink("0x16be88fa89e7ff500a5b6854faea2d9a4b2f7383")
       .catch((error) =>
         expect(error)

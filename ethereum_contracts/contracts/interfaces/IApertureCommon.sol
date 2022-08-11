@@ -30,7 +30,13 @@ struct Config {
     address feeSink; // Fee collecting address.
 }
 
+enum AssetType {
+    Token,
+    NativeToken
+}
+
 struct AssetInfo {
+    AssetType assetType;
     address assetAddr; // The ERC20 address.
     uint256 amount;
 }
