@@ -1,4 +1,7 @@
-const { DELTA_NEUTRAL } = require("../constants");
+const {
+  DELTA_NEUTRAL,
+  ETH_MAINNET_TOKEN_BRIDGE_ADDR,
+} = require("../constants");
 const {
   CHAIN_ID_TERRA,
   getEmitterAddressTerra,
@@ -7,10 +10,14 @@ const {
 const { getDeltaNeutralOpenRequest } = require("../utils/helpers");
 const { ethers, upgrades } = require("hardhat");
 const { expect } = require("chai");
+const {
+  deployCrossChain,
+  deployCurveSwap,
+  deployEthereumManager,
+} = require("../utils/deploy");
 
 // Ethereum mainnet constants.
 const WORMHOLE_UST_TOKEN_ADDR = "0xa693B19d2931d498c5B318dF961919BB4aee87a5";
-const WORMHOLE_TOKEN_BRIDGE_ADDR = "0x3ee18B2214AFF97000D974cf647E7C347E8fa585";
 const CURVE_WHUST_3CRV_POOL_ADDR = "0xCEAF7747579696A2F0bb206a14210e3c9e6fB269";
 const CURVE_BUSD_3CRV_POOL_ADDR = "0x4807862AA8b2bF68830e4C8dc86D0e9A998e085a";
 const USDC_TOKEN_ADDR = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -34,7 +41,6 @@ const curvePoolABI = [
   "function exchange_underlying(int128 i, int128 j, uint256 dx, uint256 min_dy) returns (uint256)",
 ];
 
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 async function getImpersonatedSigner() {
   // This is an FTX wallet with ETH/USDC/BUSD balances.
   const accountToImpersonate = "0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2";
@@ -43,73 +49,6 @@ async function getImpersonatedSigner() {
     params: [accountToImpersonate],
   });
   return await ethers.getSigner(accountToImpersonate);
-}
-
-async function deployCrossChain(signer) {
-  const address = await signer.getAddress();
-  console.log("Using impersonated wallet address:", address);
-
-  const CrossChain = await ethers.getContractFactory("CrossChain", signer);
-  const crossChain = await CrossChain.deploy(
-      /*_consistencyLevel=*/ 1,
-      WORMHOLE_TOKEN_BRIDGE_ADDR,
-      /*_crossChainFeeBPS=*/ 0,
-      /*_feeSink=*/ address,
-  );
-  
-  await crossChain.deployed();
-  console.log("crossChain.deployed at:", crossChain.address);
-  return crossChain;
-}
-
-async function deployCurveSwap(signer) {
-  const address = await signer.getAddress();
-  console.log("Using impersonated wallet address:", address);
-
-  const CurveSwap = await ethers.getContractFactory("CurveSwap", signer);
-  const curveSwap = await CurveSwap.deploy();
-
-  await curveSwap.deployed();
-  console.log("curveSwap.deployed at:", curveSwap.address);
-
-  return curveSwap;
-}
-async function deployEthereumManager(signer, crossChain, curveSwap) {
-  const address = await signer.getAddress();
-  console.log("Using impersonated wallet address:", address);
-
-  const EthereumManager = await ethers.getContractFactory(
-    "EthereumManager",
-    signer
-  );
-
-  const ethereumManager = await upgrades.deployProxy(
-    EthereumManager,
-    [
-      crossChain,
-      curveSwap,
-    ],
-    { unsafeAllow: ["delegatecall"], kind: "uups" }
-  );
-  await ethereumManager.deployed();
-
-  console.log("ethereumManager.deployed at:", ethereumManager.address);
-
-  // Register Aperture Terra manager.
-  await ethereumManager.updateApertureManager(
-    TERRA_CHAIN_ID,
-    hexToUint8Array(await getEmitterAddressTerra(TERRA_MANAGER_ADDR))
-  );
-
-  // Register strategy params.
-  await ethereumManager.updateIsTokenWhitelistedForStrategy(
-    TERRA_CHAIN_ID,
-    DELTA_NEUTRAL,
-    WORMHOLE_UST_TOKEN_ADDR,
-    true
-  );
-
-  return ethereumManager;
 }
 
 async function testSwapAndDeltaNeutralInvest(
@@ -202,7 +141,7 @@ async function testUSTDeltaNeutralInvest(signer, ethereumManager) {
   console.log("createPosition(%d UST) completed.", whUSTAmount);
 }
 
-describe.only("Aperture Ethereum Manager unit tests", function () {
+describe("Aperture Ethereum Manager unit tests", function () {
   var signer = undefined;
   var ethereumManager = undefined;
   var crossChain = undefined;
@@ -210,15 +149,38 @@ describe.only("Aperture Ethereum Manager unit tests", function () {
 
   before("Setup before each test", async function () {
     signer = await getImpersonatedSigner();
-    crossChain = await deployCrossChain(signer);
+    crossChain = await deployCrossChain(signer, ETH_MAINNET_TOKEN_BRIDGE_ADDR);
     curveSwap = await deployCurveSwap(signer);
-    ethereumManager = await deployEthereumManager(signer, crossChain.address, curveSwap.address);
+    ethereumManager = await deployEthereumManager(
+      signer,
+      crossChain.address,
+      curveSwap.address
+    );
+
+    // Register Aperture Terra manager.
+    await ethereumManager.updateApertureManager(
+      TERRA_CHAIN_ID,
+      hexToUint8Array(await getEmitterAddressTerra(TERRA_MANAGER_ADDR))
+    );
+
+    // Register strategy params.
+    await ethereumManager.updateIsTokenWhitelistedForStrategy(
+      TERRA_CHAIN_ID,
+      DELTA_NEUTRAL,
+      WORMHOLE_UST_TOKEN_ADDR,
+      true
+    );
+
     // Update manager for cross chain contract.
     await crossChain.updateManager(ethereumManager.address);
   });
 
   it("Should add/remove a strategy", async function () {
-    await ethereumManager.addStrategy("New Strategy", "V1.0", curveSwap.address);
+    await ethereumManager.addStrategy(
+      "New Strategy",
+      "V1.0",
+      curveSwap.address
+    );
     expect((await ethereumManager.strategyIdToMetadata(0))[0]).to.equal(
       "New Strategy"
     );

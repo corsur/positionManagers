@@ -35,7 +35,8 @@ module.exports = {
       optimizer: {
         enabled: true,
         // See https://docs.soliditylang.org/en/v0.8.12/internals/optimizer.html#optimizer-parameter-runs.
-        runs: 2 ** 32 - 1,
+        // runs: 2 ** 32 - 1,
+        runs: 1000,
       },
     },
   },
@@ -52,12 +53,10 @@ module.exports = {
         url: AVAX_MAINNET_FORK,
         blockNumber: 16681756,
       },
-      // for ethereum
-      /*
-      forking: {
-         url: ALCHEMY_URL_MAINNET,
-         blockNumber: 14247160
-      }*/
+      // forking: {
+      //   url: ALCHEMY_URL_MAINNET,
+      //   blockNumber: 14247160,
+      // },
     },
     ropsten: {
       url: INFURA_URL_ROPSTEN,
