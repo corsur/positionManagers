@@ -28,6 +28,8 @@ library VaultLib {
         uint256 amtBBorrow;
         uint256 amtAAfter;
         uint256 amtBAfter;
+        uint256 debtAAfter;
+        uint256 debtBAfter;
 
         uint256 collWithdrawErr;
         uint256 amtABorrowErr;
@@ -146,6 +148,8 @@ library VaultLib {
         returns (
             uint256,
             uint256,
+            uint256,
+            uint256,
             uint256
         )
     {
@@ -183,7 +187,9 @@ library VaultLib {
         return (
             vars.collWithdrawAmt + vars.collWithdrawErr,
             vars.amtARepay > vars.amtARepayErr ? vars.amtARepay - vars.amtARepayErr : 0,
-            vars.amtBRepay - vars.amtBRepayErr
+            vars.amtBRepay - vars.amtBRepayErr,
+            vars.Sa,
+            vars.Sb
         );
     }
 
@@ -204,6 +210,8 @@ library VaultLib {
         public pure
         returns (
             uint256,
+            uint256,
+            uint256,
             uint256
         )
     {
@@ -214,10 +222,10 @@ library VaultLib {
         vars.amtAAfter = leverageLevel * (pos.amtA * (reserveA - vars.Sa) / reserveA
             - pos.debtAmtA + vars.Sa + amtAReward) / 2; // n_af
 
-        uint256 debtAAfter = (leverageLevel - 2) * vars.amtAAfter / leverageLevel;
+        vars.debtAAfter = (leverageLevel - 2) * vars.amtAAfter / leverageLevel;
 
-        if (debtAAfter > pos.debtAmtA) {
-            vars.amtABorrow = debtAAfter - pos.debtAmtA;
+        if (vars.debtAAfter > pos.debtAmtA) {
+            vars.amtABorrow = vars.debtAAfter - pos.debtAmtA;
             vars.amtBAfter = pos.amtB * reserveA / (reserveA - vars.Sa) * (reserveB + vars.Sb) / reserveB
                 * vars.amtAAfter / pos.amtA;
             vars.amtBBorrow = vars.amtBAfter - pos.debtAmtB;
@@ -234,7 +242,9 @@ library VaultLib {
 
         return (
             vars.amtABorrow + vars.amtABorrowErr,
-            vars.amtBBorrow + vars.amtBBorrowErr
+            vars.amtBBorrow + vars.amtBBorrowErr,
+            vars.Sa,
+            vars.Sb
         );
     }
 }
