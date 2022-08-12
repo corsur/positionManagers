@@ -41,6 +41,12 @@ struct AssetInfo {
     uint256 amount;
 }
 
+struct ApertureFeeConfig {
+    uint256 withdrawFee; // multiplied by 1e4
+    uint256 harvestFee; // multiplied by 1e4
+    uint256 managementFee; // multiplied by 1e4
+}
+
 interface IStrategyManager {
     /// @dev Open a new Aperture position for `recipient`
     /// @param position_info: Aperture position info

@@ -243,7 +243,7 @@ describe("HomoraPDNVault Initialization", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it.only("Should throw error for unauthorized call to setTarget", async function () {
+  it("Should throw error for unauthorized call to setTarget", async function () {
     await expect(
       adapterContract.connect(tempWallet).setTarget(tempWallet.address, true)
     ).to.be.revertedWith("Ownable: caller is not the owner");
