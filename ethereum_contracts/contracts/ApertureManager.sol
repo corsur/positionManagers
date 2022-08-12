@@ -8,23 +8,25 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import "./interfaces/IWormhole.sol";
-import "./libraries/BytesLib.sol";
 import "./interfaces/IApertureCommon.sol";
-import "./interfaces/ICurveSwap.sol";
 import "./interfaces/ICrossChain.sol";
-import "./CrossChain.sol";
+import "./interfaces/IWormhole.sol";
 
-contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+import "./libraries/BytesLib.sol";
+import "./libraries/CurveRouterLib.sol";
+
+/// @custom:oz-upgrades-unsafe-allow external-library-linking
+contract ApertureManager is
+    Initializable,
+    UUPSUpgradeable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     using SafeERC20 for IERC20;
     using BytesLib for bytes;
+    using CurveRouterLib for CurveRouterContext;
 
-    // Version 0 of the Aperture instructure payload format.
-    // See https://github.com/Aperture-Finance/Aperture-Contracts/blob/instruction-dev/packages/aperture_common/src/instruction.rs.
-    uint8 private constant INSTRUCTION_VERSION = 0;
-    uint8 private constant INSTRUCTION_TYPE_POSITION_OPEN = 0;
-    uint8 private constant INSTRUCTION_TYPE_EXECUTE_STRATEGY = 1;
-    uint8 private constant INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT = 2;
+    CurveRouterContext curveRouterContext;
 
     // isTokenWhitelistedForStrategy[chainId][strategyId][tokenAddress] represents whether the token is allowed for the specified strategy.
     mapping(uint16 => mapping(uint64 => mapping(address => bool)))
@@ -36,8 +38,6 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
     address public WORMHOLE_CORE_BRIDGE;
     // Address of the cross chain contract.
     address public CROSS_CHAIN;
-    // Address of the Curve swap router contract.
-    address public CURVE_SWAP;
 
     // Information about positions held by users of this chain.
     uint128 public nextPositionId;
@@ -48,7 +48,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
     // Hashes of processed incoming Aperture instructions are stored in this mapping.
     mapping(bytes32 => bool) public processedInstructions;
 
-    // Infomation about strategies managed by this Aperture manager.
+    // Information about strategies managed by this Aperture manager.
     uint64 public nextStrategyId;
     mapping(uint64 => StrategyMetadata) public strategyIdToMetadata;
 
@@ -59,16 +59,24 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
 
     // `initializer` is a modifier from OpenZeppelin to ensure contract is
     // only initialized once (thanks to Initializable).
-    function initialize(
-        address _crossChain,
-        address _curveSwap
-    ) public initializer {
+    function initialize(address _crossChain) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
         WORMHOLE_TOKEN_BRIDGE = ICrossChain(_crossChain).WORMHOLE_TOKEN_BRIDGE();
         WORMHOLE_CORE_BRIDGE = ICrossChain(_crossChain).WORMHOLE_CORE_BRIDGE();
         CROSS_CHAIN = _crossChain;
-        CURVE_SWAP = _curveSwap;
+    }
+
+    // Owner only.
+    // Updates the Curve swap route for `fromToken` to `toToken` with `route`.
+    // See CurveRouterLib.sol for more information.
+    function updateCurveRoute(
+        address fromToken,
+        address toToken,
+        CurveSwapOperation[] calldata route,
+        address[] calldata tokens
+    ) external onlyOwner {
+        curveRouterContext.updateRoute(fromToken, toToken, route, tokens);
     }
 
     // Only owner of this logic contract can upgrade.
@@ -121,7 +129,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
             if (assetInfos[i].assetType == AssetType.NativeToken) {
                 require(
                     msg.value == assetInfos[i].amount,
-                    "insufficient native token amount"
+                    "insufficient msg.value"
                 );
             } else {
                 require(
@@ -140,7 +148,8 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
     }
 
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
-        internal nonReentrant
+        internal
+        nonReentrant
         returns (uint128)
     {
         uint128 positionId = nextPositionId++;
@@ -152,16 +161,17 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         return positionId;
     }
 
+    // Approve target contract (strategy manager/cross chain) to move assets from `this`.
     function approveAssetTransferToTarget(
         AssetInfo[] memory assetInfos,
         address target
     ) internal {
         for (uint256 i = 0; i < assetInfos.length; i++) {
             if (assetInfos[i].assetType != AssetType.NativeToken) {
-                // Approve target contract (strategy manager/cross chain) to move assets.
-                address assetAddr = assetInfos[i].assetAddr;
-                uint256 amount = assetInfos[i].amount;
-                IERC20(assetAddr).approve(target, amount);
+                IERC20(assetInfos[i].assetAddr).approve(
+                    target,
+                    assetInfos[i].amount
+                );
             }
         }
     }
@@ -183,7 +193,10 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
             );
             approveAssetTransferToTarget(assetInfos, CROSS_CHAIN);
             ICrossChain(CROSS_CHAIN).publishPositionOpenInstruction(
-                ICrossChain.StrategyChainInfo(chainIdToApertureManager[strategyChainId], strategyChainId),
+                ICrossChain.StrategyChainInfo(
+                    chainIdToApertureManager[strategyChainId],
+                    strategyChainId
+                ),
                 strategyId,
                 positionId,
                 assetInfos,
@@ -204,8 +217,9 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
             }
             approveAssetTransferToTarget(assetInfos, strategy.strategyManager);
 
-            IStrategyManager(strategy.strategyManager).openPosition{value: msg.value}
-            (
+            IStrategyManager(strategy.strategyManager).openPosition{
+                value: msg.value
+            }(
                 PositionInfo(positionId, strategyChainId),
                 encodedPositionOpenData
             );
@@ -247,13 +261,12 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
             "toToken not allowed"
         );
         uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
-        IERC20(fromToken).safeTransferFrom(msg.sender, CURVE_SWAP, amount);
-        uint256 toTokenAmount = ICurveSwap(CURVE_SWAP).swapToken(
+        IERC20(fromToken).safeTransferFrom(msg.sender, address(this), amount);
+        uint256 toTokenAmount = curveRouterContext.swapToken(
             fromToken,
             toToken,
             amount,
-            minAmountOut,
-            address(this)
+            minAmountOut
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
         assetInfos[0] = AssetInfo(AssetType.Token, toToken, toTokenAmount);
@@ -266,12 +279,6 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         );
     }
 
-    
-
-    // TODO: implement a same-chain version of executeStrategy.
-    // Plan to have separate external functions for increase and decrease positions rather than encoding the action in a byte array.
-    // However, this contract is approaching the limit of 24576 bytes (introduced in Spurious Dragon hard fork) even after moving CurveSwap to a separate contract.
-    // Moving certain functions to libraries could help; alternatively, we can move cross-chain logic to a separate contract.
     function executeStrategy(
         uint128 positionId,
         AssetInfo[] calldata assetInfos,
@@ -307,7 +314,10 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
             );
             approveAssetTransferToTarget(assetInfos, CROSS_CHAIN);
             ICrossChain(CROSS_CHAIN).publishExecuteStrategyInstruction(
-                ICrossChain.StrategyChainInfo(chainIdToApertureManager[strategyChainId], strategyChainId),
+                ICrossChain.StrategyChainInfo(
+                    chainIdToApertureManager[strategyChainId],
+                    strategyChainId
+                ),
                 positionId,
                 assetInfos,
                 encodedActionData
@@ -321,19 +331,17 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
                 "invalid strategyId"
             );
             // Parse action based on encodedActionData.
-            require(
-                encodedActionData.length > 0,
-                "invalid encoded action data"
-            );
+            require(encodedActionData.length > 0, "invalid encodedActionData");
             Action action = Action(uint8(encodedActionData[0]));
-            require(action != Action.Open, "invalid open action in execute");
+            require(action != Action.Open, "invalid action");
             if (action == Action.Increase) {
-                IStrategyManager(strategy.strategyManager).increasePosition{value: msg.value}(
+                IStrategyManager(strategy.strategyManager).increasePosition{
+                    value: msg.value
+                }(
                     PositionInfo(positionId, strategyChainId),
                     encodedActionData[1:]
                 );
             } else if (action == Action.Decrease) {
-                console.log('Decrease action is called.');
                 IStrategyManager(strategy.strategyManager).decreasePosition(
                     PositionInfo(positionId, strategyChainId),
                     encodedActionData[1:]
@@ -353,17 +361,21 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         bytes calldata encodedActionData
     ) external onlyPositionOwner(positionId) {
         IERC20(fromToken).safeTransferFrom(msg.sender, address(this), amount);
-        uint256 toTokenAmount = ICurveSwap(CURVE_SWAP).swapToken(
+        uint256 toTokenAmount = curveRouterContext.swapToken(
             fromToken,
             toToken,
             amount,
-            minAmountOut,
-            address(this)
+            minAmountOut
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
         assetInfos[0] = AssetInfo(AssetType.Token, toToken, toTokenAmount);
         ICrossChain(CROSS_CHAIN).publishExecuteStrategyInstruction(
-            ICrossChain.StrategyChainInfo(chainIdToApertureManager[positionIdToInfo[positionId].strategyChainId], positionIdToInfo[positionId].strategyChainId),
+            ICrossChain.StrategyChainInfo(
+                chainIdToApertureManager[
+                    positionIdToInfo[positionId].strategyChainId
+                ],
+                positionIdToInfo[positionId].strategyChainId
+            ),
             positionId,
             assetInfos,
             encodedActionData
@@ -444,7 +456,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
             .parseTransfer(tokenTransferVM.payload);
         require(
             transfer.to == bytes32(uint256(uint160(address(this)))),
-            "token recipient is not this Aperture manager"
+            "unexpected token recipient"
         );
         // Note that we delegate the validation of `transfer.toChain` to Wormhole Token Bridge.
 
@@ -494,7 +506,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         uint16 recipientChain = instructionVM.payload.toUint16(index);
         require(
             recipientChain == wormholeTokenBridge.chainId(),
-            "instruction not intended for this chain"
+            "unexpected recipientChain"
         );
         index += 2;
 
@@ -507,7 +519,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         // Parse and validate token transfer VMs.
         require(
             encodedTokenTransferVMs.length == 1,
-            "unexpected encodedTokenTransferVMs length"
+            "invalid encodedTokenTransferVMs length"
         );
         (
             address tokenAddress,
@@ -530,23 +542,27 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
             index += 32;
             require(
                 index == instructionVM.payload.length,
-                "invalid instruction payload"
+                "invalid ix payload"
             );
 
             // Swap and disburse if the output amount meets the required threshold.
-            uint256 simulatedOutputAmount = ICurveSwap(CURVE_SWAP)
+            uint256 simulatedOutputAmount = curveRouterContext
                 .simulateSwapToken(
                     tokenAddress,
                     desiredTokenAddress,
                     tokenAmount
                 );
             if (simulatedOutputAmount >= minOutputAmount) {
-                ICurveSwap(CURVE_SWAP).swapToken(
+                uint256 outputAmount = curveRouterContext.swapToken(
                     tokenAddress,
                     desiredTokenAddress,
                     tokenAmount,
-                    minOutputAmount,
-                    recipient
+                    minOutputAmount
+                );
+                SafeERC20.safeTransfer(
+                    IERC20(desiredTokenAddress),
+                    recipient,
+                    outputAmount
                 );
                 return;
             }
@@ -571,7 +587,7 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
         );
         require(
             !processedInstructions[instructionVM.hash],
-            "instruction already processed"
+            "ix already processed"
         );
 
         // Mark this instruction as processed so it cannot be replayed.
@@ -579,20 +595,21 @@ contract EthereumManager is Initializable, UUPSUpgradeable, OwnableUpgradeable, 
 
         // Parse version / instruction type.
         // Note that Solidity checks array index for possible out of bounds, so there is no need for us to do so again.
-        require(
-            instructionVM.payload[0] == 0,
-            "unexpected instruction version"
-        );
-        if (
-            uint8(instructionVM.payload[1]) ==
-            INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT
-        ) {
+        require(instructionVM.payload[0] == 0, "invalid instruction version");
+        uint8 instructionType = uint8(instructionVM.payload[1]);
+        if (instructionType == INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT) {
             processSingleTokenDisbursementInstruction(
                 instructionVM,
                 encodedTokenTransferVMs
             );
-        } else {
-            revert("unsupported instruction type");
+        }
+        /*else if (instructionType == INSTRUCTION_TYPE_POSITION_OPEN) {
+            revert("INSTRUCTION_TYPE_POSITION_OPEN about to be supported");
+        } else if (instructionType == INSTRUCTION_TYPE_EXECUTE_STRATEGY) {
+            revert("INSTRUCTION_TYPE_EXECUTE_STRATEGY about to be supported");
+        } */
+        else {
+            revert("invalid ix type");
         }
     }
 }

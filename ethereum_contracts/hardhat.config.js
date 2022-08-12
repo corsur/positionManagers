@@ -1,3 +1,4 @@
+require("@nomiclabs/hardhat-ethers");
 require("@nomiclabs/hardhat-waffle");
 require("@openzeppelin/hardhat-upgrades");
 require("hardhat-gas-reporter");
@@ -6,10 +7,9 @@ require("hardhat-contract-sizer");
 
 const {
   ETH_PRV_KEY_1,
-  INFURA_URL_RINKERBY,
-  INFURA_URL_ROPSTEN,
-  ALCHEMY_URL_MAINNET,
-  AVAX_MAINNET_FORK,
+  INFURA_RINKERBY_URL,
+  INFURA_ROPSTEN_URL,
+  AVAX_MAINNET_URL,
 } = require("./constants");
 
 // This is a sample Hardhat task. To learn how to create your own go to
@@ -21,9 +21,6 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
     console.log(account.address);
   }
 });
-
-// You need to export an object to set up your config
-// Go to https://hardhat.org/config/ to learn more
 
 /**
  * @type import('hardhat/config').HardhatUserConfig
@@ -48,23 +45,16 @@ module.exports = {
       url: "http://dev.hyperfocal.tech:8989/",
     },
     hardhat: {
-      // for avax
-      forking: {
-        url: AVAX_MAINNET_FORK,
-        blockNumber: 16681756,
-      },
-      // forking: {
-      //   url: ALCHEMY_URL_MAINNET,
-      //   blockNumber: 14247160,
-      // },
+      // Please set up forking in individual .js test files following https://hardhat.org/hardhat-network/docs/guides/forking-other-networks#resetting-the-fork.
+      // This gives us the flexibility to reset Hardhat Network using different fork settings at will.
     },
     ropsten: {
-      url: INFURA_URL_ROPSTEN,
+      url: INFURA_ROPSTEN_URL,
       accounts: [ETH_PRV_KEY_1],
       timeout: 60000,
     },
     rinkeby: {
-      url: INFURA_URL_RINKERBY,
+      url: INFURA_RINKERBY_URL,
       accounts: [ETH_PRV_KEY_1],
     },
   },

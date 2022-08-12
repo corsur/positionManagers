@@ -1,5 +1,6 @@
 const {
   DELTA_NEUTRAL,
+  ALCHEMY_ETHEREUM_MAINNET_URL,
   ETH_MAINNET_TOKEN_BRIDGE_ADDR,
 } = require("../constants");
 const {
@@ -11,9 +12,7 @@ const { getDeltaNeutralOpenRequest } = require("../utils/helpers");
 const { ethers, upgrades } = require("hardhat");
 const { expect } = require("chai");
 const {
-  deployCrossChain,
-  deployCurveSwap,
-  deployEthereumManager,
+  deployApertureManager,
 } = require("../utils/deploy");
 
 // Ethereum mainnet constants.
@@ -41,50 +40,39 @@ const curvePoolABI = [
   "function exchange_underlying(int128 i, int128 j, uint256 dx, uint256 min_dy) returns (uint256)",
 ];
 
-async function getImpersonatedSigner() {
-  // This is an FTX wallet with ETH/USDC/BUSD balances.
-  const accountToImpersonate = "0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2";
-  await hre.network.provider.request({
-    method: "hardhat_impersonateAccount",
-    params: [accountToImpersonate],
-  });
-  return await ethers.getSigner(accountToImpersonate);
-}
-
 async function testSwapAndDeltaNeutralInvest(
   signer,
-  ethereumManager,
-  curveSwap
+  apertureManager
 ) {
   // USDC has 6 decimals, so this is $1M.
   const usdcAmount = 1 * 1e6 * 1e6;
   const usdcContract = new ethers.Contract(USDC_TOKEN_ADDR, erc20ABI, signer);
-  await usdcContract.approve(ethereumManager.address, usdcAmount);
-  await curveSwap.updateCurveSwapRoute(
+  await usdcContract.approve(apertureManager.address, usdcAmount);
+  await apertureManager.updateCurveRoute(
     /*fromToken=*/ USDC_TOKEN_ADDR,
     /*toToken=*/ WORMHOLE_UST_TOKEN_ADDR,
-    /*route=*/ [[CURVE_WHUST_3CRV_POOL_ADDR, 2, 0, true]],
-    /*tokens=*/ [USDC_TOKEN_ADDR],
+    /*route=*/[[CURVE_WHUST_3CRV_POOL_ADDR, 2, 0, true]],
+    /*tokens=*/[USDC_TOKEN_ADDR],
     {}
   );
 
   // BUSD has 18 decimals, so this is $1M.
   const busdAmount = BigInt(1 * 1e6 * 1e18);
   const busdContract = new ethers.Contract(BUSD_TOKEN_ADDR, erc20ABI, signer);
-  await busdContract.approve(ethereumManager.address, busdAmount);
-  await curveSwap.updateCurveSwapRoute(
+  await busdContract.approve(apertureManager.address, busdAmount);
+  await apertureManager.updateCurveRoute(
     /*fromToken=*/ BUSD_TOKEN_ADDR,
     /*toToken=*/ WORMHOLE_UST_TOKEN_ADDR,
-    /*route=*/ [
+    /*route=*/[
       [CURVE_BUSD_3CRV_POOL_ADDR, 0, 1, false],
       [CURVE_WHUST_3CRV_POOL_ADDR, 1, 0, false],
     ],
-    /*tokens=*/ [BUSD_TOKEN_ADDR, CURVE_3CRV_TOKEN_ADDR],
+    /*tokens=*/[BUSD_TOKEN_ADDR, CURVE_3CRV_TOKEN_ADDR],
     {}
   );
   // Base64 encoding of DN params.
   const encodedPositionOpenData = getDeltaNeutralOpenRequest();
-  await ethereumManager.swapTokenAndCreatePosition(
+  await apertureManager.swapTokenAndCreatePosition(
     /*fromToken=*/ USDC_TOKEN_ADDR,
     /*toToken=*/ WORMHOLE_UST_TOKEN_ADDR,
     usdcAmount,
@@ -95,7 +83,7 @@ async function testSwapAndDeltaNeutralInvest(
     {}
   );
   console.log("swapTokenAndCreatePosition(USDC) completed.");
-  await ethereumManager.swapTokenAndCreatePosition(
+  await apertureManager.swapTokenAndCreatePosition(
     /*fromToken=*/ BUSD_TOKEN_ADDR,
     /*toToken=*/ WORMHOLE_UST_TOKEN_ADDR,
     busdAmount,
@@ -108,7 +96,7 @@ async function testSwapAndDeltaNeutralInvest(
   console.log("swapTokenAndCreatePosition(BUSD) completed.");
 }
 
-async function testUSTDeltaNeutralInvest(signer, ethereumManager) {
+async function testUSTDeltaNeutralInvest(signer, apertureManager) {
   // Exchange $1M worth of USDC for whUST.
   const usdcAmount = BigInt(1 * 1e6 * 1e6);
   const usdcContract = new ethers.Contract(USDC_TOKEN_ADDR, erc20ABI, signer);
@@ -120,18 +108,18 @@ async function testUSTDeltaNeutralInvest(signer, ethereumManager) {
   );
   await curvePoolContract.exchange_underlying(2, 0, usdcAmount, 0);
 
-  // Approve EthereumManager to spend whUST.
+  // Approve ApertureManager to spend whUST.
   const whUSTContract = new ethers.Contract(
     WORMHOLE_UST_TOKEN_ADDR,
     erc20ABI,
     signer
   );
   const whUSTAmount = await whUSTContract.balanceOf(signer.address);
-  await whUSTContract.approve(ethereumManager.address, whUSTAmount);
+  await whUSTContract.approve(apertureManager.address, whUSTAmount);
 
   // Base64 encoding of DN params.
   const encodedPositionOpenData = getDeltaNeutralOpenRequest();
-  await ethereumManager.createPosition(
+  await apertureManager.createPosition(
     CHAIN_ID_TERRA,
     DELTA_NEUTRAL,
     [[/*assetType=*/ 0, WORMHOLE_UST_TOKEN_ADDR, whUSTAmount]],
@@ -141,30 +129,36 @@ async function testUSTDeltaNeutralInvest(signer, ethereumManager) {
   console.log("createPosition(%d UST) completed.", whUSTAmount);
 }
 
-describe("Aperture Ethereum Manager unit tests", function () {
+describe("Aperture manager tests on Ethereum Mainnet Fork", function () {
   var signer = undefined;
-  var ethereumManager = undefined;
+  var apertureManager = undefined;
   var crossChain = undefined;
-  var curveSwap = undefined;
 
   before("Setup before each test", async function () {
-    signer = await getImpersonatedSigner();
-    crossChain = await deployCrossChain(signer, ETH_MAINNET_TOKEN_BRIDGE_ADDR);
-    curveSwap = await deployCurveSwap(signer);
-    ethereumManager = await deployEthereumManager(
-      signer,
-      crossChain.address,
-      curveSwap.address
-    );
+    await network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: ALCHEMY_ETHEREUM_MAINNET_URL,
+            blockNumber: 14247160
+          },
+        },
+      ],
+    });
+
+    // This is an FTX wallet with ETH/USDC/BUSD balances.
+    signer = await ethers.getImpersonatedSigner("0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2");
+    [apertureManager, crossChain] = await deployApertureManager(signer, ETH_MAINNET_TOKEN_BRIDGE_ADDR);
 
     // Register Aperture Terra manager.
-    await ethereumManager.updateApertureManager(
+    await apertureManager.updateApertureManager(
       TERRA_CHAIN_ID,
       hexToUint8Array(await getEmitterAddressTerra(TERRA_MANAGER_ADDR))
     );
 
     // Register strategy params.
-    await ethereumManager.updateIsTokenWhitelistedForStrategy(
+    await apertureManager.updateIsTokenWhitelistedForStrategy(
       TERRA_CHAIN_ID,
       DELTA_NEUTRAL,
       WORMHOLE_UST_TOKEN_ADDR,
@@ -172,28 +166,24 @@ describe("Aperture Ethereum Manager unit tests", function () {
     );
 
     // Update manager for cross chain contract.
-    await crossChain.updateManager(ethereumManager.address);
+    await crossChain.updateManager(apertureManager.address);
   });
 
   it("Should add/remove a strategy", async function () {
-    await ethereumManager.addStrategy(
-      "New Strategy",
-      "V1.0",
-      curveSwap.address
-    );
-    expect((await ethereumManager.strategyIdToMetadata(0))[0]).to.equal(
+    await apertureManager.addStrategy("New Strategy", "V1.0", signer.address);
+    expect((await apertureManager.strategyIdToMetadata(0))[0]).to.equal(
       "New Strategy"
     );
-    await ethereumManager.removeStrategy(0);
-    expect((await ethereumManager.strategyIdToMetadata(0))[0]).to.equal("");
+    await apertureManager.removeStrategy(0);
+    expect((await apertureManager.strategyIdToMetadata(0))[0]).to.equal("");
   });
 
   it("Should swap USDC/BUSD token and create position", async function () {
-    await testSwapAndDeltaNeutralInvest(signer, ethereumManager, curveSwap);
+    await testSwapAndDeltaNeutralInvest(signer, apertureManager);
   });
 
   it("Should deposit whUST to create position", async function () {
-    await testUSTDeltaNeutralInvest(signer, ethereumManager);
+    await testUSTDeltaNeutralInvest(signer, apertureManager);
   });
 
   it("Should update cross-chain fee", async function () {

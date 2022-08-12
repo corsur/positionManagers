@@ -17,21 +17,21 @@ module.exports = {
   TERRA_WALLET_MNEMONIC:
     "plastic evidence song forest fence daughter nuclear road angry knife wing punch sustain suit resist vapor thrive diesel collect easily minimum thing cost phone",
   TERRA_MANAGER_ADDR: "terra1jk3q4mej6qdazyzxas6s75e56qxr934nj20pdy",
-  INFURA_URL_RINKERBY:
+  INFURA_RINKERBY_URL:
     "https://rinkeby.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
-  INFURA_URL_ROPSTEN:
+  INFURA_ROPSTEN_URL:
     "https://ropsten.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
-  INFURA_URL_GOERLI:
+  INFURA_GOERLI_URL:
     "https://goerli.infura.io/v3/9b8f5bdca4a9470f94290a14c39a299b",
-  ALCHEMY_URL_MAINNET:
+  ALCHEMY_ETHEREUM_MAINNET_URL:
     "https://eth-mainnet.alchemyapi.io/v2/1ZmO4kq4GOot3A-1bq747e1nKY-2zD0r",
   POLYGON_URL_MAINNET:
     "https://polygon-mainnet.g.alchemy.com/v2/1ZmO4kq4GOot3A-1bq747e1nKY-2zD0r",
   BSC_TESTNET: "https://data-seed-prebsc-1-s3.binance.org:8545",
   ETH_PRV_KEY_1:
     "0x53f446e52f3cb33084b0c31baee7542392844776ff593f444a480b29ed964ff8",
-  AVAX_MAINNET_FORK: "https://api.avax.network/ext/bc/C/rpc",
-  AVAX_TESTNET_FORK: "https://api.avax-test.network/ext/bc/C/rpc",
+  AVAX_MAINNET_URL: "https://api.avax.network/ext/bc/C/rpc",
+  AVAX_TESTNET_URL: "https://api.avax-test.network/ext/bc/C/rpc",
   DELTA_NEUTRAL: 0,
   STABLE_YIELD: 1,
   HOMORA_BANK_ADDRESS: "0xba5ebaf3fc1fcca67147050bf80462393814e54b",

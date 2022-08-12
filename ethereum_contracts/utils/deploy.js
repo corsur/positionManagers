@@ -1,68 +1,38 @@
 const { ethers } = require("hardhat");
 
-async function deployCrossChain(signer, tokenBridgeAddr) {
-  const address = await signer.getAddress();
-  console.log("Using impersonated wallet address:", address);
+async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
+  const curveRouterLib = await ethers.getContractFactory("CurveRouterLib", signer);
+  const curveRouterLibAddress = (await curveRouterLib.deploy()).address;
 
-  const CrossChain = await ethers.getContractFactory("CrossChain");
-  const crossChain = await CrossChain.deploy(
+  const crossChainContractFactory = await ethers.getContractFactory("CrossChain", signer);
+  const crossChainContract = await crossChainContractFactory.deploy(
     /*_consistencyLevel=*/ 1,
-    tokenBridgeAddr,
+    wormholeTokenBridgeAddr,
     /*_crossChainFeeBPS=*/ 0,
-    /*_feeSink=*/ address
+    /*_feeSink=*/ wormholeTokenBridgeAddr,
   );
 
-  await crossChain.deployed();
-  console.log("crossChain.deployed at:", crossChain.address);
-  return crossChain;
-}
-
-async function deployCurveSwap(signer) {
-  const address = await signer.getAddress();
-  console.log("Using impersonated wallet address:", address);
-
-  const CurveSwap = await ethers.getContractFactory("CurveSwap", signer);
-  const curveSwap = await CurveSwap.deploy();
-
-  await curveSwap.deployed();
-  console.log("curveSwap.deployed at:", curveSwap.address);
-
-  return curveSwap;
-}
-
-async function deployEthereumManager(signer, crossChain, curveSwap) {
-  const address = await signer.getAddress();
-  console.log("Using impersonated wallet address:", address);
-
-  const EthereumManager = await ethers.getContractFactory(
-    "EthereumManager",
-    signer
+  const ApertureManager = await ethers.getContractFactory(
+    "ApertureManager",
+    {
+      libraries: { CurveRouterLib: curveRouterLibAddress },
+      signer: signer
+    }
   );
 
-  const ethereumManager = await upgrades.deployProxy(
-    EthereumManager,
-    [crossChain, curveSwap],
+  const apertureManager = await upgrades.deployProxy(
+    ApertureManager,
+    [
+      crossChainContract.address
+    ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
   );
-  await ethereumManager.deployed();
+  await apertureManager.deployed();
 
-  console.log("ethereumManager.deployed at:", ethereumManager.address);
-  return ethereumManager;
-}
-
-async function deployEthereumManagerSimple(signer, tokenBridgeAddr) {
-  const crossChain = await deployCrossChain(signer, tokenBridgeAddr);
-  const curveSwap = await deployCurveSwap(signer);
-  return await deployEthereumManager(
-    signer,
-    crossChain.address,
-    curveSwap.address
-  );
+  // Temporarily returns both contract addresses. Once "crossChainContract" is converted to a library, only "apertureManager" needs to be returned.
+  return [apertureManager, crossChainContract];
 }
 
 module.exports = {
-  deployCrossChain: deployCrossChain,
-  deployCurveSwap: deployCurveSwap,
-  deployEthereumManager: deployEthereumManager,
-  deployEthereumManagerSimple: deployEthereumManagerSimple,
+  deployApertureManager: deployApertureManager,
 };

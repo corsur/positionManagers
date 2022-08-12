@@ -2,8 +2,8 @@ const { CHAIN_ID_AVAX } = require("@certusone/wormhole-sdk");
 const { expect, assert } = require("chai");
 const { BigNumber } = require("ethers");
 const { ethers, upgrades } = require("hardhat");
-const { AVAX_MAINNET_TOKEN_BRIDGE_ADDR } = require("../constants.js");
-const { deployEthereumManagerSimple } = require("../utils/deploy.js");
+const { AVAX_MAINNET_TOKEN_BRIDGE_ADDR, AVAX_MAINNET_URL } = require("../constants.js");
+const { deployApertureManager } = require("../utils/deploy.js");
 
 const { homoraBankABI } = require("./abi/homoraBankABI.js");
 
@@ -474,14 +474,26 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
   // );
 }
 
-describe.only("HomoraPDNVault Initialization", function () {
+describe("HomoraPDNVault Initialization", function () {
   var managerContract = undefined;
   var strategyFactory = undefined;
   var strategyContract = undefined;
 
   beforeEach("Setup before each test", async function () {
+    await network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: AVAX_MAINNET_URL,
+            blockNumber: 16681756
+          },
+        },
+      ],
+    });
+
     // Aperture manager contract.
-    managerContract = await deployEthereumManagerSimple(
+    [managerContract, _] = await deployApertureManager(
       mainWallet,
       AVAX_MAINNET_TOKEN_BRIDGE_ADDR
     );

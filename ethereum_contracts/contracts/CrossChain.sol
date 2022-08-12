@@ -8,8 +8,8 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "./interfaces/IWormhole.sol";
 import "./interfaces/IApertureCommon.sol";
-import "./libraries/BytesLib.sol";
 import "./interfaces/ICrossChain.sol";
+import "./libraries/BytesLib.sol";
 
 contract CrossChain is Ownable, ICrossChain {
     using SafeERC20 for IERC20;
@@ -23,13 +23,6 @@ contract CrossChain is Ownable, ICrossChain {
 
     // Nonce does not play a meaningful role as sequence numbers distingish different messages emitted by the same address.
     uint32 private constant WORMHOLE_NONCE = 0;
-
-    // Version 0 of the Aperture instructure payload format.
-    // See https://github.com/Aperture-Finance/Aperture-Contracts/blob/instruction-dev/packages/aperture_common/src/instruction.rs.
-    uint8 private constant INSTRUCTION_VERSION = 0;
-    uint8 private constant INSTRUCTION_TYPE_POSITION_OPEN = 0;
-    uint8 private constant INSTRUCTION_TYPE_EXECUTE_STRATEGY = 1;
-    uint8 private constant INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT = 2;
 
     // Address of the Wormhole token bridge contract.
     address public WORMHOLE_TOKEN_BRIDGE;
