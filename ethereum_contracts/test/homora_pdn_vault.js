@@ -586,9 +586,9 @@ describe.only("HomoraPDNVault Initialization", function () {
   });
 
   // TODO(shuhui): to polish these two tests. They are failing with BigNumber.
-  // it("Deposit and test reinvest", async function () {
-  //   await testReinvest(managerContract, strategyContract);
-  // });
+  it("Deposit and test reinvest", async function () {
+    await testReinvest(managerContract, strategyContract);
+  });
 
   it("Should fail for doing unauthorized operations", async function () {
     await expect(
