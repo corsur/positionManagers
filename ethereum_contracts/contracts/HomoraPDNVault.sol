@@ -16,7 +16,6 @@ import "./interfaces/IHomoraSpell.sol";
 import "./interfaces/IHomoraAdapter.sol";
 
 import "./libraries/HomoraAdapterLib.sol";
-import "./libraries/OracleLib.sol";
 import "./libraries/VaultLib.sol";
 
 // Allow external linking of library. Our library doesn't contain assembly and
@@ -58,7 +57,7 @@ contract HomoraPDNVault is
     mapping(address => bool) public isController;
 
     // --- config ---
-    VaultLib.PairInfo public pairInfo; // token 0 address, token 1 address, ERC-20 LP token address
+    PairInfo public pairInfo; // token 0 address, token 1 address, ERC-20 LP token address
     address public spell; // Homora's Spell contract address
     uint256 public leverageLevel; // target leverage
     uint256 public pid; // pool id
@@ -72,7 +71,7 @@ contract HomoraPDNVault is
     uint256 public targetDebtRatio; // target debt ratio * 10000, 92% -> 9200
     uint256 public minDebtRatio; // minimum debt ratio * 10000
     uint256 public maxDebtRatio; // maximum debt ratio * 10000
-    uint256 public deltaThreshold; // delta deviation percentage * 10000
+    uint256 public deltaThreshold; // delta deviation threshold in percentage * 10000
 
     ApertureVaultLimits public vaultLimits;
     ApertureFeeConfig public feeConfig;
@@ -137,14 +136,8 @@ contract HomoraPDNVault is
         isController[_controller] = true;
         homoraBank = IHomoraBank(_homoraBank);
         oracle = homoraBank.oracle();
-        require(
-            OracleLib.support(oracle, _stableToken),
-            "Oracle doesn't support stable token."
-        );
-        require(
-            OracleLib.support(oracle, _assetToken),
-            "Oracle doesn't support asset token."
-        );
+        require(VaultLib.support(oracle, _stableToken));
+        require(VaultLib.support(oracle, _assetToken));
         pairInfo.stableToken = _stableToken;
         pairInfo.assetToken = _assetToken;
         pairInfo.rewardToken = _rewardToken;
@@ -156,14 +149,8 @@ contract HomoraPDNVault is
             pairInfo.stableToken,
             pairInfo.assetToken
         );
-        require(
-            pairInfo.lpToken != address(0),
-            "Pair does not match the spell."
-        );
-        require(
-            OracleLib.supportLP(oracle, pairInfo.lpToken),
-            "Oracle doesn't support lpToken."
-        );
+        require(pairInfo.lpToken != address(0));
+        require(VaultLib.supportLP(oracle, pairInfo.lpToken));
         router = IHomoraSpell(spell).router();
         WAVAX = IHomoraAvaxRouter(router).WAVAX();
     }
@@ -200,10 +187,7 @@ contract HomoraPDNVault is
         address[] calldata controllers,
         bool[] calldata statuses
     ) external onlyOwner {
-        require(
-            controllers.length == statuses.length,
-            "controllers & statuses length mismatched"
-        );
+        require(controllers.length == statuses.length        );
         for (uint256 i = 0; i < controllers.length; i++) {
             isController[controllers[i]] = statuses[i];
         }
@@ -230,7 +214,7 @@ contract HomoraPDNVault is
         vaultLimits = _vaultLimits;
     }
 
-    /// @dev Set config for delta neutral valut.
+    /// @dev Set config for pseudo delta-neutral valut.
     /// @param _leverageLevel: Target leverage
     /// @param _targetDebtRatio: Target debt ratio * 10000
     /// @param _debtRatioWidth: Deviation of debt ratio * 10000
@@ -241,17 +225,17 @@ contract HomoraPDNVault is
         uint256 _debtRatioWidth,
         uint256 _deltaThreshold
     ) public onlyOwner {
-        require(_leverageLevel >= 2, "Leverage at least 2");
+        require(_leverageLevel >= 2);
         leverageLevel = _leverageLevel;
-        collateralFactor = OracleLib.getCollateralFactor(
+        collateralFactor = VaultLib.getCollateralFactor(
             oracle,
             pairInfo.lpToken
         );
-        stableBorrowFactor = OracleLib.getBorrowFactor(
+        stableBorrowFactor = VaultLib.getBorrowFactor(
             oracle,
             pairInfo.stableToken
         );
-        assetBorrowFactor = OracleLib.getBorrowFactor(
+        assetBorrowFactor = VaultLib.getBorrowFactor(
             oracle,
             pairInfo.assetToken
         );
@@ -273,7 +257,7 @@ contract HomoraPDNVault is
         targetDebtRatio = _targetDebtRatio;
         minDebtRatio = targetDebtRatio - _debtRatioWidth;
         maxDebtRatio = targetDebtRatio + _debtRatioWidth;
-        require(0 < minDebtRatio && maxDebtRatio < 10000, "Invalid debt ratio");
+        require(0 < minDebtRatio && maxDebtRatio < 10000);
 
         uint256 calculatedDeltaTh = VaultLib.calculateDeltaThreshold(
             leverageLevel,
@@ -789,7 +773,7 @@ contract HomoraPDNVault is
         uint256 equityBefore = getEquityETHValue();
 
         // Position info in Homora Bank
-        VaultLib.VaultPosition memory pos = VaultLib.getPositionInfo(
+        VaultPosition memory pos = VaultLib.getPositionInfo(
             homoraBank,
             homoraBankPosId,
             pairInfo
@@ -865,117 +849,25 @@ contract HomoraPDNVault is
 
     /// @dev Check if the farming position is delta neutral
     function isDeltaNeutral() internal view returns (bool) {
-        // Assume token A is the stable token
-        // Position info in Homora Bank
-        VaultLib.VaultPosition memory pos = VaultLib.getPositionInfo(
+        return VaultLib.isDeltaNeutral(
             homoraBank,
             homoraBankPosId,
-            pairInfo
+            pairInfo,
+            deltaThreshold
         );
-        return VaultLib.getOffset(pos.amtB, pos.debtAmtB) < deltaThreshold;
     }
 
     function isDebtRatioHealthy() internal view returns (bool) {
-        if (homoraBankPosId == VaultLib._NO_ID) {
-            return true;
-        } else {
-            uint256 debtRatio = getDebtRatio();
-            return (minDebtRatio < debtRatio) && (debtRatio < maxDebtRatio);
-        }
-    }
-
-    /// @notice Calculate the debt ratio and return the ratio, multiplied by 1e4
-    function getDebtRatio() internal view returns (uint256) {
-        return
-            homoraBankPosId == VaultLib._NO_ID
-                ? 0
-                : homoraBank.getBorrowETHValue(homoraBankPosId).mulDiv(
-                    10000,
-                    homoraBank.getCollateralETHValue(homoraBankPosId)
-                );
+        return VaultLib.isDebtRatioHealthy(
+            homoraBank,
+            homoraBankPosId,
+            minDebtRatio,
+            maxDebtRatio
+        );
     }
 
     function getCollateralSize() public view returns (uint256) {
         return VaultLib.getCollateralSize(homoraBank, homoraBankPosId);
-    }
-
-    /// @dev Query the current debt amount for both tokens. Stable first
-    function getDebtAmounts() public view returns (uint256, uint256) {
-        return VaultLib.getDebtAmounts(homoraBank, homoraBankPosId, pairInfo);
-    }
-
-    /// @dev Return the value of the given token as ETH, *not* weighted by the borrow factor
-    function getTokenETHValue(address token, uint256 amount)
-        internal
-        view
-        returns (uint256)
-    {
-        // change msg.sender to adapter
-        // Assume token is either stable or asset
-        if (token == pairInfo.stableToken) {
-            return
-                OracleLib
-                    .asETHBorrow(
-                        oracle,
-                        pairInfo.stableToken,
-                        amount,
-                        msg.sender
-                    )
-                    .mulDiv(10000, stableBorrowFactor);
-        } else {
-            return
-                OracleLib
-                    .asETHBorrow(
-                        oracle,
-                        pairInfo.assetToken,
-                        amount,
-                        msg.sender
-                    )
-                    .mulDiv(10000, assetBorrowFactor);
-        }
-    }
-
-    /// @dev Total debt value, *not* weighted by the borrow factors
-    function getBorrowETHValue() internal view returns (uint256) {
-        (
-            uint256 stableTokenDebtAmount,
-            uint256 assetTokenDebtAmount
-        ) = getDebtAmounts();
-        return
-            (homoraBankPosId == VaultLib._NO_ID)
-                ? 0
-                : getTokenETHValue(
-                    pairInfo.stableToken,
-                    stableTokenDebtAmount
-                ) + getTokenETHValue(pairInfo.assetToken, assetTokenDebtAmount);
-    }
-
-    /// @dev Total position value, not weighted by the collateral factor
-    function getCollateralETHValue() internal view returns (uint256) {
-        return
-            homoraBankPosId == VaultLib._NO_ID
-                ? 0
-                : homoraBank.getCollateralETHValue(homoraBankPosId).mulDiv(
-                    10000,
-                    collateralFactor
-                );
-    }
-
-    /// @dev Net equity value of the PDN position
-    function getEquityETHValue() internal view returns (uint256) {
-        return getCollateralETHValue() - getBorrowETHValue();
-    }
-
-    /// @dev Query a user position's share
-    /// @param position_info: Aperture position info
-    function getShareAmount(PositionInfo memory position_info)
-        public
-        view
-        returns (uint256)
-    {
-        return
-            positions[position_info.chainId][position_info.positionId]
-                .shareAmount;
     }
 
     /// @notice Evalute the current collateral's amount in terms of 2 tokens. Stable token first
@@ -988,20 +880,60 @@ contract HomoraPDNVault is
         return VaultLib.convertCollateralToTokens(pairInfo, collAmount);
     }
 
-    /// @notice Swap fromToken into toToken
-    function swap(
-        uint256 amount,
-        address fromToken,
-        address toToken
-    ) external returns (uint256) {
-        return VaultLib.swap(router, amount, fromToken, toToken);
+    /// @dev Query the current debt amount for both tokens. Stable first
+    function getDebtAmounts() public view returns (uint256, uint256) {
+        return VaultLib.getDebtAmounts(homoraBank, homoraBankPosId, pairInfo);
     }
 
-    /// @notice Swap native AVAX into toToken
-    function swapAVAX(uint256 amount, address toToken)
-        external
+    /// @dev Return the value of the given token as ETH, *not* weighted by the borrow factor. Assume token is supported by the oracle
+    function getTokenETHValue(address token, uint256 amount)
+        internal
+        view
         returns (uint256)
     {
-        return VaultLib.swapAVAX(router, amount, toToken);
+        return token == pairInfo.stableToken
+        ? VaultLib.getTokenETHValue(
+            oracle,
+            pairInfo.stableToken,
+            amount,
+            address(adapter),
+            stableBorrowFactor
+        )
+        : VaultLib.getTokenETHValue(
+            oracle,
+            pairInfo.assetToken,
+            amount,
+            address(adapter),
+            assetBorrowFactor
+        );
+    }
+
+    /// @dev Net equity value of the PDN position
+    function getEquityETHValue() internal view returns (uint256) {
+        return VaultLib.getCollateralETHValue(
+            homoraBank,
+            homoraBankPosId,
+            collateralFactor
+        ) - VaultLib.getBorrowETHValue(
+            homoraBank,
+            homoraBankPosId,
+            pairInfo,
+            oracle,
+            address(adapter),
+            stableBorrowFactor,
+            assetBorrowFactor
+        );
+    }
+
+    /// @dev Query a user position's share
+    /// @param position_info: Aperture position info
+    function getShareAmount(PositionInfo memory position_info)
+        public
+        view
+        returns (uint256)
+    {
+        return
+            positions[position_info.chainId][position_info.positionId]
+                .shareAmount;
     }
 }
