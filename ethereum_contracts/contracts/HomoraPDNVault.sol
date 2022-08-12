@@ -90,8 +90,6 @@ contract HomoraPDNVault is
     uint256 public maxCapacity; // Maximum amount allowed in stable across the vault
     uint256 public maxOpenPerTx; // Maximum amount allowed in stable to add in one transaction
     uint256 public maxWithdrawPerTx; // Maximum amount allowed in stable to withdraw in one transaction
-//    uint256 public withdrawFee; // multiplied by 1e4
-//    uint256 public harvestFee; // multiplied by 1e4
     uint256 lastCollectionTimestamp; // Last timestamp when collecting management fee
 
     ApertureFeeConfig public feeConfig;
@@ -227,7 +225,7 @@ contract HomoraPDNVault is
         uint256 _maxCapacity,
         uint256 _maxOpenPerTx,
         uint256 _maxWithdrawPerTx
-    ) public onlyAdmin {
+    ) public onlyOwner {
         maxCapacity = _maxCapacity;
         maxOpenPerTx = _maxOpenPerTx;
         maxWithdrawPerTx = _maxWithdrawPerTx;
@@ -501,7 +499,8 @@ contract HomoraPDNVault is
         IERC20(assetToken).approve(address(homoraBank), 0);
 
         // Position equity after adding liquidity
-        uint256 equityChange = getEquityETHValue() - equityBefore;
+        uint256 equityAfter = getEquityETHValue();
+        uint256 equityChange = equityAfter - equityBefore;
         // Calculate user share amount.
         uint256 shareAmount = equityBefore == 0
             ? equityChange
@@ -512,6 +511,10 @@ contract HomoraPDNVault is
         }
 
         if (equityChange > OracleLib.getTokenETHValue(oracle, stableToken, maxOpenPerTx, msg.sender)) {
+            revert Vault_Limit_Exceeded();
+        }
+
+        if (equityAfter > OracleLib.getTokenETHValue(oracle, stableToken, maxCapacity, msg.sender)) {
             revert Vault_Limit_Exceeded();
         }
 
@@ -565,6 +568,8 @@ contract HomoraPDNVault is
             reinvestInternal(minReinvestETH);
         }
 
+        collectManagementFee();
+
         // Record original position equity before removing liquidity
         uint256 equityBefore = getEquityETHValue();
 
@@ -607,11 +612,11 @@ contract HomoraPDNVault is
         // Calculate token disbursement amount.
         uint256[3] memory withdrawAmounts = [
             // Stable token withdraw amount
-            (10000 - withdrawFee) * IERC20(stableToken).balanceOf(address(this)) / 10000,
+            (10000 - feeConfig.withdrawFee) * IERC20(stableToken).balanceOf(address(this)) / 10000,
             // Asset token withdraw amount
-            (10000 - withdrawFee) * IERC20(assetToken).balanceOf(address(this)) / 10000,
+            (10000 - feeConfig.withdrawFee) * IERC20(assetToken).balanceOf(address(this)) / 10000,
             // AVAX withdraw amount
-            (10000 - withdrawFee) * address(this).balance / 10000
+            (10000 - feeConfig.withdrawFee) * address(this).balance / 10000
         ];
 
         // Slippage control
@@ -658,6 +663,11 @@ contract HomoraPDNVault is
             withdrawAmounts[1],
             withdrawAmounts[2]
         );
+    }
+
+    function collectManagementFee() internal {
+        uint256 shareAmtMint = feeConfig.managementFee * (block.timestamp - lastCollectionTimestamp) * totalShareAmount / 31536000 / 10000;
+        lastCollectionTimestamp = block.timestamp;
     }
 
     /// @dev Check if the farming position is delta neutral
@@ -972,7 +982,7 @@ contract HomoraPDNVault is
         uint256 rewardAmt = IERC20(rewardToken).balanceOf(address(this));
         if (rewardAmt > 0) {
             uint256 stableRecv = swap(rewardAmt, rewardToken, stableToken);
-            uint256 harvestFeeAmt = harvestFee * stableRecv / 10000;
+            uint256 harvestFeeAmt = feeConfig.harvestFee * stableRecv / 10000;
             if (harvestFeeAmt > 0) {
                 IERC20(stableToken).safeTransfer(
                     feeCollector,
