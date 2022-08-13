@@ -468,4 +468,38 @@ library CrossChainLib {
         );
         require(index == instructionVM.payload.length, "invalid payload");
     }
+
+    function decodeInstructionVM(
+        CrossChainContext storage self,
+        bytes calldata encodedInstructionVM
+    )
+        external
+        returns (
+            WormholeCoreBridge.VM memory instructionVM,
+            uint8 instructionType
+        )
+    {
+        // Parse and validate instruction VM.
+        instructionVM = CrossChainLib.decodeWormholeVM(
+            encodedInstructionVM,
+            self.wormholeContext.coreBridge
+        );
+        require(
+            self.chainIdToApertureManager[instructionVM.emitterChainId] ==
+                instructionVM.emitterAddress,
+            "unexpected emitterAddress"
+        );
+        require(
+            !self.processedInstructions[instructionVM.hash],
+            "ix already processed"
+        );
+
+        // Mark this instruction as processed so it cannot be replayed.
+        self.processedInstructions[instructionVM.hash] = true;
+
+        // Parse version / instruction type.
+        // Note that Solidity checks array index for possible out of bounds, so there is no need for us to do so again.
+        require(instructionVM.payload[0] == 0, "invalid instruction version");
+        instructionType = uint8(instructionVM.payload[1]);
+    }
 }

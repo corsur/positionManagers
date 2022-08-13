@@ -411,30 +411,10 @@ contract ApertureManager is
         bytes calldata encodedInstructionVM,
         bytes[] calldata encodedTokenTransferVMs
     ) external {
-        // Parse and validate instruction VM.
-        WormholeCoreBridge.VM memory instructionVM = CrossChainLib
-            .decodeWormholeVM(
-                encodedInstructionVM,
-                crossChainContext.wormholeContext.coreBridge
-            );
-        require(
-            crossChainContext.chainIdToApertureManager[
-                instructionVM.emitterChainId
-            ] == instructionVM.emitterAddress,
-            "unexpected emitterAddress"
-        );
-        require(
-            !crossChainContext.processedInstructions[instructionVM.hash],
-            "ix already processed"
-        );
-
-        // Mark this instruction as processed so it cannot be replayed.
-        crossChainContext.processedInstructions[instructionVM.hash] = true;
-
-        // Parse version / instruction type.
-        // Note that Solidity checks array index for possible out of bounds, so there is no need for us to do so again.
-        require(instructionVM.payload[0] == 0, "invalid instruction version");
-        uint8 instructionType = uint8(instructionVM.payload[1]);
+        (
+            WormholeCoreBridge.VM memory instructionVM,
+            uint8 instructionType
+        ) = crossChainContext.decodeInstructionVM(encodedInstructionVM);
         if (instructionType == INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT) {
             crossChainContext.processSingleTokenDisbursementInstruction(
                 instructionVM,
