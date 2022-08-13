@@ -1,36 +1,51 @@
 const { ethers } = require("hardhat");
 
+const wormholeTokenBridgeABI = [
+  "function wormhole() external view returns (address)",
+];
+
 async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
+  const wormholeTokenBridgeContract = new ethers.Contract(
+    wormholeTokenBridgeAddr,
+    wormholeTokenBridgeABI,
+    signer
+  );
+  const wormholeCoreBridgeAddr = await wormholeTokenBridgeContract.wormhole();
+
   const curveRouterLib = await ethers.getContractFactory("CurveRouterLib", signer);
   const curveRouterLibAddress = (await curveRouterLib.deploy()).address;
 
-  const crossChainContractFactory = await ethers.getContractFactory("CrossChain", signer);
-  const crossChainContract = await crossChainContractFactory.deploy(
-    /*_consistencyLevel=*/ 1,
-    wormholeTokenBridgeAddr,
-    /*_crossChainFeeBPS=*/ 0,
-    /*_feeSink=*/ wormholeTokenBridgeAddr,
-  );
+  const crossChainLib = await ethers.getContractFactory("CrossChainLib",
+    {
+      libraries: {
+        CurveRouterLib: curveRouterLibAddress,
+      },
+      signer: signer
+    });
+  const crossChainLibAddress = (await crossChainLib.deploy()).address;
 
-  const ApertureManager = await ethers.getContractFactory(
+  const apertureManagerContractFactory = await ethers.getContractFactory(
     "ApertureManager",
     {
-      libraries: { CurveRouterLib: curveRouterLibAddress },
+      libraries: {
+        CrossChainLib: crossChainLibAddress,
+        CurveRouterLib: curveRouterLibAddress,
+      },
       signer: signer
     }
   );
 
-  const apertureManager = await upgrades.deployProxy(
-    ApertureManager,
+  const apertureManagerProxy = await upgrades.deployProxy(
+    apertureManagerContractFactory,
     [
-      crossChainContract.address
+      [wormholeTokenBridgeAddr, wormholeCoreBridgeAddr, /*consistencyLevel=*/1],
+      [/*feeBps=*/100, /*feeSink=*/wormholeTokenBridgeAddr]
     ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
   );
-  await apertureManager.deployed();
+  await apertureManagerProxy.deployed();
 
-  // Temporarily returns both contract addresses. Once "crossChainContract" is converted to a library, only "apertureManager" needs to be returned.
-  return [apertureManager, crossChainContract];
+  return apertureManagerProxy;
 }
 
 module.exports = {

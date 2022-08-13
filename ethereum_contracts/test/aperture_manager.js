@@ -132,7 +132,6 @@ async function testUSTDeltaNeutralInvest(signer, apertureManager) {
 describe("Aperture manager tests on Ethereum Mainnet Fork", function () {
   var signer = undefined;
   var apertureManager = undefined;
-  var crossChain = undefined;
 
   before("Setup before each test", async function () {
     await network.provider.request({
@@ -149,7 +148,7 @@ describe("Aperture manager tests on Ethereum Mainnet Fork", function () {
 
     // This is an FTX wallet with ETH/USDC/BUSD balances.
     signer = await ethers.getImpersonatedSigner("0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2");
-    [apertureManager, crossChain] = await deployApertureManager(signer, ETH_MAINNET_TOKEN_BRIDGE_ADDR);
+    apertureManager = await deployApertureManager(signer, ETH_MAINNET_TOKEN_BRIDGE_ADDR);
 
     // Register Aperture Terra manager.
     await apertureManager.updateApertureManager(
@@ -164,9 +163,6 @@ describe("Aperture manager tests on Ethereum Mainnet Fork", function () {
       WORMHOLE_UST_TOKEN_ADDR,
       true
     );
-
-    // Update manager for cross chain contract.
-    await crossChain.updateManager(apertureManager.address);
   });
 
   it("Should add/remove a strategy", async function () {
@@ -186,77 +182,25 @@ describe("Aperture manager tests on Ethereum Mainnet Fork", function () {
     await testUSTDeltaNeutralInvest(signer, apertureManager);
   });
 
-  it("Should update cross-chain fee", async function () {
-    await crossChain.updateCrossChainFeeBPS(20);
-    expect(await crossChain.CROSS_CHAIN_FEE_BPS()).to.equal(20);
+  it("Should update cross-chain fee context", async function () {
+    await apertureManager.updateCrossChainFeeContext([/*feeBps=*/20, /*feeSink=*/signer.address]);
+    expect((await apertureManager.crossChainContext())[1][0]).to.equal(20);
+    expect((await apertureManager.crossChainContext())[1][1]).to.equal(signer.address);
   });
 
   it("Should not be able to set cross-chain fee above 100 bps", async function () {
-    crossChain
-      .updateCrossChainFeeBPS(101)
-      .catch((error) =>
-        expect(error)
-          .to.be.an("error")
-          .with.property(
-            "message",
-            "VM Exception while processing transaction: reverted with reason string 'crossChainFeeBPS exceeds maximum allowed value of 100'"
-          )
-      );
+    await expect(apertureManager.updateCrossChainFeeContext([/*feeBps=*/101, /*feeSink=*/signer.address])).to.be.revertedWith("feeBps too large");
   });
 
-  it("Should update fee sink address", async function () {
-    await crossChain.updateFeeSink(
-      "0x16be88fa89e7ff500a5b6854faea2d9a4b2f7383"
-    );
-    expect(await crossChain.FEE_SINK()).to.equal(
-      "0x16be88Fa89e7FF500A5B6854fAea2d9a4B2f7383"
-    );
+  it("Should not be able to update fee sink address to null", async function () {
+    await expect(apertureManager.updateCrossChainFeeContext([/*feeBps=*/10, /*feeSink=*/"0x0000000000000000000000000000000000000000"]))
+      .to.be.revertedWith("feeSink can't be null");
   });
 
-  it("Should update fee sink address", async function () {
-    crossChain
-      .updateFeeSink("0x0000000000000000000000000000000000000000")
-      .catch((error) =>
-        expect(error)
-          .to.be.an("error")
-          .with.property(
-            "message",
-            "VM Exception while processing transaction: reverted with reason string 'feeSink address must be non-zero'"
-          )
-      );
-  });
-
-  it("Non-owner should not have access to updateCrossChainFeeBPS", async function () {
-    crossChain = crossChain.connect(
+  it("Non-owner should not have access to updateCrossChainFeeContext", async function () {
+    await expect(apertureManager.connect(
       (await ethers.getSigners())[2] // Use a different wallet.
-    );
-
-    return crossChain
-      .updateCrossChainFeeBPS(2000)
-      .catch((error) =>
-        expect(error)
-          .to.be.an("error")
-          .with.property(
-            "message",
-            "VM Exception while processing transaction: reverted with reason string 'Ownable: caller is not the owner'"
-          )
-      );
-  });
-
-  it("Non-owner should not have access to updateFeeSink", async function () {
-    crossChain = crossChain.connect(
-      (await ethers.getSigners())[2] // Use a different wallet.
-    );
-
-    return crossChain
-      .updateFeeSink("0x16be88fa89e7ff500a5b6854faea2d9a4b2f7383")
-      .catch((error) =>
-        expect(error)
-          .to.be.an("error")
-          .with.property(
-            "message",
-            "VM Exception while processing transaction: reverted with reason string 'Ownable: caller is not the owner'"
-          )
-      );
+    ).updateCrossChainFeeContext([/*feeBps=*/20, /*feeSink=*/signer.address]))
+      .to.be.revertedWith("Ownable: caller is not the owner");
   });
 });

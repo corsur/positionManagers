@@ -461,7 +461,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     .connect(wallets[0])
     .executeStrategy(
       /*positionId=*/ 0,
-      /*assetInfos=*/ [],
+      /*assetInfos=*/[],
       encodedWithdrawData,
       txOptions
     );
@@ -493,7 +493,7 @@ describe("HomoraPDNVault Initialization", function () {
     });
 
     // Aperture manager contract.
-    [managerContract, _] = await deployApertureManager(
+    managerContract = await deployApertureManager(
       mainWallet,
       AVAX_MAINNET_TOKEN_BRIDGE_ADDR
     );

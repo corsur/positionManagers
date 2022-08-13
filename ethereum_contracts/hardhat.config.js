@@ -9,7 +9,6 @@ const {
   ETH_PRV_KEY_1,
   INFURA_RINKERBY_URL,
   INFURA_ROPSTEN_URL,
-  AVAX_MAINNET_URL,
 } = require("./constants");
 
 // This is a sample Hardhat task. To learn how to create your own go to
@@ -69,9 +68,9 @@ module.exports = {
   },
   abiExporter: {
     path: "./data/abi",
-    runOnCompile: false,
+    runOnCompile: true,
     clear: true,
-    flat: true,
+    flat: false,
     spacing: 2,
     pretty: true,
   },
