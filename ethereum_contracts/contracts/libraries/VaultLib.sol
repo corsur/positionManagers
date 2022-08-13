@@ -31,7 +31,7 @@ library VaultLib {
         );
 
     uint256 public constant _NO_ID = 0;
-    uint256 public constant feeRate = 30;   // feeRate = 0.3%
+    uint256 public constant feeRate = 30; // feeRate = 0.3%
     uint256 public constant unity = 10000;
     uint256 public constant unityMinusFee = 9970;
     uint256 public constant someLargeNumber = 10**18;
@@ -93,13 +93,10 @@ library VaultLib {
         uint256 collateralFactor,
         uint256 stableBorrowFactor,
         uint256 assetBorrowFactor
-    )
-        public
-        pure
-        returns (uint256)
-    {
-        return (stableBorrowFactor.mulDiv(leverage - 2, leverage)
-            + assetBorrowFactor).mulDiv(10000, 2 * collateralFactor);
+    ) public pure returns (uint256) {
+        return
+            (stableBorrowFactor.mulDiv(leverage - 2, leverage) +
+                assetBorrowFactor).mulDiv(10000, 2 * collateralFactor);
     }
 
     /// @dev Calculate the threshold for delta as a function of leverage and width of debt ratio
@@ -109,12 +106,15 @@ library VaultLib {
         uint256 collateralFactor,
         uint256 stableBorrowFactor,
         uint256 assetBorrowFactor
-    )
-        public
-        pure
-        returns (uint256)
-    {
-        return (debtRatioWidth * leverage).mulDiv(leverage * collateralFactor, leverage * assetBorrowFactor - (leverage - 2) * stableBorrowFactor);
+    ) public pure returns (uint256) {
+        return
+            (debtRatioWidth * leverage).mulDiv(
+                leverage * collateralFactor,
+                leverage *
+                    assetBorrowFactor -
+                    (leverage - 2) *
+                    stableBorrowFactor
+            );
     }
 
     /// @dev Calculate the params passed to Homora to create PDN position
@@ -128,7 +128,8 @@ library VaultLib {
         uint256 Ub,
         uint256 L
     )
-        public view
+        public
+        view
         returns (
             uint256 stableTokenBorrowAmount,
             uint256 assetTokenBorrowAmount
@@ -137,23 +138,42 @@ library VaultLib {
         // Na: Stable token pool reserve
         // Nb: Asset token pool reserve
         (uint256 Na, uint256 Nb) = getReserves(pairInfo);
-        uint256 b = 2 * Nb + 2 * Ub - (L * Ub).mulDiv(unityMinusFee, unity)
-            - (L * unityMinusFee * (Na + Ua)).mulDiv(Ub, unity * Na).mulDiv(Ub, Nb)
-            - (L * (unity * Nb + (unity + unityMinusFee) * Ub)).mulDiv(Ua, unity * Na);
-        uint256 c = (L * (Nb + Ub)).mulDiv(Nb + Ub, Nb)
-            * ((unityMinusFee * (Na + Ua)).mulDiv(Ub, unity* Na) + Nb.mulDiv(Ua, Na));
+        uint256 b = 2 *
+            Nb +
+            2 *
+            Ub -
+            (L * Ub).mulDiv(unityMinusFee, unity) -
+            (L * unityMinusFee * (Na + Ua)).mulDiv(Ub, unity * Na).mulDiv(
+                Ub,
+                Nb
+            ) -
+            (L * (unity * Nb + (unity + unityMinusFee) * Ub)).mulDiv(
+                Ua,
+                unity * Na
+            );
+        uint256 c = (L * (Nb + Ub)).mulDiv(Nb + Ub, Nb) *
+            ((unityMinusFee * (Na + Ua)).mulDiv(Ub, unity * Na) +
+                Nb.mulDiv(Ua, Na));
         uint256 squareRoot = Math.sqrt(b * b + 8 * c);
         require(squareRoot > b, "No positive root");
         assetTokenBorrowAmount = (squareRoot - b) / 4;
-        stableTokenBorrowAmount = ((L - 2) * assetTokenBorrowAmount).mulDiv(Na + Ua, L * (Nb + Ub) + 2 * assetTokenBorrowAmount)
-            + 1;
+        stableTokenBorrowAmount =
+            ((L - 2) * assetTokenBorrowAmount).mulDiv(
+                Na + Ua,
+                L * (Nb + Ub) + 2 * assetTokenBorrowAmount
+            ) +
+            1;
     }
 
     /// @dev Harvest farming rewards
     /// @param homoraBank: Instantiated HomoraBank Interface
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
     /// @param spell: Homora's Spell contract address
-    function harvest(IHomoraBank homoraBank, uint256 homoraBankPosId, address spell) external {
+    function harvest(
+        IHomoraBank homoraBank,
+        uint256 homoraBankPosId,
+        address spell
+    ) external {
         homoraBank.execute(homoraBankPosId, spell, HARVEST_DATA);
     }
 
@@ -170,8 +190,12 @@ library VaultLib {
         uint256 leverageLevel,
         uint256 pid
     ) external {
-        uint256 stableTokenBalance = IERC20(pairInfo.stableToken).balanceOf(address(this));
-        uint256 assetTokenBalance = IERC20(pairInfo.assetToken).balanceOf(address(this));
+        uint256 stableTokenBalance = IERC20(pairInfo.stableToken).balanceOf(
+            address(this)
+        );
+        uint256 assetTokenBalance = IERC20(pairInfo.assetToken).balanceOf(
+            address(this)
+        );
         console.log("reinvest stableTokenBalance", stableTokenBalance);
         console.log("reinvest assetTokenBalance", assetTokenBalance);
 
@@ -179,15 +203,21 @@ library VaultLib {
             uint256 stableTokenBorrowAmount,
             uint256 assetTokenBorrowAmount
         ) = deltaNeutral(
-            pairInfo,
-            stableTokenBalance,
-            assetTokenBalance,
-            leverageLevel
-        );
+                pairInfo,
+                stableTokenBalance,
+                assetTokenBalance,
+                leverageLevel
+            );
 
         // Approve HomoraBank transferring tokens.
-        IERC20(pairInfo.stableToken).approve(address(homoraBank), stableTokenBalance);
-        IERC20(pairInfo.assetToken).approve(address(homoraBank), assetTokenBalance);
+        IERC20(pairInfo.stableToken).approve(
+            address(homoraBank),
+            stableTokenBalance
+        );
+        IERC20(pairInfo.assetToken).approve(
+            address(homoraBank),
+            assetTokenBalance
+        );
 
         // Encode the calling function.
         homoraBank.execute(
@@ -229,10 +259,7 @@ library VaultLib {
         address spell,
         PairInfo storage pairInfo,
         uint256 leverageLevel
-    )
-        external
-        returns (uint256, uint256)
-    {
+    ) external returns (uint256, uint256) {
         ShortHelper memory vars;
         (vars.reserveABefore, vars.reserveBBefore) = getReserves(pairInfo);
         (
@@ -250,7 +277,15 @@ library VaultLib {
                 REMOVE_LIQUIDITY_SIG,
                 pairInfo.stableToken,
                 pairInfo.assetToken,
-                [vars.collWithdrawAmt, 0, vars.amtARepay, vars.amtBRepay, 0, 0, 0]
+                [
+                    vars.collWithdrawAmt,
+                    0,
+                    vars.amtARepay,
+                    vars.amtBRepay,
+                    0,
+                    0,
+                    0
+                ]
             )
         );
 
@@ -271,22 +306,21 @@ library VaultLib {
         PairInfo storage pairInfo,
         uint256 leverageLevel,
         uint256 pid
-    )
-        external
-        returns (uint256, uint256)
-    {
+    ) external returns (uint256, uint256) {
         LongHelper memory vars;
         (vars.reserveABefore, vars.reserveBBefore) = getReserves(pairInfo);
         vars.amtAReward = IERC20(pairInfo.stableToken).balanceOf(address(this));
 
-        (
-            vars.amtABorrow,
-            vars.amtBBorrow,
-            vars.Sa,
-            vars.Sb
-        ) = _rebalanceLong(pos, leverageLevel, vars);
+        (vars.amtABorrow, vars.amtBBorrow, vars.Sa, vars.Sb) = _rebalanceLong(
+            pos,
+            leverageLevel,
+            vars
+        );
 
-        IERC20(pairInfo.stableToken).approve(address(homoraBank), vars.amtAReward);
+        IERC20(pairInfo.stableToken).approve(
+            address(homoraBank),
+            vars.amtAReward
+        );
 
         homoraBank.execute(
             homoraBankPosId,
@@ -295,7 +329,16 @@ library VaultLib {
                 ADD_LIQUIDITY_SIG,
                 pairInfo.stableToken,
                 pairInfo.assetToken,
-                [vars.amtAReward, 0, 0, vars.amtABorrow, vars.amtBBorrow, 0, 0, 0],
+                [
+                    vars.amtAReward,
+                    0,
+                    0,
+                    vars.amtABorrow,
+                    vars.amtBBorrow,
+                    0,
+                    0,
+                    0
+                ],
                 pid
             )
         );
@@ -306,7 +349,8 @@ library VaultLib {
 
     /// @notice Calculate offset ratio, multiplied by 1e4
     function getOffset(uint256 currentVal, uint256 targetVal)
-        public pure
+        public
+        pure
         returns (uint256)
     {
         uint256 diff = currentVal > targetVal
@@ -342,11 +386,7 @@ library VaultLib {
     function convertCollateralToTokens(
         PairInfo storage pairInfo,
         uint256 collAmount
-    )
-        public
-        view
-        returns (uint256 amount0, uint256 amount1)
-    {
+    ) public view returns (uint256 amount0, uint256 amount1) {
         if (collAmount == 0) {
             amount0 = 0;
             amount1 = 0;
@@ -361,10 +401,7 @@ library VaultLib {
 
     /// @param homoraBank: Instantiated HomoraBank Interface
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    function getCollateralSize(
-        IHomoraBank homoraBank,
-        uint256 homoraBankPosId
-    )
+    function getCollateralSize(IHomoraBank homoraBank, uint256 homoraBankPosId)
         public
         view
         returns (uint256)
@@ -384,11 +421,7 @@ library VaultLib {
         IHomoraBank homoraBank,
         uint256 homoraBankPosId,
         PairInfo storage pairInfo
-    )
-        public
-        view
-        returns (uint256, uint256)
-    {
+    ) public view returns (uint256, uint256) {
         if (homoraBankPosId == _NO_ID) {
             return (0, 0);
         } else {
@@ -415,14 +448,17 @@ library VaultLib {
         IHomoraBank homoraBank,
         uint256 homoraBankPosId,
         PairInfo storage pairInfo
-    )
-        external
-        view
-        returns (VaultPosition memory pos)
-    {
+    ) external view returns (VaultPosition memory pos) {
         pos.collateralSize = getCollateralSize(homoraBank, homoraBankPosId);
-        (pos.amtA, pos.amtB) = convertCollateralToTokens(pairInfo, pos.collateralSize);
-        (pos.debtAmtA, pos.debtAmtB) = getDebtAmounts(homoraBank, homoraBankPosId, pairInfo);
+        (pos.amtA, pos.amtB) = convertCollateralToTokens(
+            pairInfo,
+            pos.collateralSize
+        );
+        (pos.debtAmtA, pos.debtAmtB) = getDebtAmounts(
+            homoraBank,
+            homoraBankPosId,
+            pairInfo
+        );
     }
 
     /// @dev Calculate the amount of collateral to withdraw and the amount of each token to repay by Homora to reach DN
@@ -454,22 +490,37 @@ library VaultLib {
             pos.debtAmtB - pos.amtB,
             vars.reserveBBefore - pos.amtB
         );
-        vars.collWithdrawAmt = pos.collateralSize.mulDiv(
-            leverageLevel * (pos.debtAmtA * someLargeNumber + vars.Ka * vars.reserveABefore),
-            2 * (someLargeNumber + vars.Ka) * pos.amtA
-            ) - pos.collateralSize.mulDiv(leverageLevel - 2, 2);
+        vars.collWithdrawAmt =
+            pos.collateralSize.mulDiv(
+                leverageLevel *
+                    (pos.debtAmtA *
+                        someLargeNumber +
+                        vars.Ka *
+                        vars.reserveABefore),
+                2 * (someLargeNumber + vars.Ka) * pos.amtA
+            ) -
+            pos.collateralSize.mulDiv(leverageLevel - 2, 2);
         require(vars.collWithdrawAmt > 0, "Invalid collateral withdraw amount");
 
-        vars.amtAWithdraw = pos.amtA.mulDiv(vars.collWithdrawAmt, pos.collateralSize);
+        vars.amtAWithdraw = pos.amtA.mulDiv(
+            vars.collWithdrawAmt,
+            pos.collateralSize
+        );
         vars.reserveAAfter = vars.reserveABefore - vars.amtAWithdraw;
         vars.Sa = vars.reserveAAfter.mulDiv(vars.Ka, someLargeNumber);
         if (vars.amtAWithdraw > vars.Sa) {
             vars.amtARepay = vars.amtAWithdraw - vars.Sa;
         } else {
             vars.amtARepay = 0;
-            vars.collWithdrawAmt = pos.collateralSize.mulDiv(vars.Ka * vars.reserveABefore, (someLargeNumber + vars.Ka) * pos.amtA);
+            vars.collWithdrawAmt = pos.collateralSize.mulDiv(
+                vars.Ka * vars.reserveABefore,
+                (someLargeNumber + vars.Ka) * pos.amtA
+            );
         }
-        vars.amtBWithdraw = pos.amtB.mulDiv(vars.collWithdrawAmt, pos.collateralSize);
+        vars.amtBWithdraw = pos.amtB.mulDiv(
+            vars.collWithdrawAmt,
+            pos.collateralSize
+        );
         vars.reserveBAfter = vars.reserveBBefore - vars.amtBWithdraw;
         vars.Sb = vars.reserveBAfter.mulDiv(vars.Kb, someLargeNumber);
         vars.amtBRepay = vars.amtBWithdraw + vars.Sb;
@@ -480,15 +531,30 @@ library VaultLib {
             Math.Rounding.Up
         );
         vars.amtARepayErr = vars.reserveAAfter.ceilDiv(someLargeNumber);
-        vars.amtBRepayErr = vars.Kb.mulDiv(
-            leverageLevel * vars.reserveBBefore * pos.collateralSize + 2 * someLargeNumber * pos.amtB,
-            2 * someLargeNumber * pos.collateralSize
-        ).ceilDiv(someLargeNumber) + vars.Kb.ceilDiv(someLargeNumber);
-        require(vars.amtBRepay >= vars.amtBRepayErr, "Invalid token B repay amount");
+        vars.amtBRepayErr =
+            vars
+                .Kb
+                .mulDiv(
+                    leverageLevel *
+                        vars.reserveBBefore *
+                        pos.collateralSize +
+                        2 *
+                        someLargeNumber *
+                        pos.amtB,
+                    2 * someLargeNumber * pos.collateralSize
+                )
+                .ceilDiv(someLargeNumber) +
+            vars.Kb.ceilDiv(someLargeNumber);
+        require(
+            vars.amtBRepay >= vars.amtBRepayErr,
+            "Invalid token B repay amount"
+        );
 
         return (
             vars.collWithdrawAmt + vars.collWithdrawErr,
-            vars.amtARepay > vars.amtARepayErr ? vars.amtARepay - vars.amtARepayErr : 0,
+            vars.amtARepay > vars.amtARepayErr
+                ? vars.amtARepay - vars.amtARepayErr
+                : 0,
             vars.amtBRepay - vars.amtBRepayErr,
             vars.Sa,
             vars.Sb
@@ -502,7 +568,7 @@ library VaultLib {
     /// @param vars: Helper struct
     function _rebalanceLong(
         VaultPosition memory pos,
-//        uint256[4] memory pos, // amtA, amtB, debtA, debtB
+        //        uint256[4] memory pos, // amtA, amtB, debtA, debtB
         uint256 leverageLevel,
         LongHelper memory vars
     )
@@ -515,32 +581,72 @@ library VaultLib {
             uint256
         )
     {
-        vars.Sb = vars.reserveBBefore.mulDiv(pos.amtB - pos.debtAmtB, vars.reserveBBefore - pos.amtB);
+        vars.Sb = vars.reserveBBefore.mulDiv(
+            pos.amtB - pos.debtAmtB,
+            vars.reserveBBefore - pos.amtB
+        );
         vars.Sa = vars.reserveABefore.mulDiv(
             unityMinusFee * (pos.amtB - pos.debtAmtB),
-            unity * vars.reserveBBefore - feeRate * pos.amtB - unityMinusFee * pos.debtAmtB
+            unity *
+                vars.reserveBBefore -
+                feeRate *
+                pos.amtB -
+                unityMinusFee *
+                pos.debtAmtB
         );
         vars.amtAAfter = leverageLevel.mulDiv(
-            pos.amtA.mulDiv(vars.reserveABefore - vars.Sa, vars.reserveABefore) - pos.debtAmtA + vars.Sa + vars.amtAReward,
+            pos.amtA.mulDiv(
+                vars.reserveABefore - vars.Sa,
+                vars.reserveABefore
+            ) -
+                pos.debtAmtA +
+                vars.Sa +
+                vars.amtAReward,
             2
         ); // n_af
 
-        vars.debtAAfter = vars.amtAAfter.mulDiv(leverageLevel - 2, leverageLevel);
+        vars.debtAAfter = vars.amtAAfter.mulDiv(
+            leverageLevel - 2,
+            leverageLevel
+        );
 
         if (vars.debtAAfter > pos.debtAmtA) {
             vars.amtABorrow = vars.debtAAfter - pos.debtAmtA;
-            vars.amtBAfter = pos.amtB.mulDiv(vars.reserveABefore, vars.reserveABefore - vars.Sa)
+            vars.amtBAfter = pos
+                .amtB
+                .mulDiv(vars.reserveABefore, vars.reserveABefore - vars.Sa)
                 .mulDiv(vars.reserveBBefore + vars.Sb, vars.reserveBBefore)
                 .mulDiv(vars.amtAAfter, pos.amtA);
             vars.amtBBorrow = vars.amtBAfter - pos.debtAmtB;
             vars.amtABorrowErr = (leverageLevel - 2).ceilDiv(2);
-            vars.amtBBorrowErr = (leverageLevel + 2).mulDiv(vars.reserveBBefore, 2 * vars.reserveABefore, Math.Rounding.Up) + 1;
+            vars.amtBBorrowErr =
+                (leverageLevel + 2).mulDiv(
+                    vars.reserveBBefore,
+                    2 * vars.reserveABefore,
+                    Math.Rounding.Up
+                ) +
+                1;
         } else {
             vars.amtABorrow = 0;
-            vars.amtBBorrow = vars.Sb.mulDiv(
-                (unity + unityMinusFee) * vars.reserveBBefore - pos.amtB - unityMinusFee * pos.debtAmtB,
-                unity * (vars.reserveBBefore - pos.amtB)
-            ).mulDiv(vars.reserveABefore + vars.amtAReward, vars.reserveABefore) + vars.amtAReward.mulDiv(vars.reserveBBefore, vars.reserveABefore);
+            vars.amtBBorrow =
+                vars
+                    .Sb
+                    .mulDiv(
+                        (unity + unityMinusFee) *
+                            vars.reserveBBefore -
+                            pos.amtB -
+                            unityMinusFee *
+                            pos.debtAmtB,
+                        unity * (vars.reserveBBefore - pos.amtB)
+                    )
+                    .mulDiv(
+                        vars.reserveABefore + vars.amtAReward,
+                        vars.reserveABefore
+                    ) +
+                vars.amtAReward.mulDiv(
+                    vars.reserveBBefore,
+                    vars.reserveABefore
+                );
             vars.amtABorrowErr = 0;
             vars.amtBBorrowErr = 3;
         }
@@ -560,9 +666,11 @@ library VaultLib {
         address fromToken,
         address toToken
     )
-//        internal
         public
-        returns (uint256)
+        returns (
+            //        internal
+            uint256
+        )
     {
         IHomoraAvaxRouter _router = IHomoraAvaxRouter(router);
         address[] memory path = new address[](2);
@@ -588,9 +696,11 @@ library VaultLib {
         uint256 amount,
         address toToken
     )
-//        internal
         public
-        returns (uint256)
+        returns (
+            //        internal
+            uint256
+        )
     {
         IHomoraAvaxRouter _router = IHomoraAvaxRouter(router);
         address fromToken = _router.WAVAX();
@@ -620,13 +730,15 @@ library VaultLib {
     ) external {
         uint256 rewardAmt = IERC20(rewardToken).balanceOf(address(this));
         if (rewardAmt > 0) {
-            uint256 stableRecv = swap(router, rewardAmt, rewardToken, stableToken);
+            uint256 stableRecv = swap(
+                router,
+                rewardAmt,
+                rewardToken,
+                stableToken
+            );
             uint256 harvestFeeAmt = stableRecv.mulDiv(harvestFee, 10000);
             if (harvestFeeAmt > 0) {
-                IERC20(stableToken).safeTransfer(
-                    feeCollector,
-                    harvestFeeAmt
-                );
+                IERC20(stableToken).safeTransfer(feeCollector, harvestFeeAmt);
             }
         }
     }
