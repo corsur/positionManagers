@@ -12,16 +12,18 @@ async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
   );
   const wormholeCoreBridgeAddr = await wormholeTokenBridgeContract.wormhole();
 
-  const curveRouterLib = await ethers.getContractFactory("CurveRouterLib", signer);
+  const curveRouterLib = await ethers.getContractFactory(
+    "CurveRouterLib",
+    signer
+  );
   const curveRouterLibAddress = (await curveRouterLib.deploy()).address;
 
-  const crossChainLib = await ethers.getContractFactory("CrossChainLib",
-    {
-      libraries: {
-        CurveRouterLib: curveRouterLibAddress,
-      },
-      signer: signer
-    });
+  const crossChainLib = await ethers.getContractFactory("CrossChainLib", {
+    libraries: {
+      CurveRouterLib: curveRouterLibAddress,
+    },
+    signer: signer,
+  });
   const crossChainLibAddress = (await crossChainLib.deploy()).address;
 
   const apertureManagerContractFactory = await ethers.getContractFactory(
@@ -31,15 +33,19 @@ async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
         CrossChainLib: crossChainLibAddress,
         CurveRouterLib: curveRouterLibAddress,
       },
-      signer: signer
+      signer: signer,
     }
   );
 
   const apertureManagerProxy = await upgrades.deployProxy(
     apertureManagerContractFactory,
     [
-      [wormholeTokenBridgeAddr, wormholeCoreBridgeAddr, /*consistencyLevel=*/1],
-      [/*feeBps=*/100, /*feeSink=*/wormholeTokenBridgeAddr]
+      [
+        wormholeTokenBridgeAddr,
+        wormholeCoreBridgeAddr,
+        /*consistencyLevel=*/ 1,
+      ],
+      [/*feeBps=*/ 100, /*feeSink=*/ wormholeTokenBridgeAddr],
     ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
   );
@@ -48,6 +54,16 @@ async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
   return apertureManagerProxy;
 }
 
+async function deployHomoraAdapter(signer) {
+  const homoraAdapterFactory = await ethers.getContractFactory(
+    "HomoraAdapter",
+    signer
+  );
+
+  return await homoraAdapterFactory.connect(signer).deploy();
+}
+
 module.exports = {
   deployApertureManager: deployApertureManager,
+  deployHomoraAdapter: deployHomoraAdapter,
 };
