@@ -38,8 +38,8 @@ library OracleLib {
         require(_borrowFactor > 10000, "Invalid borrow factor");
     }
 
-    /// @dev Return the value of the given token as ETH, not weighted by the borrow factor
-    function getTokenETHValue(
+    /// @dev Return the value of the given token as ETH, weighted by the borrow factor
+    function asETHBorrow(
         address oracle,
         address token,
         uint256 amount,
@@ -48,7 +48,6 @@ library OracleLib {
         public view
         returns (uint256)
     {
-        return IHomoraOracle(oracle).asETHBorrow(token, amount, owner)
-        * 10**4 / getBorrowFactor(oracle, token);
+        return IHomoraOracle(oracle).asETHBorrow(token, amount, owner);
     }
 }

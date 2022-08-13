@@ -189,7 +189,7 @@ async function swapWAVAX(contract, swapAmt) {
 async function testSwap(strategyContract) {
   // Impersonate WAVAX holder and transfer.
   signer = await getImpersonatedSigner("0x0e082F06FF657D94310cB8cE8B0D9a04541d8052");
-  await WAVAX.connect(signer).transfer(strategyContract.address, BigNumber.from(200000).mul("1000000000000000000"), txOptions);
+  await WAVAX.connect(signer).transfer(strategyContract.address, BigNumber.from(1).mul("1000000000000000000"), txOptions);
 
   // Impersonate USDC holder and transfer.
   signer = await getImpersonatedSigner("0x279f8940ca2a44c35ca3edf7d28945254d0f0ae6");
@@ -222,7 +222,7 @@ async function testRebalance(managerContract, strategyContract) {
   // check debt
   let [usdcDebt, wavaxDebt] = await strategyContract
     .connect(wallets[0])
-    .currentDebtAmount(txOptions);
+    .getDebtAmounts(txOptions);
   console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
 
   // check if position state is healthy (no need to rebalance)
@@ -243,7 +243,7 @@ async function testRebalance(managerContract, strategyContract) {
   await expect(
     strategyContract.connect(wallets[0])
         .rebalance(10, 0, txOptions)
-  ).to.be.revertedWith("HomoraPDNVault_DebtRatioNotHealthy");
+  ).to.be.revertedWith("Slippage_Too_Large");
   // Swap back
   swapAmt = recvAmt;
   recvAmt = await swapWAVAX(router, swapAmt);
@@ -258,12 +258,18 @@ async function testRebalance(managerContract, strategyContract) {
     2, // _leverageLevel
     7154, // _targetDebtRatio
     350, // _debtRatioWidth
-    500, // _dnThreshold
+    490, // _dnThreshold
     txOptions
   );
   console.log("Leverage changed to 2");
+  await expect(
+    strategyContract.connect(wallets[0])
+        .rebalance(10, 0, txOptions)
+  ).to.be.revertedWith("Slippage_Too_Large");
+
+  // Increase slippage and rebalance again
   await strategyContract.connect(wallets[0])
-      .rebalance(10, 0, txOptions);
+      .rebalance(100, 0, txOptions);
 
   // expect to be in delta-neutral after rebalance
   await expect(
@@ -291,7 +297,7 @@ async function testRebalance(managerContract, strategyContract) {
   await expect(
     strategyContract.connect(wallets[0])
         .rebalance(10, 0, txOptions)
-  ).to.be.revertedWith("HomoraPDNVault_DebtRatioNotHealthy");
+  ).to.be.revertedWith("Slippage_Too_Large");
 
   // Swap back
   swapAmt = recvAmt;
@@ -316,7 +322,7 @@ async function testRebalance(managerContract, strategyContract) {
   );
   console.log("Leverage changed to 3");
   await strategyContract.connect(wallets[0])
-      .rebalance(10, 0, txOptions);
+      .rebalance(100, 0, txOptions);
 
   // expect to be in delta-neutral after rebalance
   await expect(
@@ -335,12 +341,12 @@ async function testReinvest(managerContract, strategyContract) {
 
   let reinvested = false;
   try {
-    await strategyContract.connect(wallets[0]).reinvest(txOptions);
+    await strategyContract.connect(wallets[0]).reinvest(0, txOptions);
     reinvested = true;
   } catch (err) {
     await expect(
-      strategyContract.connect(wallets[0]).reinvest(txOptions)
-    ).to.be.revertedWith("Insufficient liquidity minted");
+      strategyContract.connect(wallets[0]).reinvest(0, txOptions)
+    ).to.be.revertedWith("Insufficient_Liquidity_Mint");
     reinvested = false;
   }
 
@@ -438,10 +444,6 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
   console.log("share amount 1: ", shareAmount1.toString());
   var collSize0 = shareAmount0.mul(totalCollateralSize).div(totalShareAmount);
   var collSize1 = shareAmount1.mul(totalCollateralSize).div(totalShareAmount);
-
-  // Check debt ratio
-  let debtRatio = await strategyContract.getDebtRatio();
-  console.log("Debt ratio is ", debtRatio / 10000);
 
   [usdcAmount0, wavaxAmount0] =
     await strategyContract.convertCollateralToTokens(collSize0);
@@ -543,9 +545,16 @@ describe.only("HomoraPDNVault Initialization", function () {
       9231, // _targetDebtRatio
       100, // _debtRatioWidth
       300, // _deltaThreshold
-      0, // _harvestFee
-      0, // _withdrawFee
-      0, // _managementFee
+      [
+          20, // withdrawFee
+          1500, // harvestFee
+          200 // managementFee
+      ],
+      [
+          BigNumber.from(1000000).mul(1e6), // maxCapacity
+          BigNumber.from(200000).mul(1e6), // maxOpenPerTx
+          BigNumber.from(200000).mul(1e6) // maxWithdrawPerTx
+      ],
       txOptions
     );
     console.log("Homora PDN contract initialized");
@@ -585,7 +594,6 @@ describe.only("HomoraPDNVault Initialization", function () {
     await testRebalance(managerContract, strategyContract);
   });
 
-  // TODO(shuhui): to polish these two tests. They are failing with BigNumber.
   it("Deposit and test reinvest", async function () {
     await testReinvest(managerContract, strategyContract);
   });
@@ -593,6 +601,6 @@ describe.only("HomoraPDNVault Initialization", function () {
   it("Should fail for doing unauthorized operations", async function () {
     await expect(
       strategyContract.connect(wallets[0]).setConfig(0, 0, 0, 0, txOptions)
-    ).to.be.revertedWith("unauthorized admin op");
+    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 });
