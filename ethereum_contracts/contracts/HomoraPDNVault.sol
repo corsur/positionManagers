@@ -71,13 +71,13 @@ contract HomoraPDNVault is
 
     ApertureVaultLimits public vaultLimits;
     ApertureFeeConfig public feeConfig;
-    uint256 lastCollectionTimestamp; // last timestamp when collecting management fee
+    uint256 private lastCollectionTimestamp; // last timestamp when collecting management fee
 
     // --- state ---
     // positions[chainId][positionId] stores share information about the position identified by (chainId, positionId).
-    mapping(uint16 => mapping(uint128 => Position)) private positions;
+    mapping(uint16 => mapping(uint128 => Position)) public positions;
     // Position id of the PDN vault in HomoraBank. Zero for new position.
-    uint256 private homoraBankPosId;
+    uint256 public homoraBankPosId;
     uint256 public totalShareAmount;
 
     // --- event ---

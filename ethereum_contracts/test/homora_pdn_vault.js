@@ -431,7 +431,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
   var homoraBankPosId = (await strategyContract.homoraBankPosId()).toNumber();
   expect(homoraBankPosId).not.to.equal(0);
 
-  // Check whether the vault contract is the owner of the HomoraBank position.
+  // Check whether the vault contract iis the owner of the HomoraBank position.
   var res = await homoraBank.getPositionInfo(homoraBankPosId);
   expect(res.owner).to.equal(strategyContract.address);
 
