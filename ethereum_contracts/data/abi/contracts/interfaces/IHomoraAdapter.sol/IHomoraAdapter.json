@@ -1,0 +1,3 @@
+[
+  "function doWork(address,uint256,bytes) payable returns (bytes)"
+]

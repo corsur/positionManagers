@@ -13,6 +13,8 @@ import "./interfaces/IApertureCommon.sol";
 import "./interfaces/IHomoraAvaxRouter.sol";
 import "./interfaces/IHomoraBank.sol";
 import "./interfaces/IHomoraSpell.sol";
+import "./interfaces/IHomoraAdapter.sol";
+
 import "./libraries/VaultLib.sol";
 import "./libraries/OracleLib.sol";
 
@@ -45,10 +47,17 @@ contract HomoraPDNVault is
     }
 
     // --- constants ---
-    address public WAVAX;
+    address public WAVAX;    bytes4 private constant HOMORA_EXECUTE_SIG =
+        bytes4(keccak256("execute(uint256,address,bytes)"));
+    bytes4 private constant ERC20_APPROVE_SIG =
+        bytes4(keccak256("approve(address,uint256)"));
+    bytes4 private constant ERC20_TRANSFER_SIG =
+        bytes4(keccak256("transfer(address,uint256)"));
+
     // --- accounts ---
     address public apertureManager;
     address public feeCollector;
+    IHomoraAdapter public adapter; // Immutable adapter to HomoraBank.
     mapping(address => bool) public isController;
 
     // --- config ---
@@ -112,6 +121,7 @@ contract HomoraPDNVault is
     // only initialized once (thanks to Initializable).
     function initialize(
         address _apertureManager,
+        address _adapter,
         address _feeCollector,
         address _controller,
         address _stableToken,
@@ -125,6 +135,7 @@ contract HomoraPDNVault is
         __UUPSUpgradeable_init();
 
         apertureManager = _apertureManager;
+        adapter = IHomoraAdapter(_adapter);
         setFeeCollector(_feeCollector);
         isController[_controller] = true;
         homoraBank = IHomoraBank(_homoraBank);
@@ -199,6 +210,10 @@ contract HomoraPDNVault is
         for (uint256 i = 0; i < controllers.length; i++) {
             isController[controllers[i]] = statuses[i];
         }
+    }
+
+    function setAdapter(address _adapter) external onlyOwner {
+        adapter = IHomoraAdapter(_adapter);
     }
 
     function setFeeCollector(address _feeCollector) public onlyOwner {
@@ -374,6 +389,86 @@ contract HomoraPDNVault is
         );
     }
 
+    function adapterApproveHomoraBank(address tokenAddr, uint256 amount)
+        internal
+    {
+        adapter.doWork(
+            tokenAddr,
+            /*value=*/
+            0,
+            abi.encodeWithSelector(
+                ERC20_APPROVE_SIG,
+                address(homoraBank),
+                amount
+            )
+        );
+    }
+
+    function pullTokenFromAdapter(address tokenAddr, uint256 amount) internal {
+        if (amount > 0) {
+            adapter.doWork(
+                tokenAddr,
+                /*value=*/
+                0,
+                abi.encodeWithSelector(
+                    ERC20_TRANSFER_SIG,
+                    address(this),
+                    amount
+                )
+            );
+        }
+    }
+
+    function pullETHFromAdapter(uint256 amount) internal {
+        adapter.doWork(address(this), amount, "");
+    }
+
+    function pullAllAssets() internal {
+        pullTokenFromAdapter(
+            stableToken,
+            IERC20(stableToken).balanceOf(address(adapter))
+        );
+        pullTokenFromAdapter(
+            assetToken,
+            IERC20(assetToken).balanceOf(address(adapter))
+        );
+        pullTokenFromAdapter(
+            rewardToken,
+            IERC20(rewardToken).balanceOf(address(adapter))
+        );
+        pullETHFromAdapter(address(adapter).balance);
+    }
+
+    /// @dev fund adapter contract and approve HomoraBank to use the fund.
+    /// @param tokenAddr the token to transfer and approve.
+    /// @param amount the amount to transfer and approve.
+    function fundAdapterAndApproveHomoraBank(address tokenAddr, uint256 amount)
+        internal
+    {
+        IERC20(tokenAddr).safeTransfer(address(adapter), amount);
+        adapterApproveHomoraBank(tokenAddr, amount);
+    }
+
+    function homoraExecute(bytes memory spellBytes, uint256 value)
+        internal
+        returns (bytes memory)
+    {
+        bytes memory homoraExecuteBytes = abi.encodeWithSelector(
+            HOMORA_EXECUTE_SIG,
+            homoraBankPosId,
+            spell,
+            spellBytes
+        );
+
+        bytes memory returndata = adapter.doWork{value: value}(
+            address(homoraBank),
+            msg.value,
+            homoraExecuteBytes
+        );
+        pullAllAssets();
+        return returndata;
+    }
+
     /// @dev Internal deposit function
     /// @param position_info: Aperture position info
     /// @param stableTokenDepositAmount: Amount of stable token supplied by user
@@ -399,7 +494,7 @@ contract HomoraPDNVault is
         // Record original position equity before adding liquidity
         uint256 equityBefore = getEquityETHValue();
 
-        // Transfer user's deposit.
+        // 1. Transfer user's deposit tokens to current contract.
         if (stableTokenDepositAmount > 0)
             IERC20(pairInfo.stableToken).safeTransferFrom(
                 msg.sender,
@@ -423,17 +518,23 @@ contract HomoraPDNVault is
                 leverageLevel
             );
 
-        // Approve HomoraBank transferring tokens.
-        IERC20(pairInfo.stableToken).approve(
-            address(homoraBank),
-            stableTokenDepositAmount
-        );
-        IERC20(pairInfo.assetToken).approve(
-            address(homoraBank),
-            assetTokenDepositAmount
-        );
+        // 2. Transfer user's deposit tokens to adapter contract.
+        // 3. Let adapter contract to approve HomoraBank.
+        if (stableTokenDepositAmount > 0) {
+            fundAdapterAndApproveHomoraBank(
+                stableToken,
+                stableTokenDepositAmount
+            );
+        }
+        if (assetTokenDepositAmount > 0) {
+            fundAdapterAndApproveHomoraBank(
+                assetToken,
+                assetTokenDepositAmount
+            );
+        }
 
-        bytes memory data = abi.encodeWithSelector(
+        // 4. Call Homora's execute() along with any native token received.
+        bytes memory addLiquidityBytes = abi.encodeWithSelector(
             VaultLib.ADD_LIQUIDITY_SIG,
             pairInfo.stableToken,
             pairInfo.assetToken,
@@ -450,11 +551,14 @@ contract HomoraPDNVault is
             pid
         );
 
-        homoraBankPosId = homoraBank.execute(homoraBankPosId, spell, data);
+        homoraBankPosId = abi.decode(
+            homoraExecute(addLiquidityBytes, msg.value),
+            (uint256)
+        );
 
-        // Cancel HomoraBank's allowance.
-        IERC20(pairInfo.stableToken).approve(address(homoraBank), 0);
-        IERC20(pairInfo.assetToken).approve(address(homoraBank), 0);
+        // 5. Revoke HomoraBank's allowance from adapter contract.
+        adapterApproveHomoraBank(pairInfo.stableToken, 0);
+        adapterApproveHomoraBank(pairInfo.assetToken, 0);
 
         // Position equity after adding liquidity
         uint256 equityChange = getEquityETHValue() - equityBefore;
@@ -571,16 +675,7 @@ contract HomoraPDNVault is
             ]
         );
 
-        homoraBank.execute(homoraBankPosId, spell, data);
-
-        // Position equity after removing liquidity
-        // Limit the maximum withdrawal amount in a single transaction
-        if (
-            (equityBefore - getEquityETHValue()) >
-            getTokenETHValue(pairInfo.stableToken, vaultLimits.maxWithdrawPerTx)
-        ) {
-            revert Vault_Limit_Exceeded();
-        }
+        homoraExecute(data, 0);
 
         // Calculate token disbursement amount.
         uint256[3] memory withdrawAmounts = [
@@ -647,6 +742,8 @@ contract HomoraPDNVault is
             withdrawAmounts[1],
             withdrawAmounts[2]
         );
+
+        homoraExecute(data, 0);
     }
 
     function collectManagementFee() internal {

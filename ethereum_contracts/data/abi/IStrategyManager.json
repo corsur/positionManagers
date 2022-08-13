@@ -1,5 +1,0 @@
-[
-  "function decreasePosition(tuple(uint128,uint16),bytes)",
-  "function increasePosition(tuple(uint128,uint16),bytes) payable",
-  "function openPosition(address,tuple(uint128,uint16),bytes) payable"
-]
