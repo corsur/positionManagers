@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
-
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
@@ -196,9 +194,6 @@ library VaultLib {
         uint256 assetTokenBalance = IERC20(pairInfo.assetToken).balanceOf(
             address(this)
         );
-        console.log("reinvest stableTokenBalance", stableTokenBalance);
-        console.log("reinvest assetTokenBalance", assetTokenBalance);
-
         (
             uint256 stableTokenBorrowAmount,
             uint256 assetTokenBorrowAmount
@@ -708,7 +703,6 @@ library VaultLib {
         (path[0], path[1]) = (fromToken, toToken);
         uint256[] memory amounts = _router.getAmountsOut(amount, path);
         // Reverted by TraderJoe if amounts[1] == 0
-        console.log("AmountOut", amounts[1]);
         if (amounts[1] > 0) {
             amounts = _router.swapExactAVAXForTokens{value: amount}(
                 0,

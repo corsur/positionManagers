@@ -1,8 +1,6 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
-
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -391,8 +389,6 @@ contract HomoraPDNVault is
     ) internal {
         reinvestInternal(minReinvestETH);
 
-        console.log("Debt ratio before: ", getDebtRatio());
-
         // Check if the PDN position need rebalance
         if (!isDeltaNeutral() || !isDebtRatioHealthy()) {
             rebalanceInternal(10);
@@ -426,11 +422,6 @@ contract HomoraPDNVault is
                 assetTokenDepositAmount,
                 leverageLevel
             );
-
-        //        console.log("stableTokenDepositAmount", stableTokenDepositAmount);
-        //        console.log("assetTokenDepositAmount", assetTokenDepositAmount);
-        //        console.log("stableTokenBorrowAmount", stableTokenBorrowAmount);
-        //        console.log("assetTokenBorrowAmount", assetTokenBorrowAmount);
 
         // Approve HomoraBank transferring tokens.
         IERC20(pairInfo.stableToken).approve(
@@ -496,8 +487,6 @@ contract HomoraPDNVault is
         // Update deposit owner's position state.
         positions[position_info.chainId][position_info.positionId]
             .shareAmount += shareAmount;
-
-        console.log("Debt ratio after: ", getDebtRatio());
 
         // Check if the PDN position is still healthy
         if (!isDeltaNeutral()) {
@@ -714,8 +703,6 @@ contract HomoraPDNVault is
         );
 
         uint256 equityAfter = getEquityETHValue();
-        //        console.log("equity before reinvest", equityBefore);
-        //        console.log("equity after  reinvest", equityAfter);
 
         if (equityAfter < equityBefore + minReinvestETH) {
             if (
@@ -744,8 +731,6 @@ contract HomoraPDNVault is
     /// @dev Internal rebalance function
     /// @param slippage: Slippage on the swap between stable token and asset token, multiplied by 1e4, 0.1% => 10
     function rebalanceInternal(uint256 slippage) internal {
-        console.log("Debt ratio before: ", getDebtRatio());
-
         // Check if the PDN position need rebalance
         if (isDeltaNeutral() && isDebtRatioHealthy()) {
             revert HomoraPDNVault_PositionIsHealthy();
@@ -763,11 +748,6 @@ contract HomoraPDNVault is
 
         if (pos.debtAmtB > pos.amtB) {
             // 1. short: amtB < debtAmtB, R > Rt, swap A to B
-            console.log(
-                "rebalanceShort debt %d amt %d",
-                pos.debtAmtB,
-                pos.amtB
-            );
             (uint256 amtASwap, uint256 amtBSwap) = VaultLib.rebalanceShort(
                 homoraBank,
                 homoraBankPosId,
@@ -794,7 +774,6 @@ contract HomoraPDNVault is
             }
         } else {
             // 2. long: amtB > debtAmtB, R < Rt, swap B to A
-            console.log("rebalanceLong debt %d amt %d", pos.debtAmtB, pos.amtB);
             (uint256 amtASwap, uint256 amtBSwap) = VaultLib.rebalanceLong(
                 homoraBank,
                 homoraBankPosId,
@@ -822,8 +801,6 @@ contract HomoraPDNVault is
             }
         }
 
-        console.log("Debt ratio after: ", getDebtRatio());
-
         // Check if the rebalance succeeded
         if (!isDeltaNeutral()) {
             revert HomoraPDNVault_DeltaNotNeutral();
@@ -844,7 +821,6 @@ contract HomoraPDNVault is
             homoraBankPosId,
             pairInfo
         );
-        //        console.log("n_B %d, d_B %d", pos.amtB, pos.debtAmtB);
         return VaultLib.getOffset(pos.amtB, pos.debtAmtB) < deltaThreshold;
     }
 
