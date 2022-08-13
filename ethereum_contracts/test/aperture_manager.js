@@ -30,9 +30,7 @@ const TERRA_MANAGER_ADDR = "terra1ajkmy2c0g84seh66apv9x6xt6kd3ag80jmcvtz";
 const TERRA_CHAIN_ID = 3;
 
 const erc20ABI = [
-  // Read-Only Functions
   "function balanceOf(address owner) view returns (uint256)",
-  // Authenticated Functions
   "function approve(address spender, uint256 value) returns (bool)",
 ];
 

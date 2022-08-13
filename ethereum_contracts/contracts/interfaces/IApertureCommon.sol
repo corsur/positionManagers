@@ -1,13 +1,6 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
-// Version 0 of the Aperture instructure payload format.
-// See https://github.com/Aperture-Finance/Aperture-Contracts/blob/instruction-dev/packages/aperture_common/src/instruction.rs.
-uint8 constant INSTRUCTION_VERSION = 0;
-uint8 constant INSTRUCTION_TYPE_POSITION_OPEN = 0;
-uint8 constant INSTRUCTION_TYPE_EXECUTE_STRATEGY = 1;
-uint8 constant INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT = 2;
-
 enum Action {
     Open,
     Increase,

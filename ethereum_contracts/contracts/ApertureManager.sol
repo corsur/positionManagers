@@ -192,7 +192,7 @@ contract ApertureManager is
         uint16 strategyChainId,
         uint64 strategyId,
         AssetInfo[] memory assetInfos,
-        bytes calldata encodedPositionOpenData
+        bytes memory encodedPositionOpenData
     ) internal {
         if (
             strategyChainId !=
@@ -411,10 +411,58 @@ contract ApertureManager is
         bytes calldata encodedInstructionVM,
         bytes[] calldata encodedTokenTransferVMs
     ) external {
-        crossChainContext.processApertureInstruction(
-            curveRouterContext,
-            encodedInstructionVM,
-            encodedTokenTransferVMs
+        // Parse and validate instruction VM.
+        WormholeCoreBridge.VM memory instructionVM = CrossChainLib
+            .decodeWormholeVM(
+                encodedInstructionVM,
+                crossChainContext.wormholeContext.coreBridge
+            );
+        require(
+            crossChainContext.chainIdToApertureManager[
+                instructionVM.emitterChainId
+            ] == instructionVM.emitterAddress,
+            "unexpected emitterAddress"
         );
+        require(
+            !crossChainContext.processedInstructions[instructionVM.hash],
+            "ix already processed"
+        );
+
+        // Mark this instruction as processed so it cannot be replayed.
+        crossChainContext.processedInstructions[instructionVM.hash] = true;
+
+        // Parse version / instruction type.
+        // Note that Solidity checks array index for possible out of bounds, so there is no need for us to do so again.
+        require(instructionVM.payload[0] == 0, "invalid instruction version");
+        uint8 instructionType = uint8(instructionVM.payload[1]);
+        if (instructionType == INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT) {
+            crossChainContext.processSingleTokenDisbursementInstruction(
+                instructionVM,
+                encodedTokenTransferVMs,
+                curveRouterContext
+            );
+        } else if (instructionType == INSTRUCTION_TYPE_POSITION_OPEN) {
+            (
+                uint128 positionId,
+                uint16 strategyChainId,
+                uint64 strategyId,
+                AssetInfo[] memory assetInfos,
+                bytes memory encodedPositionOpenData
+            ) = crossChainContext.parsePositionOpenInstruction(
+                    instructionVM,
+                    encodedTokenTransferVMs
+                );
+            createPositionInternal(
+                positionId,
+                strategyChainId,
+                strategyId,
+                assetInfos,
+                encodedPositionOpenData
+            );
+        } else if (instructionType == INSTRUCTION_TYPE_EXECUTE_STRATEGY) {
+            revert("INSTRUCTION_TYPE_EXECUTE_STRATEGY about to be supported");
+        } else {
+            revert("invalid ix type");
+        }
     }
 }

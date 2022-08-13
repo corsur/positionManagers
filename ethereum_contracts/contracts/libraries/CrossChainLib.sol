@@ -9,6 +9,13 @@ import "contracts/interfaces/IApertureCommon.sol";
 import "contracts/libraries/BytesLib.sol";
 import "contracts/libraries/CurveRouterLib.sol";
 
+// Version 0 of the Aperture instructure payload format.
+// See https://github.com/Aperture-Finance/Aperture-Contracts/blob/instruction-dev/packages/aperture_common/src/instruction.rs.
+uint8 constant INSTRUCTION_VERSION = 0;
+uint8 constant INSTRUCTION_TYPE_POSITION_OPEN = 0;
+uint8 constant INSTRUCTION_TYPE_EXECUTE_STRATEGY = 1;
+uint8 constant INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT = 2;
+
 struct WormholeCrossChainContext {
     // Address of the Wormhole token bridge contract.
     address tokenBridge;
@@ -114,24 +121,20 @@ library CrossChainLib {
             "unexpected strategyChainId"
         );
         return
-            abi
-                .encodePacked(
-                    INSTRUCTION_VERSION,
-                    instructionType,
-                    positionId,
+            abi.encodePacked(
+                INSTRUCTION_VERSION,
+                instructionType,
+                positionId,
+                strategyChainId,
+                uint32(assetInfos.length),
+                getOutgoingTokenTransferSequencePayload(
+                    assetInfos,
                     strategyChainId,
-                    uint32(assetInfos.length)
-                )
-                .concat(
-                    getOutgoingTokenTransferSequencePayload(
-                        assetInfos,
-                        strategyChainId,
-                        context
-                    )
-                )
-                .concat(
-                    abi.encodePacked(uint32(encodedData.length), encodedData)
-                );
+                    context
+                ),
+                uint32(encodedData.length),
+                encodedData
+            );
     }
 
     function validateAndUpdateFeeContext(
@@ -263,13 +266,13 @@ library CrossChainLib {
     }
 
     function processSingleTokenDisbursementInstruction(
+        CrossChainContext storage self,
         WormholeCoreBridge.VM memory instructionVM,
         bytes[] calldata encodedTokenTransferVMs,
-        CrossChainContext storage crossChainContext,
         CurveRouterContext storage curveRouterContext
-    ) internal {
+    ) external {
         WormholeTokenBridge wormholeTokenBridge = WormholeTokenBridge(
-            crossChainContext.wormholeContext.tokenBridge
+            self.wormholeContext.tokenBridge
         );
         uint256 index = 2;
 
@@ -347,49 +350,70 @@ library CrossChainLib {
         SafeERC20.safeTransfer(IERC20(tokenAddress), recipient, tokenAmount);
     }
 
-    function processApertureInstruction(
+    function parsePositionOpenInstruction(
         CrossChainContext storage self,
-        CurveRouterContext storage curveRouterContext,
-        bytes calldata encodedInstructionVM,
+        WormholeCoreBridge.VM memory instructionVM,
         bytes[] calldata encodedTokenTransferVMs
-    ) external {
-        // Parse and validate instruction VM.
-        WormholeCoreBridge.VM memory instructionVM = decodeWormholeVM(
-            encodedInstructionVM,
-            self.wormholeContext.coreBridge
-        );
+    )
+        external
+        returns (
+            uint128 positionId,
+            uint16 strategyChainId,
+            uint64 strategyId,
+            AssetInfo[] memory assetInfos,
+            bytes memory encodedPositionOpenData
+        )
+    {
+        uint256 index = 2;
+
+        positionId = instructionVM.payload.toUint128(index);
+        index += 16;
+
+        strategyChainId = instructionVM.payload.toUint16(index);
+        index += 2;
         require(
-            self.chainIdToApertureManager[instructionVM.emitterChainId] ==
-                instructionVM.emitterAddress,
-            "unexpected emitterAddress"
-        );
-        require(
-            !self.processedInstructions[instructionVM.hash],
-            "ix already processed"
+            strategyChainId ==
+                WormholeTokenBridge(self.wormholeContext.tokenBridge).chainId(),
+            "strategyChainId mismatch"
         );
 
-        // Mark this instruction as processed so it cannot be replayed.
-        self.processedInstructions[instructionVM.hash] = true;
+        uint256 assetInfoLen = uint256(instructionVM.payload.toUint32(index));
+        index += 4;
 
-        // Parse version / instruction type.
-        // Note that Solidity checks array index for possible out of bounds, so there is no need for us to do so again.
-        require(instructionVM.payload[0] == 0, "invalid instruction version");
-        uint8 instructionType = uint8(instructionVM.payload[1]);
-        if (instructionType == INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT) {
-            processSingleTokenDisbursementInstruction(
-                instructionVM,
-                encodedTokenTransferVMs,
-                self,
-                curveRouterContext
+        require(
+            assetInfoLen == encodedTokenTransferVMs.length,
+            "num tokens mismatch"
+        );
+        assetInfos = new AssetInfo[](assetInfoLen);
+        for (uint256 i = 0; i < assetInfoLen; ++i) {
+            uint64 sequence = instructionVM.payload.toUint64(index);
+            index += 8;
+
+            // TODO: Look into whether an Wormhole incoming transfer could unwrap to native ether.
+            assetInfos[i].assetType = AssetType.Token;
+            (
+                assetInfos[i].assetAddr,
+                assetInfos[i].amount
+            ) = validateAndCompleteIncomingTokenTransfer(
+                WormholeTokenBridge(self.wormholeContext.tokenBridge),
+                encodedTokenTransferVMs[i],
+                instructionVM.emitterChainId,
+                sequence
             );
         }
-        /*else if (instructionType == INSTRUCTION_TYPE_POSITION_OPEN) {
-            revert("INSTRUCTION_TYPE_POSITION_OPEN about to be supported");
-        } else if (instructionType == INSTRUCTION_TYPE_EXECUTE_STRATEGY) {
-            revert("INSTRUCTION_TYPE_EXECUTE_STRATEGY about to be supported");
-        } */
-        else {
-            revert("invalid ix type");
-        }
+
+        uint256 encodedDataLen = instructionVM.payload.toUint32(index);
+        index += 4;
+
+        encodedPositionOpenData = instructionVM.payload.slice(
+            index,
+            encodedDataLen
+        );
+        index += encodedDataLen;
+
+        strategyId = instructionVM.payload.toUint64(index);
+        index += 8;
+
+        require(index == instructionVM.payload.length, "invalid payload");
     }
 }
