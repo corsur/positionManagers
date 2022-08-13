@@ -350,21 +350,21 @@ library CrossChainLib {
         SafeERC20.safeTransfer(IERC20(tokenAddress), recipient, tokenAmount);
     }
 
-    function parsePositionOpenInstruction(
+    function parsePositionOpenExecuteStrategyInstructionCommonFields(
         CrossChainContext storage self,
         WormholeCoreBridge.VM memory instructionVM,
         bytes[] calldata encodedTokenTransferVMs
     )
-        external
+        internal
         returns (
+            uint256 index,
             uint128 positionId,
             uint16 strategyChainId,
-            uint64 strategyId,
             AssetInfo[] memory assetInfos,
-            bytes memory encodedPositionOpenData
+            bytes memory encodedData
         )
     {
-        uint256 index = 2;
+        index = 2;
 
         positionId = instructionVM.payload.toUint128(index);
         index += 16;
@@ -405,15 +405,67 @@ library CrossChainLib {
         uint256 encodedDataLen = instructionVM.payload.toUint32(index);
         index += 4;
 
-        encodedPositionOpenData = instructionVM.payload.slice(
-            index,
-            encodedDataLen
-        );
+        encodedData = instructionVM.payload.slice(index, encodedDataLen);
         index += encodedDataLen;
+    }
+
+    function parsePositionOpenInstruction(
+        CrossChainContext storage self,
+        WormholeCoreBridge.VM memory instructionVM,
+        bytes[] calldata encodedTokenTransferVMs
+    )
+        external
+        returns (
+            uint128 positionId,
+            uint16 strategyChainId,
+            uint64 strategyId,
+            AssetInfo[] memory assetInfos,
+            bytes memory encodedPositionOpenData
+        )
+    {
+        uint256 index;
+        (
+            index,
+            positionId,
+            strategyChainId,
+            assetInfos,
+            encodedPositionOpenData
+        ) = parsePositionOpenExecuteStrategyInstructionCommonFields(
+            self,
+            instructionVM,
+            encodedTokenTransferVMs
+        );
 
         strategyId = instructionVM.payload.toUint64(index);
         index += 8;
+        require(index == instructionVM.payload.length, "invalid payload");
+    }
 
+    function parseExecuteStrategyInstruction(
+        CrossChainContext storage self,
+        WormholeCoreBridge.VM memory instructionVM,
+        bytes[] calldata encodedTokenTransferVMs
+    )
+        external
+        returns (
+            uint128 positionId,
+            uint16 strategyChainId,
+            AssetInfo[] memory assetInfos,
+            bytes memory encodedActionData
+        )
+    {
+        uint256 index;
+        (
+            index,
+            positionId,
+            strategyChainId,
+            assetInfos,
+            encodedActionData
+        ) = parsePositionOpenExecuteStrategyInstructionCommonFields(
+            self,
+            instructionVM,
+            encodedTokenTransferVMs
+        );
         require(index == instructionVM.payload.length, "invalid payload");
     }
 }

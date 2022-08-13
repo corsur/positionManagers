@@ -287,7 +287,7 @@ contract ApertureManager is
         uint128 positionId,
         uint16 strategyChainId,
         AssetInfo[] memory assetInfos,
-        bytes calldata encodedActionData
+        bytes memory encodedActionData
     ) internal {
         if (
             strategyChainId !=
@@ -309,7 +309,7 @@ contract ApertureManager is
                 "invalid strategyId"
             );
             // Parse action based on encodedActionData.
-            require(encodedActionData.length > 0, "invalid encodedActionData");
+            // Note that Solidity checks array index for possible out of bounds, so there is no need to validate encodedActionData.length.
             Action action = Action(uint8(encodedActionData[0]));
             require(action != Action.Open, "invalid action");
             if (action == Action.Increase) {
@@ -317,12 +317,12 @@ contract ApertureManager is
                     value: msg.value
                 }(
                     PositionInfo(positionId, strategyChainId),
-                    encodedActionData[1:]
+                    encodedActionData.slice(1, encodedActionData.length - 1)
                 );
             } else if (action == Action.Decrease) {
                 IStrategyManager(strategy.strategyManager).decreasePosition(
                     PositionInfo(positionId, strategyChainId),
-                    encodedActionData[1:]
+                    encodedActionData.slice(1, encodedActionData.length - 1)
                 );
             } else {
                 revert("invalid action");
@@ -460,7 +460,21 @@ contract ApertureManager is
                 encodedPositionOpenData
             );
         } else if (instructionType == INSTRUCTION_TYPE_EXECUTE_STRATEGY) {
-            revert("INSTRUCTION_TYPE_EXECUTE_STRATEGY about to be supported");
+            (
+                uint128 positionId,
+                uint16 strategyChainId,
+                AssetInfo[] memory assetInfos,
+                bytes memory encodedActionData
+            ) = crossChainContext.parseExecuteStrategyInstruction(
+                    instructionVM,
+                    encodedTokenTransferVMs
+                );
+            executeStrategyInternal(
+                positionId,
+                strategyChainId,
+                assetInfos,
+                encodedActionData
+            );
         } else {
             revert("invalid ix type");
         }
