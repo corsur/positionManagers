@@ -6,11 +6,15 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "../interfaces/IHomoraAvaxRouter.sol";
 import "../interfaces/IHomoraBank.sol";
+import "../interfaces/IHomoraAdapter.sol";
 import "../interfaces/IUniswapPair.sol";
+import "../libraries/HomoraAdapterLib.sol";
 
+/// @custom:oz-upgrades-unsafe-allow external-library-linking
 library VaultLib {
     using SafeERC20 for IERC20;
     using Math for uint256;
+    using HomoraAdapterLib for IHomoraAdapter;
 
     // --- constants ---
     bytes private constant HARVEST_DATA =
@@ -74,6 +78,7 @@ library VaultLib {
         address stableToken; // token 0
         address assetToken; // token 1
         address lpToken; // ERC-20 LP token address
+        address rewardToken;
     }
 
     // Amounts of tokens in the Homora farming position
@@ -169,53 +174,36 @@ library VaultLib {
     /// @param spell: Homora's Spell contract address
     function harvest(
         IHomoraBank homoraBank,
+        IHomoraAdapter adapter,
         uint256 homoraBankPosId,
-        address spell
+        address spell,
+        PairInfo storage pairInfo
     ) external {
-        homoraBank.execute(homoraBankPosId, spell, HARVEST_DATA);
+        adapter.homoraExecute(
+            address(homoraBank),
+            homoraBankPosId,
+            spell,
+            HARVEST_DATA,
+            pairInfo,
+            0
+        );
     }
 
-    /// @dev Collect reward tokens and reinvest
-    /// @param homoraBank: Instantiated HomoraBank Interface
-    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param spell: Homora's Spell contract address
-    /// @param pairInfo: Addresses in the pair
-    function reinvest(
+    function reinvestExec(
         IHomoraBank homoraBank,
+        IHomoraAdapter adapter,
         uint256 homoraBankPosId,
         address spell,
         PairInfo storage pairInfo,
-        uint256 leverageLevel,
+        uint256 stableTokenBalance,
+        uint256 assetTokenBalance,
+        uint256 stableTokenBorrowAmount,
+        uint256 assetTokenBorrowAmount,
         uint256 pid
-    ) external {
-        uint256 stableTokenBalance = IERC20(pairInfo.stableToken).balanceOf(
-            address(this)
-        );
-        uint256 assetTokenBalance = IERC20(pairInfo.assetToken).balanceOf(
-            address(this)
-        );
-        (
-            uint256 stableTokenBorrowAmount,
-            uint256 assetTokenBorrowAmount
-        ) = deltaNeutral(
-                pairInfo,
-                stableTokenBalance,
-                assetTokenBalance,
-                leverageLevel
-            );
-
-        // Approve HomoraBank transferring tokens.
-        IERC20(pairInfo.stableToken).approve(
-            address(homoraBank),
-            stableTokenBalance
-        );
-        IERC20(pairInfo.assetToken).approve(
-            address(homoraBank),
-            assetTokenBalance
-        );
-
+    ) internal {
         // Encode the calling function.
-        homoraBank.execute(
+        adapter.homoraExecute(
+            address(homoraBank),
             homoraBankPosId,
             spell,
             abi.encodeWithSelector(
@@ -233,12 +221,87 @@ library VaultLib {
                     0
                 ],
                 pid
-            )
+            ),
+            pairInfo,
+            0
         );
 
         // Cancel HomoraBank's allowance.
-        IERC20(pairInfo.stableToken).approve(address(homoraBank), 0);
-        IERC20(pairInfo.assetToken).approve(address(homoraBank), 0);
+        adapter.fundAdapterAndApproveHomoraBank(
+            address(homoraBank),
+            pairInfo.stableToken,
+            0
+        );
+        adapter.fundAdapterAndApproveHomoraBank(
+            address(homoraBank),
+            pairInfo.assetToken,
+            assetTokenBalance
+        );
+    }
+
+    /// @dev Collect reward tokens and reinvest
+    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param spell: Homora's Spell contract address
+    /// @param pairInfo: Addresses in the pair
+    function reinvest(
+        IHomoraBank homoraBank,
+        IHomoraAdapter adapter,
+        uint256 homoraBankPosId,
+        address spell,
+        PairInfo storage pairInfo,
+        uint256 leverageLevel,
+        uint256 pid
+    ) external {
+        uint256 stableTokenBalance = IERC20(pairInfo.stableToken).balanceOf(
+            address(this)
+        );
+        uint256 assetTokenBalance = IERC20(pairInfo.assetToken).balanceOf(
+            address(this)
+        );
+
+        // Skip reinvest if no balance available.
+        if (stableTokenBalance + assetTokenBalance == 0) {
+            return;
+        }
+
+        (
+            uint256 stableTokenBorrowAmount,
+            uint256 assetTokenBorrowAmount
+        ) = deltaNeutral(
+                pairInfo,
+                stableTokenBalance,
+                assetTokenBalance,
+                leverageLevel
+            );
+
+        // Approve HomoraBank transferring tokens.
+        if (stableTokenBalance > 0) {
+            adapter.fundAdapterAndApproveHomoraBank(
+                address(homoraBank),
+                pairInfo.stableToken,
+                stableTokenBalance
+            );
+        }
+        if (assetTokenBalance > 0) {
+            adapter.fundAdapterAndApproveHomoraBank(
+                address(homoraBank),
+                pairInfo.assetToken,
+                assetTokenBalance
+            );
+        }
+        reinvestExec(
+            homoraBank,
+            adapter,
+            homoraBankPosId,
+            spell,
+            pairInfo,
+            stableTokenBalance,
+            assetTokenBalance,
+            stableTokenBorrowAmount,
+            assetTokenBorrowAmount,
+            pid
+        );
     }
 
     /// @dev Rebalance Homora Bank's farming position assuming delta is short
@@ -249,6 +312,7 @@ library VaultLib {
     /// @param pairInfo: Addresses in the pair
     function rebalanceShort(
         IHomoraBank homoraBank,
+        IHomoraAdapter adapter,
         uint256 homoraBankPosId,
         VaultPosition memory pos,
         address spell,
@@ -265,7 +329,8 @@ library VaultLib {
             vars.Sb
         ) = _rebalanceShort(pos, leverageLevel, vars);
 
-        homoraBank.execute(
+        adapter.homoraExecute(
+            address(homoraBank),
             homoraBankPosId,
             spell,
             abi.encodeWithSelector(
@@ -281,28 +346,19 @@ library VaultLib {
                     0,
                     0
                 ]
-            )
+            ),
+            pairInfo,
+            0
         );
 
         return (vars.Sa, vars.Sb);
     }
 
-    /// @dev Rebalance Homora Bank's farming position assuming delta is long
-    /// @param homoraBank: Instantiated HomoraBank Interface
-    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param pos: Farming position in Homora Bank
-    /// @param spell: Homora's Spell contract address
-    /// @param pairInfo: Addresses in the pair
-    function rebalanceLong(
-        IHomoraBank homoraBank,
-        uint256 homoraBankPosId,
+    function populateLongHelper(
         VaultPosition memory pos,
-        address spell,
         PairInfo storage pairInfo,
-        uint256 leverageLevel,
-        uint256 pid
-    ) external returns (uint256, uint256) {
-        LongHelper memory vars;
+        uint256 leverageLevel
+    ) internal view returns (LongHelper memory vars) {
         (vars.reserveABefore, vars.reserveBBefore) = getReserves(pairInfo);
         vars.amtAReward = IERC20(pairInfo.stableToken).balanceOf(address(this));
 
@@ -311,13 +367,19 @@ library VaultLib {
             leverageLevel,
             vars
         );
+    }
 
-        IERC20(pairInfo.stableToken).approve(
+    function rebalanceLongExec(
+        IHomoraBank homoraBank,
+        IHomoraAdapter adapter,
+        uint256 homoraBankPosId,
+        address spell,
+        PairInfo storage pairInfo,
+        uint256 pid,
+        LongHelper memory vars
+    ) internal {
+        adapter.homoraExecute(
             address(homoraBank),
-            vars.amtAReward
-        );
-
-        homoraBank.execute(
             homoraBankPosId,
             spell,
             abi.encodeWithSelector(
@@ -335,9 +397,57 @@ library VaultLib {
                     0
                 ],
                 pid
-            )
+            ),
+            pairInfo,
+            0
         );
-        IERC20(pairInfo.stableToken).approve(address(homoraBank), 0);
+
+        adapter.fundAdapterAndApproveHomoraBank(
+            address(homoraBank),
+            pairInfo.stableToken,
+            0
+        );
+    }
+
+    /// @dev Rebalance Homora Bank's farming position assuming delta is long
+    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pos: Farming position in Homora Bank
+    /// @param spell: Homora's Spell contract address
+    /// @param pairInfo: Addresses in the pair
+    function rebalanceLong(
+        IHomoraBank homoraBank,
+        IHomoraAdapter adapter,
+        uint256 homoraBankPosId,
+        VaultPosition memory pos,
+        address spell,
+        PairInfo storage pairInfo,
+        uint256 leverageLevel,
+        uint256 pid
+    ) external returns (uint256, uint256) {
+        LongHelper memory vars = populateLongHelper(
+            pos,
+            pairInfo,
+            leverageLevel
+        );
+
+        if (vars.amtAReward > 0) {
+            adapter.fundAdapterAndApproveHomoraBank(
+                address(homoraBank),
+                pairInfo.stableToken,
+                vars.amtAReward
+            );
+        }
+
+        rebalanceLongExec(
+            homoraBank,
+            adapter,
+            homoraBankPosId,
+            spell,
+            pairInfo,
+            pid,
+            vars
+        );
 
         return (vars.Sa, vars.Sb);
     }
@@ -718,21 +828,25 @@ library VaultLib {
     function swapRewardCollectFee(
         address router,
         address feeCollector,
-        address rewardToken,
-        address stableToken,
+        PairInfo storage pairInfo,
         uint256 harvestFee
     ) external {
-        uint256 rewardAmt = IERC20(rewardToken).balanceOf(address(this));
+        uint256 rewardAmt = IERC20(pairInfo.rewardToken).balanceOf(
+            address(this)
+        );
         if (rewardAmt > 0) {
             uint256 stableRecv = swap(
                 router,
                 rewardAmt,
-                rewardToken,
-                stableToken
+                pairInfo.rewardToken,
+                pairInfo.stableToken
             );
             uint256 harvestFeeAmt = stableRecv.mulDiv(harvestFee, 10000);
             if (harvestFeeAmt > 0) {
-                IERC20(stableToken).safeTransfer(feeCollector, harvestFeeAmt);
+                IERC20(pairInfo.stableToken).safeTransfer(
+                    feeCollector,
+                    harvestFeeAmt
+                );
             }
         }
     }

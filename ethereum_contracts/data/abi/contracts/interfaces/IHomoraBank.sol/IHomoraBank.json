@@ -1,5 +1,4 @@
 [
-  "function accrue(address)",
   "function execute(uint256,address,bytes) payable returns (uint256)",
   "function getBorrowETHValue(uint256) view returns (uint256)",
   "function getCollateralETHValue(uint256) view returns (uint256)",
