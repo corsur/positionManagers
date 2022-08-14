@@ -91,7 +91,42 @@ library VaultLib {
     uint256 public constant someLargeNumber = 10**18;
     uint256 public constant MAX_UINT = 2**256 - 1;
 
-    ///* Bank related functions *///
+    ///********* Helper functions *********///
+
+    /// @notice Calculate offset ratio, multiplied by 1e4
+    function getOffset(uint256 currentVal, uint256 targetVal)
+        public
+        pure
+        returns (uint256)
+    {
+        uint256 diff = currentVal > targetVal
+            ? currentVal - targetVal
+            : targetVal - currentVal;
+        if (diff == 0) {
+            return 0;
+        } else if (targetVal == 0) {
+            return MAX_UINT;
+        } else {
+            return diff.mulDiv(10000, targetVal);
+        }
+    }
+
+    /// @notice Get the amount of each of the two tokens in the pool. Stable token first
+    /// @param pairInfo: Addresses in the pair
+    function getReserves(PairInfo storage pairInfo)
+        public
+        view
+        returns (uint256 reserve0, uint256 reserve1)
+    {
+        IUniswapPair pair = IUniswapPair(pairInfo.lpToken);
+        if (pair.token0() == pairInfo.stableToken) {
+            (reserve0, reserve1, ) = pair.getReserves();
+        } else {
+            (reserve1, reserve0, ) = pair.getReserves();
+        }
+    }
+
+    ///********* Homora Bank related functions *********///
 
     /// @dev Query the amount of collateral/LP in the Homora PDN position
     /// @param homoraBank: Instantiated HomoraBank Interface
@@ -203,7 +238,8 @@ library VaultLib {
                     collateralFactor
                 );
     }
-    ///* Oracle related functions *///
+
+    ///********* Oracle related functions *********///
 
     function support(address oracle, address token) public view returns (bool) {
         return IHomoraOracle(oracle).support(token);
@@ -313,7 +349,7 @@ library VaultLib {
             );
     }
 
-    ///* PDN Vault related functions *///
+    ///********* Vault related functions *********///
 
     /// @dev Calculate the debt ratio as a function of leverage for a delta-neutral position
     function calculateDebtRatio(
@@ -590,7 +626,7 @@ library VaultLib {
             vars.amtBRepay,
             vars.Sa,
             vars.Sb
-        ) = _rebalanceShort(pos, leverageLevel, vars);
+        ) = rebalanceMathShort(pos, leverageLevel, vars);
 
         adapter.homoraExecute(
             address(homoraBank),
@@ -625,7 +661,7 @@ library VaultLib {
         (vars.reserveABefore, vars.reserveBBefore) = getReserves(pairInfo);
         vars.amtAReward = IERC20(pairInfo.stableToken).balanceOf(address(this));
 
-        (vars.amtABorrow, vars.amtBBorrow, vars.Sa, vars.Sb) = _rebalanceLong(
+        (vars.amtABorrow, vars.amtBBorrow, vars.Sa, vars.Sb) = rebalanceMathLong(
             pos,
             leverageLevel,
             vars
@@ -715,45 +751,12 @@ library VaultLib {
         return (vars.Sa, vars.Sb);
     }
 
-    /// @notice Calculate offset ratio, multiplied by 1e4
-    function getOffset(uint256 currentVal, uint256 targetVal)
-        public
-        pure
-        returns (uint256)
-    {
-        uint256 diff = currentVal > targetVal
-            ? currentVal - targetVal
-            : targetVal - currentVal;
-        if (diff == 0) {
-            return 0;
-        } else if (targetVal == 0) {
-            return MAX_UINT;
-        } else {
-            return diff.mulDiv(10000, targetVal);
-        }
-    }
-
-    /// @notice Get the amount of each of the two tokens in the pool. Stable token first
-    /// @param pairInfo: Addresses in the pair
-    function getReserves(PairInfo storage pairInfo)
-        public
-        view
-        returns (uint256 reserve0, uint256 reserve1)
-    {
-        IUniswapPair pair = IUniswapPair(pairInfo.lpToken);
-        if (pair.token0() == pairInfo.stableToken) {
-            (reserve0, reserve1, ) = pair.getReserves();
-        } else {
-            (reserve1, reserve0, ) = pair.getReserves();
-        }
-    }
-
     /// @dev Calculate the amount of collateral to withdraw and the amount of each token to repay by Homora to reach DN
     /// @dev Assume `pos.debtAmtB > pos.amtB`. Check before calling
     /// @param pos: Farming position in Homora Bank
     /// @param leverageLevel: Target leverage
     /// @param vars: Helper struct
-    function _rebalanceShort(
+    function rebalanceMathShort(
         VaultPosition memory pos,
         uint256 leverageLevel,
         ShortHelper memory vars
@@ -853,9 +856,8 @@ library VaultLib {
     /// @param pos: Farming position in Homora Bank
     /// @param leverageLevel: Target leverage
     /// @param vars: Helper struct
-    function _rebalanceLong(
+    function rebalanceMathLong(
         VaultPosition memory pos,
-        //        uint256[4] memory pos, // amtA, amtB, debtA, debtB
         uint256 leverageLevel,
         LongHelper memory vars
     )

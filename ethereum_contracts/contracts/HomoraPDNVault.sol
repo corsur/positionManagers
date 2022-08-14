@@ -214,7 +214,7 @@ contract HomoraPDNVault is
         vaultLimits = _vaultLimits;
     }
 
-    /// @dev Set config for delta neutral valut.
+    /// @dev Set config for pseudo delta-neutral valut.
     /// @param _leverageLevel: Target leverage
     /// @param _targetDebtRatio: Target debt ratio * 10000
     /// @param _debtRatioWidth: Deviation of debt ratio * 10000
