@@ -52,12 +52,12 @@ contract HomoraPDNVault is
     ContractInfo public contractInfo;
     // .adapter: Immutable adapter to HomoraBank
     // .bank: HomoraBank's address
+    // .oracle: HomoraBank's oracle for determining prices
+    // .router: TraderJoe's router address
     // .spell: Homora's Spell contract address
     PairInfo public pairInfo; // token 0 address, token 1 address, ERC-20 LP token address
     uint256 public leverageLevel; // target leverage
     uint256 public pid; // pool id
-    address public oracle; // HomoraBank's oracle for determining prices.
-    address public router;
 
     uint256 public collateralFactor; // LP collateral factor on Homora
     uint256 public stableBorrowFactor; // stable token borrow factor on Homora
@@ -128,6 +128,8 @@ contract HomoraPDNVault is
         contractInfo.bank = _homoraBank;
         contractInfo.oracle = IHomoraBank(_homoraBank).oracle();
         contractInfo.spell = _spell;
+        contractInfo.router = IHomoraSpell(_spell).router();
+        WAVAX = IHomoraAvaxRouter(contractInfo.router).WAVAX();
         require(VaultLib.support(contractInfo.oracle, _stableToken));
         require(VaultLib.support(contractInfo.oracle, _assetToken));
         pairInfo.stableToken = _stableToken;
@@ -136,8 +138,6 @@ contract HomoraPDNVault is
 
         pid = _pid;
         homoraBankPosId = VaultLib._NO_ID;
-        router = IHomoraSpell(_spell).router();
-        WAVAX = IHomoraAvaxRouter(router).WAVAX();
         pairInfo.lpToken = IHomoraSpell(_spell).pairs(
             pairInfo.stableToken,
             pairInfo.assetToken
@@ -606,7 +606,7 @@ contract HomoraPDNVault is
         VaultLib.harvest(contractInfo, homoraBankPosId, pairInfo);
 
         VaultLib.swapRewardCollectFee(
-            router,
+            contractInfo.router,
             feeCollector,
             pairInfo,
             feeConfig.harvestFee
@@ -615,7 +615,15 @@ contract HomoraPDNVault is
         // 2. Swap any AVAX leftover
         uint256 avaxBalance = address(this).balance;
         if (avaxBalance > 0) {
-            VaultLib.swapAVAX(router, avaxBalance, pairInfo.stableToken);
+            VaultLib.swapAVAX(contractInfo.router, avaxBalance, pairInfo.stableToken);
+        }
+
+        uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
+            address(this)
+        );
+
+        if (getTokenETHValue(pairInfo.stableToken, stableBalance) < minReinvestETH) {
+            revert Insufficient_Liquidity_Mint();
         }
 
         // 3. Add liquidity with the current balance
@@ -630,16 +638,6 @@ contract HomoraPDNVault is
 
         uint256 equityAfter = getEquityETHValue();
 
-        if (equityAfter < equityBefore + minReinvestETH) {
-            if (
-                VaultLib.getOffset(
-                    equityAfter,
-                    equityBefore + minReinvestETH
-                ) >= 10
-            ) {
-                revert Insufficient_Liquidity_Mint();
-            }
-        }
         emit LogReinvest(equityBefore, equityAfter);
     }
 

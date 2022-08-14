@@ -3,19 +3,19 @@
   "proxies": [
     {
       "address": "0x162A433068F51e18b7d13932F27e66a3f99E6890",
-      "txHash": "0x669ec9cc5771b9d3dda34bc134e1ec8671ffe54ae8eccc0c6d2f3a575b9c8e7e",
+      "txHash": "0x46de878c6be1b0d793badbbbe99aa00c27bfa70817b53dfcf79f6ad0aa0e7a25",
       "kind": "uups"
     },
     {
       "address": "0x04C89607413713Ec9775E14b954286519d836FEf",
-      "txHash": "0xe698dbee9579aeb7760c3d783c4036317cbcb484e602bd5742498e1bd557b6ea",
+      "txHash": "0x11396317cac8be5f46b81d7239b1e14af6848e9eb075b4f686092cd5003dab41",
       "kind": "uups"
     }
   ],
   "impls": {
-    "cce18a0195d2f035476ee183a2fc5eb19ee25c8d938ff92a35a4864cb0346579": {
+    "abd3fcb7f9d691ed3c1b2d36bdeda05ac976673c7796a00d7379ac4bd2b7faca": {
       "address": "0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07",
-      "txHash": "0x281c1ec71c5aa91610d6b4317fccddf507ac8c3680d2bf222d22b4bd0f79b6bb",
+      "txHash": "0xd5b92416de626e51e1238fdabf05990a7dad9aee918ce7ba59717066931f412d",
       "layout": {
         "storage": [
           {
@@ -95,7 +95,7 @@
             "label": "crossChainContext",
             "offset": 0,
             "slot": "251",
-            "type": "t_struct(CrossChainContext)8108_storage",
+            "type": "t_struct(CrossChainContext)8237_storage",
             "contract": "ApertureManager",
             "src": "contracts\\ApertureManager.sol:30"
           },
@@ -103,7 +103,7 @@
             "label": "curveRouterContext",
             "offset": 0,
             "slot": "256",
-            "type": "t_struct(CurveRouterContext)9219_storage",
+            "type": "t_struct(CurveRouterContext)9327_storage",
             "contract": "ApertureManager",
             "src": "contracts\\ApertureManager.sol:31"
           },
@@ -127,7 +127,7 @@
             "label": "positionIdToInfo",
             "offset": 0,
             "slot": "259",
-            "type": "t_mapping(t_uint128,t_struct(StoredPositionInfo)6972_storage)",
+            "type": "t_mapping(t_uint128,t_struct(StoredPositionInfo)7081_storage)",
             "contract": "ApertureManager",
             "src": "contracts\\ApertureManager.sol:39"
           },
@@ -143,7 +143,7 @@
             "label": "strategyIdToMetadata",
             "offset": 0,
             "slot": "261",
-            "type": "t_mapping(t_uint64,t_struct(StrategyMetadata)6984_storage)",
+            "type": "t_mapping(t_uint64,t_struct(StrategyMetadata)7093_storage)",
             "contract": "ApertureManager",
             "src": "contracts\\ApertureManager.sol:43"
           }
@@ -153,7 +153,7 @@
             "label": "address",
             "numberOfBytes": "20"
           },
-          "t_array(t_struct(CurveSwapOperation)9210_storage)dyn_storage": {
+          "t_array(t_struct(CurveSwapOperation)9318_storage)dyn_storage": {
             "label": "struct CurveSwapOperation[]",
             "numberOfBytes": "32"
           },
@@ -177,7 +177,7 @@
             "label": "int128",
             "numberOfBytes": "16"
           },
-          "t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9210_storage)dyn_storage)": {
+          "t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9318_storage)dyn_storage)": {
             "label": "mapping(address => struct CurveSwapOperation[])",
             "numberOfBytes": "32"
           },
@@ -185,7 +185,7 @@
             "label": "mapping(address => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9210_storage)dyn_storage))": {
+          "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9318_storage)dyn_storage))": {
             "label": "mapping(address => mapping(address => struct CurveSwapOperation[]))",
             "numberOfBytes": "32"
           },
@@ -193,7 +193,7 @@
             "label": "mapping(bytes32 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint128,t_struct(StoredPositionInfo)6972_storage)": {
+          "t_mapping(t_uint128,t_struct(StoredPositionInfo)7081_storage)": {
             "label": "mapping(uint128 => struct StoredPositionInfo)",
             "numberOfBytes": "32"
           },
@@ -209,7 +209,7 @@
             "label": "mapping(uint64 => mapping(address => bool))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint64,t_struct(StrategyMetadata)6984_storage)": {
+          "t_mapping(t_uint64,t_struct(StrategyMetadata)7093_storage)": {
             "label": "mapping(uint64 => struct StrategyMetadata)",
             "numberOfBytes": "32"
           },
@@ -217,18 +217,18 @@
             "label": "string",
             "numberOfBytes": "32"
           },
-          "t_struct(CrossChainContext)8108_storage": {
+          "t_struct(CrossChainContext)8237_storage": {
             "label": "struct CrossChainContext",
             "members": [
               {
                 "label": "wormholeContext",
-                "type": "t_struct(WormholeCrossChainContext)8088_storage",
+                "type": "t_struct(WormholeCrossChainContext)8217_storage",
                 "offset": 0,
                 "slot": "0"
               },
               {
                 "label": "feeContext",
-                "type": "t_struct(CrossChainFeeContext)8093_storage",
+                "type": "t_struct(CrossChainFeeContext)8222_storage",
                 "offset": 0,
                 "slot": "2"
               },
@@ -247,7 +247,7 @@
             ],
             "numberOfBytes": "160"
           },
-          "t_struct(CrossChainFeeContext)8093_storage": {
+          "t_struct(CrossChainFeeContext)8222_storage": {
             "label": "struct CrossChainFeeContext",
             "members": [
               {
@@ -265,19 +265,19 @@
             ],
             "numberOfBytes": "32"
           },
-          "t_struct(CurveRouterContext)9219_storage": {
+          "t_struct(CurveRouterContext)9327_storage": {
             "label": "struct CurveRouterContext",
             "members": [
               {
                 "label": "routes",
-                "type": "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9210_storage)dyn_storage))",
+                "type": "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9318_storage)dyn_storage))",
                 "offset": 0,
                 "slot": "0"
               }
             ],
             "numberOfBytes": "32"
           },
-          "t_struct(CurveSwapOperation)9210_storage": {
+          "t_struct(CurveSwapOperation)9318_storage": {
             "label": "struct CurveSwapOperation",
             "members": [
               {
@@ -307,7 +307,7 @@
             ],
             "numberOfBytes": "96"
           },
-          "t_struct(StoredPositionInfo)6972_storage": {
+          "t_struct(StoredPositionInfo)7081_storage": {
             "label": "struct StoredPositionInfo",
             "members": [
               {
@@ -331,7 +331,7 @@
             ],
             "numberOfBytes": "32"
           },
-          "t_struct(StrategyMetadata)6984_storage": {
+          "t_struct(StrategyMetadata)7093_storage": {
             "label": "struct StrategyMetadata",
             "members": [
               {
@@ -355,7 +355,7 @@
             ],
             "numberOfBytes": "96"
           },
-          "t_struct(WormholeCrossChainContext)8088_storage": {
+          "t_struct(WormholeCrossChainContext)8217_storage": {
             "label": "struct WormholeCrossChainContext",
             "members": [
               {
@@ -406,9 +406,9 @@
         }
       }
     },
-    "8405b714e99f692b9561c600968e559b780189145f25c3f5ed1b0acfc8373d1e": {
+    "34f185597d266880c09e1579cb80ca1005b5a6918eab44f3fb09833b4edb8dda": {
       "address": "0xdbC43Ba45381e02825b14322cDdd15eC4B3164E6",
-      "txHash": "0x9c4ec7ad88caa4c9d4b6c33fd0614809aff5e7dd40e88da1a2a4462fcb9c36a8",
+      "txHash": "0x056437da94143970202d6fb15b51b7386b9750e58746219e93c88ab7c925207b",
       "layout": {
         "storage": [
           {
@@ -520,7 +520,7 @@
             "label": "contractInfo",
             "offset": 0,
             "slot": "255",
-            "type": "t_struct(ContractInfo)9851_storage",
+            "type": "t_struct(ContractInfo)9959_storage",
             "contract": "HomoraPDNVault",
             "src": "contracts\\HomoraPDNVault.sol:52"
           },
@@ -528,7 +528,7 @@
             "label": "pairInfo",
             "offset": 0,
             "slot": "259",
-            "type": "t_struct(PairInfo)9842_storage",
+            "type": "t_struct(PairInfo)9950_storage",
             "contract": "HomoraPDNVault",
             "src": "contracts\\HomoraPDNVault.sol:56"
           },
@@ -624,7 +624,7 @@
             "label": "vaultLimits",
             "offset": 0,
             "slot": "274",
-            "type": "t_struct(ApertureVaultLimits)7014_storage",
+            "type": "t_struct(ApertureVaultLimits)7117_storage",
             "contract": "HomoraPDNVault",
             "src": "contracts\\HomoraPDNVault.sol:70"
           },
@@ -632,7 +632,7 @@
             "label": "feeConfig",
             "offset": 0,
             "slot": "277",
-            "type": "t_struct(ApertureFeeConfig)7007_storage",
+            "type": "t_struct(ApertureFeeConfig)7110_storage",
             "contract": "HomoraPDNVault",
             "src": "contracts\\HomoraPDNVault.sol:71"
           },
@@ -640,7 +640,7 @@
             "label": "positions",
             "offset": 0,
             "slot": "280",
-            "type": "t_mapping(t_uint16,t_mapping(t_uint128,t_struct(Position)9854_storage))",
+            "type": "t_mapping(t_uint16,t_mapping(t_uint128,t_struct(Position)9962_storage))",
             "contract": "HomoraPDNVault",
             "src": "contracts\\HomoraPDNVault.sol:75"
           },
@@ -656,7 +656,7 @@
             "label": "vaultState",
             "offset": 0,
             "slot": "282",
-            "type": "t_struct(VaultState)9859_storage",
+            "type": "t_struct(VaultState)9967_storage",
             "contract": "HomoraPDNVault",
             "src": "contracts\\HomoraPDNVault.sol:78"
           }
@@ -682,15 +682,15 @@
             "label": "mapping(address => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint128,t_struct(Position)9854_storage)": {
+          "t_mapping(t_uint128,t_struct(Position)9962_storage)": {
             "label": "mapping(uint128 => struct Position)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint16,t_mapping(t_uint128,t_struct(Position)9854_storage))": {
+          "t_mapping(t_uint16,t_mapping(t_uint128,t_struct(Position)9962_storage))": {
             "label": "mapping(uint16 => mapping(uint128 => struct Position))",
             "numberOfBytes": "32"
           },
-          "t_struct(ApertureFeeConfig)7007_storage": {
+          "t_struct(ApertureFeeConfig)7110_storage": {
             "label": "struct ApertureFeeConfig",
             "members": [
               {
@@ -714,7 +714,7 @@
             ],
             "numberOfBytes": "96"
           },
-          "t_struct(ApertureVaultLimits)7014_storage": {
+          "t_struct(ApertureVaultLimits)7117_storage": {
             "label": "struct ApertureVaultLimits",
             "members": [
               {
@@ -738,7 +738,7 @@
             ],
             "numberOfBytes": "96"
           },
-          "t_struct(ContractInfo)9851_storage": {
+          "t_struct(ContractInfo)9959_storage": {
             "label": "struct ContractInfo",
             "members": [
               {
@@ -768,7 +768,7 @@
             ],
             "numberOfBytes": "128"
           },
-          "t_struct(PairInfo)9842_storage": {
+          "t_struct(PairInfo)9950_storage": {
             "label": "struct PairInfo",
             "members": [
               {
@@ -798,7 +798,7 @@
             ],
             "numberOfBytes": "128"
           },
-          "t_struct(Position)9854_storage": {
+          "t_struct(Position)9962_storage": {
             "label": "struct Position",
             "members": [
               {
@@ -810,7 +810,7 @@
             ],
             "numberOfBytes": "32"
           },
-          "t_struct(VaultState)9859_storage": {
+          "t_struct(VaultState)9967_storage": {
             "label": "struct VaultState",
             "members": [
               {

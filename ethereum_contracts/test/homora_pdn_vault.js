@@ -2,6 +2,7 @@ const { CHAIN_ID_AVAX } = require("@certusone/wormhole-sdk");
 const { expect, assert } = require("chai");
 const { BigNumber } = require("ethers");
 const { ethers, upgrades } = require("hardhat");
+const { mine, time } = require("@nomicfoundation/hardhat-network-helpers");
 const {
   AVAX_MAINNET_TOKEN_BRIDGE_ADDR,
   AVAX_MAINNET_URL,
@@ -250,6 +251,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     recvAmt.div("1000000000000000000").toString()
   );
 
+  await mine(1000, {interval: 2});
   await expect(
     strategyContract.connect(wallets[0])
         .rebalance(10, 0, txOptions)
@@ -272,11 +274,13 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     txOptions
   );
   console.log("Leverage changed to 2");
+  await mine(1000, {interval: 2});
   await expect(
     strategyContract.connect(wallets[0])
         .rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
 
+  await mine(1000, {interval: 2});
   // Increase slippage and rebalance again
   await strategyContract.connect(wallets[0])
       .rebalance(100, 0, txOptions);
@@ -304,6 +308,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     swapAmt.div("1000000000000000000").toString(),
     recvAmt.div(1e6).toString()
   );
+  await mine(1000, {interval: 2});
   await expect(
     strategyContract.connect(wallets[0])
         .rebalance(10, 0, txOptions)
@@ -317,6 +322,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     swapAmt.div(1e6).toString(),
     recvAmt.div("1000000000000000000").toString()
   );
+  await mine(1000, {interval: 2});
   await expect(
     strategyContract.connect(wallets[0])
         .rebalance(10, 0, txOptions)
@@ -631,7 +637,7 @@ describe.only("HomoraPDNVault Initialization", function () {
     );
   });
 
-  it("Deposit and test rebalance", async function () {
+  it.only("Deposit and test rebalance", async function () {
     await testRebalance(managerContract, strategyContract, vaultLib);
   });
 

@@ -24,6 +24,7 @@ struct ContractInfo {
     address adapter; // Aperture's adapter to interact with Homora
     address bank; // HomoraBank's address
     address oracle; // Homora's Oracle address
+    address router; // TraderJoe's router address
     address spell; // Homora's Spell address
 }
 
@@ -445,6 +446,7 @@ library VaultLib {
     /// @param L: Leverage
     function deltaNeutralMath(
         PairInfo storage pairInfo,
+        address router,
         uint256 Ua,
         uint256 Ub,
         uint256 L
@@ -472,8 +474,23 @@ library VaultLib {
         require(squareRoot > b, "Negative root");
         debtBAmt = (squareRoot - b) / 4;
         debtAAmt =
-            ((L - 2) * debtBAmt).mulDiv(Na + Ua, L * (Nb + Ub) + 2 * debtBAmt) +
-            1;
+            ((L - 2) * debtBAmt).mulDiv(Na + Ua, L * (Nb + Ub) + 2 * debtBAmt);
+        // Internally Homora's Spell swaps Ub token B to A. It will be reverted by TraderJoe if amtAOut == 0
+        if (Ub > 0) {
+            uint256 amtAOut = IHomoraAvaxRouter(router).getAmountOut(Ub, Nb, Na);
+            if (amtAOut == 0) {
+                // Let Homora swaps 1 token A to B.
+                debtAAmt += 1;
+            }
+        } else {
+            if (Na > Nb) {
+                // 1 B swaps more than 1 A.
+                debtBAmt += 1;
+            } else {
+                // 1 A swaps more than 1 B.
+                debtAAmt += 1;
+            }
+        }
     }
 
     /// @dev Deposit to HomoraBank in a pseudo delta-neutral way
@@ -505,6 +522,7 @@ library VaultLib {
 
         (uint256 stableBorrow, uint256 assetBorrow) = deltaNeutralMath(
             pairInfo,
+            contractInfo.router,
             stableBalance,
             assetBalance,
             leverageLevel
