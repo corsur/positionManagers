@@ -7,8 +7,60 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 import "../interfaces/IHomoraAvaxRouter.sol";
 import "../interfaces/IHomoraBank.sol";
 import "../interfaces/IHomoraAdapter.sol";
+import "../interfaces/IHomoraOracle.sol";
 import "../interfaces/IUniswapPair.sol";
 import "../libraries/HomoraAdapterLib.sol";
+
+// Addresses in the pair
+struct PairInfo {
+    address stableToken; // token 0
+    address assetToken; // token 1
+    address lpToken; // ERC-20 LP token address
+    address rewardToken;
+}
+
+// Amounts of tokens in the Homora farming position
+struct VaultPosition {
+    uint256 collateralSize; // amount of collateral/LP
+    uint256 amtA; // amount of token A in the LP
+    uint256 amtB; // amount of token B in the LP
+    uint256 debtAmtA; // amount of token A borrowed
+    uint256 debtAmtB; // amount of token B borrowed
+}
+
+struct ShortHelper {
+    uint256 Ka;
+    uint256 Kb;
+    uint256 Sa;
+    uint256 Sb;
+    uint256 collWithdrawAmt;
+    uint256 amtARepay;
+    uint256 amtBRepay;
+    uint256 amtAWithdraw;
+    uint256 amtBWithdraw;
+    uint256 reserveABefore;
+    uint256 reserveBBefore;
+    uint256 reserveAAfter;
+    uint256 reserveBAfter;
+    uint256 collWithdrawErr;
+    uint256 amtARepayErr;
+    uint256 amtBRepayErr;
+}
+
+struct LongHelper {
+    uint256 Sa;
+    uint256 Sb;
+    uint256 reserveABefore;
+    uint256 reserveBBefore;
+    uint256 amtABorrow;
+    uint256 amtBBorrow;
+    uint256 amtAAfter;
+    uint256 amtBAfter;
+    uint256 debtAAfter;
+    uint256 amtAReward;
+    uint256 amtABorrowErr;
+    uint256 amtBBorrowErr;
+}
 
 /// @custom:oz-upgrades-unsafe-allow external-library-linking
 library VaultLib {
@@ -39,56 +91,229 @@ library VaultLib {
     uint256 public constant someLargeNumber = 10**18;
     uint256 public constant MAX_UINT = 2**256 - 1;
 
-    struct ShortHelper {
-        uint256 Ka;
-        uint256 Kb;
-        uint256 Sa;
-        uint256 Sb;
-        uint256 collWithdrawAmt;
-        uint256 amtARepay;
-        uint256 amtBRepay;
-        uint256 amtAWithdraw;
-        uint256 amtBWithdraw;
-        uint256 reserveABefore;
-        uint256 reserveBBefore;
-        uint256 reserveAAfter;
-        uint256 reserveBAfter;
-        uint256 collWithdrawErr;
-        uint256 amtARepayErr;
-        uint256 amtBRepayErr;
+    ///* Bank related functions *///
+
+    /// @dev Query the amount of collateral/LP in the Homora PDN position
+    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    function getCollateralSize(IHomoraBank homoraBank, uint256 homoraBankPosId)
+        public
+        view
+        returns (uint256)
+    {
+        if (homoraBankPosId == _NO_ID) return 0;
+        (, , , uint256 collateralSize) = homoraBank.getPositionInfo(
+            homoraBankPosId
+        );
+        return collateralSize;
     }
 
-    struct LongHelper {
-        uint256 Sa;
-        uint256 Sb;
-        uint256 reserveABefore;
-        uint256 reserveBBefore;
-        uint256 amtABorrow;
-        uint256 amtBBorrow;
-        uint256 amtAAfter;
-        uint256 amtBAfter;
-        uint256 debtAAfter;
-        uint256 amtAReward;
-        uint256 amtABorrowErr;
-        uint256 amtBBorrowErr;
+    /// @notice Evalute the current collateral's amount in terms of 2 tokens. Stable token first
+    /// @param pairInfo: Addresses in the pair
+    /// @param collAmount: Amount of LP token
+    function convertCollateralToTokens(
+        PairInfo storage pairInfo,
+        uint256 collAmount
+    ) public view returns (uint256 amount0, uint256 amount1) {
+        if (collAmount == 0) {
+            amount0 = 0;
+            amount1 = 0;
+        } else {
+            uint256 totalLPSupply = IERC20(pairInfo.lpToken).totalSupply();
+            require(totalLPSupply > 0, "Invalid LP supply");
+            (uint256 reserve0, uint256 reserve1) = getReserves(pairInfo);
+            amount0 = reserve0.mulDiv(collAmount, totalLPSupply);
+            amount1 = reserve1.mulDiv(collAmount, totalLPSupply);
+        }
     }
 
-    // Addresses in the pair
-    struct PairInfo {
-        address stableToken; // token 0
-        address assetToken; // token 1
-        address lpToken; // ERC-20 LP token address
-        address rewardToken;
+    /// @dev Query the current debt amount for both tokens. Stable first
+    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    function getDebtAmounts(
+        IHomoraBank homoraBank,
+        uint256 homoraBankPosId,
+        PairInfo storage pairInfo
+    ) public view returns (uint256, uint256) {
+        if (homoraBankPosId == _NO_ID) {
+            return (0, 0);
+        } else {
+            uint256 stableTokenDebtAmount;
+            uint256 assetTokenDebtAmount;
+            (address[] memory tokens, uint256[] memory debts) = homoraBank
+                .getPositionDebts(homoraBankPosId);
+            for (uint256 i = 0; i < tokens.length; i++) {
+                if (tokens[i] == pairInfo.stableToken) {
+                    stableTokenDebtAmount = debts[i];
+                } else if (tokens[i] == pairInfo.assetToken) {
+                    assetTokenDebtAmount = debts[i];
+                }
+            }
+            return (stableTokenDebtAmount, assetTokenDebtAmount);
+        }
     }
 
-    // Amounts of tokens in the Homora farming position
-    struct VaultPosition {
-        uint256 collateralSize; // amount of collateral/LP
-        uint256 amtA; // amount of token A in the LP
-        uint256 amtB; // amount of token B in the LP
-        uint256 debtAmtA; // amount of token A borrowed
-        uint256 debtAmtB; // amount of token B borrowed
+    /// @dev Homora position info
+    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    function getPositionInfo(
+        IHomoraBank homoraBank,
+        uint256 homoraBankPosId,
+        PairInfo storage pairInfo
+    ) public view returns (VaultPosition memory pos) {
+        pos.collateralSize = getCollateralSize(homoraBank, homoraBankPosId);
+        (pos.amtA, pos.amtB) = convertCollateralToTokens(
+            pairInfo,
+            pos.collateralSize
+        );
+        (pos.debtAmtA, pos.debtAmtB) = getDebtAmounts(
+            homoraBank,
+            homoraBankPosId,
+            pairInfo
+        );
     }
+
+    /// @notice Calculate the debt ratio and return the ratio, multiplied by 1e4
+    function getDebtRatio(
+        IHomoraBank homoraBank,
+        uint256 homoraBankPosId
+    ) public view returns (uint256) {
+        return
+            homoraBankPosId == _NO_ID
+                ? 0
+                : homoraBank.getBorrowETHValue(homoraBankPosId).mulDiv(
+                    10000,
+                    homoraBank.getCollateralETHValue(homoraBankPosId)
+                );
+    }
+
+    /// @dev Total position value, not weighted by the collateral factor
+    function getCollateralETHValue(
+        IHomoraBank homoraBank,
+        uint256 homoraBankPosId,
+        uint256 collateralFactor
+    ) public view returns (uint256) {
+        return
+            homoraBankPosId == _NO_ID
+                ? 0
+                : homoraBank.getCollateralETHValue(homoraBankPosId).mulDiv(
+                    10000,
+                    collateralFactor
+                );
+    }
+    ///* Oracle related functions *///
+
+    function support(address oracle, address token) public view returns (bool) {
+        return IHomoraOracle(oracle).support(token);
+    }
+
+    function supportLP(address oracle, address lpToken)
+        public
+        view
+        returns (bool)
+    {
+        (, , uint16 liqIncentive) = IHomoraOracle(oracle).tokenFactors(lpToken);
+        return liqIncentive != 0;
+    }
+
+    /// @dev Query the collateral factor of the LP token on Homora, 0.84 => 8400
+    function getCollateralFactor(address oracle, address lpToken)
+        public
+        view
+        returns (uint256 _collateralFactor)
+    {
+        (, _collateralFactor, ) = IHomoraOracle(oracle).tokenFactors(lpToken);
+        require(
+            0 < _collateralFactor && _collateralFactor < 10000,
+            "Invalid collateral factor"
+        );
+    }
+
+    /// @dev Query the borrow factor of the debt token on Homora, 1.04 => 10400
+    /// @param token: Address of the ERC-20 debt token
+    function getBorrowFactor(address oracle, address token)
+        public
+        view
+        returns (uint256 _borrowFactor)
+    {
+        (_borrowFactor, , ) = IHomoraOracle(oracle).tokenFactors(token);
+        require(_borrowFactor > 10000, "Invalid borrow factor");
+    }
+
+    /// @dev Return the value of the given token as ETH, weighted by the borrow factor
+    function asETHBorrow(
+        address oracle,
+        address token,
+        uint256 amount,
+        address owner
+    ) public view returns (uint256) {
+        return IHomoraOracle(oracle).asETHBorrow(token, amount, owner);
+    }
+
+    /// @dev Return the value of the given token as ETH, *not* weighted by the borrow factor. Assume token is supported by the oracle
+    function getTokenETHValue(
+        address oracle,
+        address token,
+        uint256 amount,
+        address owner,
+        uint256 borrowFactor
+    )
+        public
+        view
+        returns (uint256)
+    {
+        return
+            asETHBorrow(
+                    oracle,
+                    token,
+                    amount,
+                    owner
+                )
+                .mulDiv(10000, borrowFactor);
+    }
+
+    /// @dev Total debt value, *not* weighted by the borrow factors
+    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    function getBorrowETHValue(
+        IHomoraBank homoraBank,
+        uint256 homoraBankPosId,
+        PairInfo storage pairInfo,
+        address oracle,
+        address owner,
+        uint256 stableBorrowFactor,
+        uint256 assetBorrowFactor
+    ) public view returns (uint256) {
+        (
+            uint256 stableTokenDebtAmount,
+            uint256 assetTokenDebtAmount
+        ) = getDebtAmounts(
+            homoraBank,
+            homoraBankPosId,
+            pairInfo
+        );
+        return
+            (homoraBankPosId == _NO_ID)
+            ? 0
+            : getTokenETHValue(
+                oracle,
+                pairInfo.stableToken,
+                stableTokenDebtAmount,
+                owner,
+                stableBorrowFactor
+            ) + getTokenETHValue(
+                oracle,
+                pairInfo.assetToken,
+                assetTokenDebtAmount,
+                owner,
+                assetBorrowFactor
+            );
+    }
+
+    ///* PDN Vault related functions *///
 
     /// @dev Calculate the debt ratio as a function of leverage for a delta-neutral position
     function calculateDebtRatio(
@@ -118,6 +343,44 @@ library VaultLib {
                     (leverage - 2) *
                     stableBorrowFactor
             );
+    }
+
+    /// @dev Check if the farming position is delta neutral
+    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    /// @param deltaThreshold: Delta deviation threshold in percentage * 10000
+    function isDeltaNeutral(
+        IHomoraBank homoraBank,
+        uint256 homoraBankPosId,
+        PairInfo storage pairInfo,
+        uint256 deltaThreshold
+    ) public view returns (bool) {
+        // Assume token A is the stable token
+        // Position info in Homora Bank
+        VaultPosition memory pos = getPositionInfo(
+            homoraBank,
+            homoraBankPosId,
+            pairInfo
+        );
+        return getOffset(pos.amtB, pos.debtAmtB) < deltaThreshold;
+    }
+
+    function isDebtRatioHealthy(
+        IHomoraBank homoraBank,
+        uint256 homoraBankPosId,
+        uint256 minDebtRatio,
+        uint256 maxDebtRatio
+    ) public view returns (bool) {
+        if (homoraBankPosId == _NO_ID) {
+            return true;
+        } else {
+            uint256 debtRatio = getDebtRatio(
+                homoraBank,
+                homoraBankPosId
+            );
+            return (minDebtRatio < debtRatio) && (debtRatio < maxDebtRatio);
+        }
     }
 
     /// @dev Calculate the params passed to Homora to create PDN position
@@ -485,87 +748,6 @@ library VaultLib {
         }
     }
 
-    /// @notice Evalute the current collateral's amount in terms of 2 tokens. Stable token first
-    /// @param pairInfo: Addresses in the pair
-    /// @param collAmount: Amount of LP token
-    function convertCollateralToTokens(
-        PairInfo storage pairInfo,
-        uint256 collAmount
-    ) public view returns (uint256 amount0, uint256 amount1) {
-        if (collAmount == 0) {
-            amount0 = 0;
-            amount1 = 0;
-        } else {
-            uint256 totalLPSupply = IERC20(pairInfo.lpToken).totalSupply();
-            require(totalLPSupply > 0, "Invalid LP supply");
-            (uint256 reserve0, uint256 reserve1) = getReserves(pairInfo);
-            amount0 = reserve0.mulDiv(collAmount, totalLPSupply);
-            amount1 = reserve1.mulDiv(collAmount, totalLPSupply);
-        }
-    }
-
-    /// @param homoraBank: Instantiated HomoraBank Interface
-    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    function getCollateralSize(IHomoraBank homoraBank, uint256 homoraBankPosId)
-        public
-        view
-        returns (uint256)
-    {
-        if (homoraBankPosId == _NO_ID) return 0;
-        (, , , uint256 collateralSize) = homoraBank.getPositionInfo(
-            homoraBankPosId
-        );
-        return collateralSize;
-    }
-
-    /// @dev Query the current debt amount for both tokens. Stable first
-    /// @param homoraBank: Instantiated HomoraBank Interface
-    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param pairInfo: Addresses in the pair
-    function getDebtAmounts(
-        IHomoraBank homoraBank,
-        uint256 homoraBankPosId,
-        PairInfo storage pairInfo
-    ) public view returns (uint256, uint256) {
-        if (homoraBankPosId == _NO_ID) {
-            return (0, 0);
-        } else {
-            uint256 stableTokenDebtAmount;
-            uint256 assetTokenDebtAmount;
-            (address[] memory tokens, uint256[] memory debts) = homoraBank
-                .getPositionDebts(homoraBankPosId);
-            for (uint256 i = 0; i < tokens.length; i++) {
-                if (tokens[i] == pairInfo.stableToken) {
-                    stableTokenDebtAmount = debts[i];
-                } else if (tokens[i] == pairInfo.assetToken) {
-                    assetTokenDebtAmount = debts[i];
-                }
-            }
-            return (stableTokenDebtAmount, assetTokenDebtAmount);
-        }
-    }
-
-    /// @dev Homora position info
-    /// @param homoraBank: Instantiated HomoraBank Interface
-    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param pairInfo: Addresses in the pair
-    function getPositionInfo(
-        IHomoraBank homoraBank,
-        uint256 homoraBankPosId,
-        PairInfo storage pairInfo
-    ) external view returns (VaultPosition memory pos) {
-        pos.collateralSize = getCollateralSize(homoraBank, homoraBankPosId);
-        (pos.amtA, pos.amtB) = convertCollateralToTokens(
-            pairInfo,
-            pos.collateralSize
-        );
-        (pos.debtAmtA, pos.debtAmtB) = getDebtAmounts(
-            homoraBank,
-            homoraBankPosId,
-            pairInfo
-        );
-    }
-
     /// @dev Calculate the amount of collateral to withdraw and the amount of each token to repay by Homora to reach DN
     /// @dev Assume `pos.debtAmtB > pos.amtB`. Check before calling
     /// @param pos: Farming position in Homora Bank
@@ -771,11 +953,8 @@ library VaultLib {
         address fromToken,
         address toToken
     )
-        public
-        returns (
-            //        internal
-            uint256
-        )
+        internal
+        returns (uint256)
     {
         IHomoraAvaxRouter _router = IHomoraAvaxRouter(router);
         address[] memory path = new address[](2);
@@ -801,11 +980,8 @@ library VaultLib {
         uint256 amount,
         address toToken
     )
-        public
-        returns (
-            //        internal
-            uint256
-        )
+        external
+        returns (uint256)
     {
         IHomoraAvaxRouter _router = IHomoraAvaxRouter(router);
         address fromToken = _router.WAVAX();

@@ -59,8 +59,6 @@
   "function setVaultLimits(tuple(uint256,uint256,uint256))",
   "function spell() view returns (address)",
   "function stableBorrowFactor() view returns (uint256)",
-  "function swap(uint256,address,address) returns (uint256)",
-  "function swapAVAX(uint256,address) returns (uint256)",
   "function targetDebtRatio() view returns (uint256)",
   "function totalShareAmount() view returns (uint256)",
   "function transferOwnership(address)",
