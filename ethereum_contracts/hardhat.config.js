@@ -32,6 +32,7 @@ module.exports = {
         enabled: true,
         // See https://docs.soliditylang.org/en/v0.8.12/internals/optimizer.html#optimizer-parameter-runs.
         // runs: 2 ** 32 - 1,
+        // runs: 2**14,
         runs: 1000,
       },
     },

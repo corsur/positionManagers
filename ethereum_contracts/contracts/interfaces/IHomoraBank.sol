@@ -34,6 +34,4 @@ interface IHomoraBank {
         external
         view
         returns (uint256);
-
-    function accrue(address token) external;
 }
