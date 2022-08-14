@@ -47,6 +47,12 @@ struct ApertureFeeConfig {
     uint256 managementFee; // multiplied by 1e4
 }
 
+struct ApertureVaultLimits {
+    uint256 maxCapacity; // Maximum amount allowed in stable across the vault
+    uint256 maxOpenPerTx; // Maximum amount allowed in stable to add in one transaction
+    uint256 maxWithdrawPerTx; // Maximum amount allowed in stable to withdraw in one transaction
+}
+
 interface IStrategyManager {
     /// @dev Open a new Aperture position for `recipient`
     /// @param position_info: Aperture position info
