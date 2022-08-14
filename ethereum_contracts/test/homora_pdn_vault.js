@@ -384,10 +384,8 @@ async function deposit(managerContract, strategyContract) {
   // Craft open position data.
   let openPositionBytesArray = ethers.utils.arrayify(
     ethers.utils.defaultAbiCoder.encode(
-      ["uint256", "uint256", "uint256", "uint256"],
+      ["uint256", "uint256"],
       [
-        usdcDepositAmount0, // uint256 stableTokenDepositAmount
-        avaxDepositAmount0, // uint256 assetTokenDepositAmount
         minEquityReceived0, // uint256 minEquityETH
         0 // uint256 minReinvestETH
       ]
@@ -400,7 +398,7 @@ async function deposit(managerContract, strategyContract) {
     .createPosition(
       /*strategyChainId=*/ AVAX_CHAIN_ID,
       /*strategyId=*/ 0,
-      [[/*assetType=*/ 0, USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
+      [[USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
       openPositionBytesArray,
       txOptions
     );
@@ -414,8 +412,8 @@ async function deposit(managerContract, strategyContract) {
   );
   let openPositionBytesArray1 = ethers.utils.arrayify(
     ethers.utils.defaultAbiCoder.encode(
-      ["uint256", "uint256", "uint256", "uint256"],
-      [usdcDepositAmount1, avaxDepositAmount1, minEquityReceived1, 0]
+      ["uint256", "uint256"],
+      [minEquityReceived1, 0]
     )
   );
   await managerContract
@@ -423,7 +421,7 @@ async function deposit(managerContract, strategyContract) {
     .createPosition(
       /*strategyChainId=*/ AVAX_CHAIN_ID,
       /*strategyId=*/ 0,
-      [[/*assetType=*/ 0, USDC_TOKEN_ADDRESS, usdcDepositAmount1]],
+      [[USDC_TOKEN_ADDRESS, usdcDepositAmount1]],
       openPositionBytesArray1,
       txOptions
     );
