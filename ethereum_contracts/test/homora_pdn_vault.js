@@ -26,6 +26,7 @@ const JOEABI = [
 const {
   HOMORA_BANK_ADDRESS,
   TJ_SPELLV3_WAVAX_USDC_ADDRESS,
+  MC_JOEV3_WAVAX_USDC_ADDRESS,
   WAVAX_TOKEN_ADDRESS,
   USDC_TOKEN_ADDRESS,
   JOE_TOKEN_ADDRESS,
@@ -214,7 +215,7 @@ async function testSwap(strategyContract) {
 }
 
 // testing function for rebalance()
-async function testRebalance(managerContract, strategyContract) {
+async function testRebalance(managerContract, strategyContract, vaultLib) {
   await deposit(managerContract, strategyContract);
   // check collateral
   let collSize = await strategyContract
@@ -226,10 +227,13 @@ async function testRebalance(managerContract, strategyContract) {
   console.log("collateral: usdc: %d, wavax: %d", usdcHold, wavaxHold);
 
   // check debt
-  let [usdcDebt, wavaxDebt] = await strategyContract
-    .connect(wallets[0])
-    .getDebtAmounts(txOptions);
-  console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
+  // let [usdcDebt, wavaxDebt] = await strategyContract
+  //   .connect(wallets[0])
+  //   .getDebtAmounts(txOptions);
+  // var homoraBankPosId = (await strategyContract.homoraBankPosId()).toNumber();
+  // let [usdcDebt, wavaxDebt] = await vaultLib
+  //   .getDebtAmounts(HOMORA_BANK_ADDRESS, homoraBankPosId, [USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS, MC_JOEV3_WAVAX_USDC_ADDRESS, JOE_TOKEN_ADDRESS]);
+  // console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
 
   // check if position state is healthy (no need to rebalance)
   await expect(
@@ -509,6 +513,7 @@ describe.only("HomoraPDNVault Initialization", function () {
   var homoraAdapter = undefined;
   var strategyFactory = undefined;
   var strategyContract = undefined;
+  var vaultLib = undefined;
 
   beforeEach("Setup before each test", async function () {
     await network.provider.request({
@@ -629,7 +634,7 @@ describe.only("HomoraPDNVault Initialization", function () {
   });
 
   it("Deposit and test rebalance", async function () {
-    await testRebalance(managerContract, strategyContract);
+    await testRebalance(managerContract, strategyContract, vaultLib);
   });
 
   it("Deposit and test reinvest", async function () {
