@@ -26,6 +26,7 @@ const JOEABI = [
 const {
   HOMORA_BANK_ADDRESS,
   TJ_SPELLV3_WAVAX_USDC_ADDRESS,
+  MC_JOEV3_WAVAX_USDC_ADDRESS,
   WAVAX_TOKEN_ADDRESS,
   USDC_TOKEN_ADDRESS,
   JOE_TOKEN_ADDRESS,
@@ -214,7 +215,7 @@ async function testSwap(strategyContract) {
 }
 
 // testing function for rebalance()
-async function testRebalance(managerContract, strategyContract) {
+async function testRebalance(managerContract, strategyContract, vaultLib) {
   await deposit(managerContract, strategyContract);
   // check collateral
   let collSize = await strategyContract
@@ -226,10 +227,13 @@ async function testRebalance(managerContract, strategyContract) {
   console.log("collateral: usdc: %d, wavax: %d", usdcHold, wavaxHold);
 
   // check debt
-  let [usdcDebt, wavaxDebt] = await strategyContract
-    .connect(wallets[0])
-    .getDebtAmounts(txOptions);
-  console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
+  // let [usdcDebt, wavaxDebt] = await strategyContract
+  //   .connect(wallets[0])
+  //   .getDebtAmounts(txOptions);
+  // var homoraBankPosId = (await strategyContract.homoraBankPosId()).toNumber();
+  // let [usdcDebt, wavaxDebt] = await vaultLib
+  //   .getDebtAmounts(HOMORA_BANK_ADDRESS, homoraBankPosId, [USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS, MC_JOEV3_WAVAX_USDC_ADDRESS, JOE_TOKEN_ADDRESS]);
+  // console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
 
   // check if position state is healthy (no need to rebalance)
   await expect(
@@ -441,7 +445,7 @@ async function testDepositAndWithdraw(
 
   // // Colletral size of each wallet.
   var totalCollateralSize = res.collateralSize;
-  var totalShareAmount = await strategyContract.totalShareAmount();
+  [totalShareAmount, lastCollectionTimestamp] = await strategyContract.vaultState();
   var shareAmount0 = await strategyContract.positions(CHAIN_ID_AVAX, 0); // position id 0
   console.log("share amount 0: ", shareAmount0.toString());
   var shareAmount1 = await strategyContract.positions(CHAIN_ID_AVAX, 1); // position id 1
@@ -507,6 +511,7 @@ describe.only("HomoraPDNVault Initialization", function () {
   var homoraAdapter = undefined;
   var strategyFactory = undefined;
   var strategyContract = undefined;
+  var vaultLib = undefined;
 
   beforeEach("Setup before each test", async function () {
     await network.provider.request({
@@ -536,17 +541,13 @@ describe.only("HomoraPDNVault Initialization", function () {
     adapterLib = await library.deploy();
     library = await ethers.getContractFactory("VaultLib", {
       libraries: {
-        HomoraAdapterLib: adapterLib.address,
+        HomoraAdapterLib: adapterLib.address
       },
     });
     vaultLib = await library.deploy();
-    library = await ethers.getContractFactory("OracleLib");
-    oracleLib = await library.deploy();
     strategyFactory = await ethers.getContractFactory("HomoraPDNVault", {
       libraries: {
         VaultLib: vaultLib.address,
-        OracleLib: oracleLib.address,
-        HomoraAdapterLib: adapterLib.address
       },
     });
     strategyContract = await upgrades.deployProxy(
@@ -618,9 +619,9 @@ describe.only("HomoraPDNVault Initialization", function () {
     );
   });
 
-  it("Test swap functions", async function () {
-    await testSwap(strategyContract);
-  });
+  // it("Test swap functions", async function () {
+  //   await testSwap(strategyContract);
+  // });
 
   it("HomoraPDNVault DepositAndWithdraw", async function () {
     await testDepositAndWithdraw(
@@ -631,7 +632,7 @@ describe.only("HomoraPDNVault Initialization", function () {
   });
 
   it("Deposit and test rebalance", async function () {
-    await testRebalance(managerContract, strategyContract);
+    await testRebalance(managerContract, strategyContract, vaultLib);
   });
 
   it("Deposit and test reinvest", async function () {
