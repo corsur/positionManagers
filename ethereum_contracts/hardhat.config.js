@@ -4,6 +4,7 @@ require("@openzeppelin/hardhat-upgrades");
 require("hardhat-gas-reporter");
 require("hardhat-abi-exporter");
 require("hardhat-contract-sizer");
+require('solidity-coverage')
 
 const {
   ETH_PRV_KEY_1,

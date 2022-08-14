@@ -24,6 +24,7 @@
     "hardhat-abi-exporter": "^2.8.0",
     "hardhat-gas-reporter": "^1.0.8",
     "jest": "^25.2.2",
+    "solidity-coverage": "^0.7.21",
     "supertest": "^6.2.2"
   },
   "dependencies": {
