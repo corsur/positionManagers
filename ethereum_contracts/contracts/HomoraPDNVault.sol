@@ -395,6 +395,7 @@ contract HomoraPDNVault is
         // Record original position equity before adding liquidity
         uint256 equityBefore = getEquityETHValue();
 
+        // Actual deposit actions
         VaultLib.deposit(
             contractInfo,
             homoraBankPosId,
@@ -406,7 +407,8 @@ contract HomoraPDNVault is
         );
 
         // Position equity after adding liquidity
-        uint256 equityChange = getEquityETHValue() - equityBefore;
+        uint256 equityAfter = getEquityETHValue();
+        uint256 equityChange = equityAfter - equityBefore;
         // Calculate user share amount.
         uint256 shareAmount = equityBefore == 0
             ? equityChange
@@ -424,7 +426,7 @@ contract HomoraPDNVault is
         }
 
         if (
-            equityBefore + equityChange >
+            equityAfter >
             getTokenETHValue(pairInfo.stableToken, vaultLimits.maxCapacity)
         ) {
             revert Vault_Limit_Exceeded();
@@ -489,6 +491,8 @@ contract HomoraPDNVault is
 
         // Record original position equity before removing liquidity
         uint256 equityBefore = getEquityETHValue();
+
+        // Actual withdraw actions
 
         // Calculate collSize to withdraw.
         uint256 collWithdrawSize = withdrawShareAmount.mulDiv(
@@ -694,6 +698,7 @@ contract HomoraPDNVault is
             pairInfo
         );
 
+        // Actual rebalance actions
         if (pos.debtAmtB > pos.amtB) {
             // 1. short: amtB < debtAmtB, R > Rt, swap A to B
             (uint256 amtASwap, uint256 amtBSwap) = VaultLib.rebalanceShort(
