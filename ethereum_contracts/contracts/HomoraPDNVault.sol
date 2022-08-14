@@ -13,9 +13,7 @@ import "./interfaces/IApertureCommon.sol";
 import "./interfaces/IHomoraAvaxRouter.sol";
 import "./interfaces/IHomoraBank.sol";
 import "./interfaces/IHomoraSpell.sol";
-import "./interfaces/IHomoraAdapter.sol";
 
-import "./libraries/HomoraAdapterLib.sol";
 import "./libraries/VaultLib.sol";
 
 // Allow external linking of library. Our library doesn't contain assembly and
@@ -30,7 +28,6 @@ contract HomoraPDNVault is
 {
     using SafeERC20 for IERC20;
     using Math for uint256;
-    using HomoraAdapterLib for IHomoraAdapter;
 
     // --- modifiers ---
     modifier onlyApertureManager() {
@@ -382,7 +379,6 @@ contract HomoraPDNVault is
 
         // Check if the PDN position need rebalance
         if (!isDeltaNeutral() || !isDebtRatioHealthy()) {
-            // TODO(shuhui): configure this via param.
             rebalanceInternal(10);
         }
 
@@ -392,18 +388,33 @@ contract HomoraPDNVault is
             feeConfig.managementFee
         );
 
+        // Transfer user's deposit tokens to current contract.
+        if (stableTokenDepositAmount > 0) {
+            IERC20(pairInfo.stableToken).safeTransferFrom(
+                msg.sender,
+                address(this),
+                stableTokenDepositAmount
+            );
+        }
+        if (assetTokenDepositAmount > 0) {
+            IERC20(pairInfo.assetToken).safeTransferFrom(
+                msg.sender,
+                address(this),
+                assetTokenDepositAmount
+            );
+        }
+
         // Record original position equity before adding liquidity
         uint256 equityBefore = getEquityETHValue();
 
-        // Actual deposit actions
-        VaultLib.deposit(
+        // Add liquidity with the current balance
+        homoraBankPosId = VaultLib.deposit(
             contractInfo,
             homoraBankPosId,
             pairInfo,
-            stableTokenDepositAmount,
-            assetTokenDepositAmount,
             leverageLevel,
-            pid
+            pid,
+            msg.value
         );
 
         // Position equity after adding liquidity
@@ -493,86 +504,13 @@ contract HomoraPDNVault is
         uint256 equityBefore = getEquityETHValue();
 
         // Actual withdraw actions
-
-        // Calculate collSize to withdraw.
-        uint256 collWithdrawSize = withdrawShareAmount.mulDiv(
-            getCollateralSize(),
-            vaultState.totalShareAmount
-        );
-
-        // Calculate debt to repay in two tokens.
-        (
-            uint256 stableTokenDebtAmount,
-            uint256 assetTokenDebtAmount
-        ) = getDebtAmounts();
-
-        // Encode removeLiqiduity call.
-        bytes memory data = abi.encodeWithSelector(
-            VaultLib.REMOVE_LIQUIDITY_SIG,
-            pairInfo.stableToken,
-            pairInfo.assetToken,
-            [
-                collWithdrawSize,
-                0,
-                stableTokenDebtAmount.mulDiv(
-                    withdrawShareAmount,
-                    vaultState.totalShareAmount
-                ),
-                assetTokenDebtAmount.mulDiv(
-                    withdrawShareAmount,
-                    vaultState.totalShareAmount
-                ),
-                0,
-                0,
-                0
-            ]
-        );
-
-        IHomoraAdapter(contractInfo.adapter).homoraExecute(
-            contractInfo.bank,
+        uint256[3] memory withdrawAmounts = VaultLib.withdraw(
+            contractInfo,
             homoraBankPosId,
-            contractInfo.spell,
-            data,
             pairInfo,
-            0
+            VaultLib.someLargeNumber.mulDiv(withdrawShareAmount, vaultState.totalShareAmount),
+            feeConfig.withdrawFee
         );
-
-        // Position equity after removing liquidity
-        // Limit the maximum withdrawal amount in a single transaction
-        if (
-            (equityBefore - getEquityETHValue()) >
-            getTokenETHValue(pairInfo.stableToken, vaultLimits.maxWithdrawPerTx)
-        ) {
-            revert Vault_Limit_Exceeded();
-        }
-
-        // Calculate token disbursement amount.
-        uint256[3] memory withdrawAmounts = [
-            // Stable token withdraw amount
-            (10000 - feeConfig.withdrawFee).mulDiv(
-                IERC20(pairInfo.stableToken).balanceOf(address(this)),
-                10000
-            ),
-            // Asset token withdraw amount
-            (10000 - feeConfig.withdrawFee).mulDiv(
-                IERC20(pairInfo.assetToken).balanceOf(address(this)),
-                10000
-            ),
-            // AVAX withdraw amount
-            (10000 - feeConfig.withdrawFee).mulDiv(address(this).balance, 10000)
-        ];
-
-        // Slippage control
-        if (
-            withdrawAmounts[0] < minStableReceived ||
-            (pairInfo.assetToken != WAVAX &&
-                withdrawAmounts[1] < minAssetReceived) ||
-            // WAVAX is refunded as native AVAX by Homora's Spell
-            (pairInfo.assetToken == WAVAX &&
-                withdrawAmounts[2] < minAssetReceived)
-        ) {
-            revert Insufficient_Token_Withdrawn();
-        }
 
         // Update position info.
         positions[position_info.chainId][position_info.positionId]
@@ -594,6 +532,27 @@ contract HomoraPDNVault is
             IERC20(pairInfo.assetToken).balanceOf(address(this))
         );
         payable(feeCollector).transfer(address(this).balance);
+
+        // Slippage control
+        if (
+            withdrawAmounts[0] < minStableReceived ||
+            (pairInfo.assetToken != WAVAX &&
+                withdrawAmounts[1] < minAssetReceived) ||
+            // WAVAX is refunded as native AVAX by Homora's Spell
+            (pairInfo.assetToken == WAVAX &&
+                withdrawAmounts[2] < minAssetReceived)
+        ) {
+            revert Insufficient_Token_Withdrawn();
+        }
+
+        // Check position equity after removing liquidity
+        // Limit the maximum withdrawal amount in a single transaction
+        if (
+            (equityBefore - getEquityETHValue()) >
+            getTokenETHValue(pairInfo.stableToken, vaultLimits.maxWithdrawPerTx)
+        ) {
+            revert Vault_Limit_Exceeded();
+        }
 
         // Check if the PDN position is still healthy
         if (!isDeltaNeutral()) {
@@ -645,13 +604,14 @@ contract HomoraPDNVault is
             VaultLib.swapAVAX(router, avaxBalance, pairInfo.stableToken);
         }
 
-        // 3. Reinvest with the current balance
-        VaultLib.reinvest(
+        // 3. Add liquidity with the current balance
+        VaultLib.deposit(
             contractInfo,
             homoraBankPosId,
             pairInfo,
             leverageLevel,
-            pid
+            pid,
+            0
         );
 
         uint256 equityAfter = getEquityETHValue();

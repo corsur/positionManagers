@@ -443,7 +443,7 @@ async function testDepositAndWithdraw(
 
   // // Colletral size of each wallet.
   var totalCollateralSize = res.collateralSize;
-  var totalShareAmount = await strategyContract.totalShareAmount();
+  [totalShareAmount, lastCollectionTimestamp] = await strategyContract.vaultState();
   var shareAmount0 = await strategyContract.positions(CHAIN_ID_AVAX, 0); // position id 0
   console.log("share amount 0: ", shareAmount0.toString());
   var shareAmount1 = await strategyContract.positions(CHAIN_ID_AVAX, 1); // position id 1
@@ -545,7 +545,6 @@ describe.only("HomoraPDNVault Initialization", function () {
     strategyFactory = await ethers.getContractFactory("HomoraPDNVault", {
       libraries: {
         VaultLib: vaultLib.address,
-        HomoraAdapterLib: adapterLib.address
       },
     });
     strategyContract = await upgrades.deployProxy(

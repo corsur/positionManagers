@@ -441,17 +441,17 @@ library VaultLib {
     /// @param Ua: The amount of stable token supplied by user
     /// @param Ub: The amount of asset token supplied by user
     /// @param L: Leverage
-    function deltaNeutral(
+    function deltaNeutralMath(
         PairInfo storage pairInfo,
         uint256 Ua,
         uint256 Ub,
         uint256 L
     )
-        public
+        internal
         view
         returns (
-            uint256 stableTokenBorrowAmount,
-            uint256 assetTokenBorrowAmount
+            uint256 debtAAmt,
+            uint256 debtBAmt
         )
     {
         // Na: Stable token pool reserve
@@ -475,13 +475,263 @@ library VaultLib {
                 Nb.mulDiv(Ua, Na));
         uint256 squareRoot = Math.sqrt(b * b + 8 * c);
         require(squareRoot > b, "No positive root");
-        assetTokenBorrowAmount = (squareRoot - b) / 4;
-        stableTokenBorrowAmount =
-            ((L - 2) * assetTokenBorrowAmount).mulDiv(
+        debtBAmt = (squareRoot - b) / 4;
+        debtAAmt =
+            ((L - 2) * debtBAmt).mulDiv(
                 Na + Ua,
-                L * (Nb + Ub) + 2 * assetTokenBorrowAmount
+                L * (Nb + Ub) + 2 * debtBAmt
             ) +
             1;
+    }
+
+    /// @dev Deposit to HomoraBank in a pseudo delta-neutral way
+    /// @param contractInfo: Contract address info including adapter, bank and spell
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    /// @param leverageLevel: Target leverage
+    /// @param pid: Pool id
+    /// @param value: native token sent
+    function deposit(
+        ContractInfo storage contractInfo,
+        uint256 homoraBankPosId,
+        PairInfo storage pairInfo,
+        uint256 leverageLevel,
+        uint256 pid,
+        uint256 value
+    ) external returns (uint256)
+    {
+        uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
+            address(this)
+        );
+        uint256 assetBalance = IERC20(pairInfo.assetToken).balanceOf(
+            address(this)
+        );
+
+        // Skip if no balance available.
+        if (stableBalance + assetBalance == 0) {
+            return homoraBankPosId;
+        }
+
+        (
+        uint256 stableBorrow,
+        uint256 assetBorrow
+        ) = deltaNeutralMath(
+            pairInfo,
+            stableBalance,
+            assetBalance,
+            leverageLevel
+        );
+
+        return addLiquidity(
+            contractInfo,
+            homoraBankPosId,
+            pairInfo,
+            stableBalance,
+            assetBalance,
+            stableBorrow,
+            assetBorrow,
+            pid,
+            value
+        );
+    }
+
+    /// @dev Withdraw from HomoraBank
+    /// @param contractInfo: Contract address info including adapter, bank and spell
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    /// @param withdrawShareRatio: Ratio of user shares to withdraw multiplied by 1e18
+    /// @param withdrawFee: Withdrawal fee in percentage multiplied by 1e4
+    function withdraw(
+        ContractInfo storage contractInfo,
+        uint256 homoraBankPosId,
+        PairInfo storage pairInfo,
+        uint256 withdrawShareRatio,
+        uint256 withdrawFee
+    ) external returns (uint256[3] memory) {
+        // Calculate collSize to withdraw.
+        uint256 collWithdrawSize = getCollateralSize(contractInfo.bank, homoraBankPosId).mulDiv(
+            withdrawShareRatio,
+            someLargeNumber
+        );
+
+        // Calculate debt to repay in two tokens.
+        (
+            uint256 stableTokenDebtAmount,
+            uint256 assetTokenDebtAmount
+        ) = getDebtAmounts(
+            contractInfo.bank,
+            homoraBankPosId,
+            pairInfo
+        );
+
+        // Encode removeLiqiduity call.
+        IHomoraAdapter(contractInfo.adapter).homoraExecute(
+            contractInfo.bank,
+            homoraBankPosId,
+            contractInfo.spell,
+            abi.encodeWithSelector(
+                    REMOVE_LIQUIDITY_SIG,
+                    pairInfo.stableToken,
+                    pairInfo.assetToken,
+                    [
+                    collWithdrawSize,
+                    0,
+                    stableTokenDebtAmount.mulDiv(
+                        withdrawShareRatio,
+                        someLargeNumber
+                    ),
+                    assetTokenDebtAmount.mulDiv(
+                        withdrawShareRatio,
+                        someLargeNumber
+                    ),
+                    0,
+                    0,
+                    0
+                    ]
+                ),
+            pairInfo,
+            0
+        );
+
+        // Calculate token disbursement amount.
+        uint256[3] memory withdrawAmounts = [
+            // Stable token withdraw amount
+            IERC20(pairInfo.stableToken).balanceOf(address(this)).mulDiv(
+                10000 - withdrawFee,
+                10000
+            ),
+            // Asset token withdraw amount
+            IERC20(pairInfo.assetToken).balanceOf(address(this)).mulDiv(
+                10000 - withdrawFee,
+                10000
+            ),
+            // AVAX withdraw amount
+            address(this).balance.mulDiv(10000 - withdrawFee, 10000)
+        ];
+        return withdrawAmounts;
+    }
+
+    /// @dev Add liquidity through HomoraBank
+    /// @param contractInfo: Contract address info including adapter, bank and spell
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    /// @param stableSupply: Amount of stable token supplied to Homora
+    /// @param assetSupply: Amount of asset token supplied to Homora
+    /// @param stableBorrow: Amount of stable token borrowed from Homora
+    /// @param assetBorrow: Amount of asset token borrowed from Homora
+    /// @param pid: Pool id
+    /// @param value: native token sent
+    function addLiquidity(
+        ContractInfo storage contractInfo,
+        uint256 homoraBankPosId,
+        PairInfo storage pairInfo,
+        uint256 stableSupply,
+        uint256 assetSupply,
+        uint256 stableBorrow,
+        uint256 assetBorrow,
+        uint256 pid,
+        uint256 value
+    ) internal returns (uint256)
+    {
+        IHomoraAdapter adapter = IHomoraAdapter(contractInfo.adapter);
+
+        // Approve HomoraBank transferring tokens.
+        if (stableSupply > 0) {
+            adapter.fundAdapterAndApproveHomoraBank(
+                contractInfo.bank,
+                pairInfo.stableToken,
+                stableSupply
+            );
+        }
+        if (assetSupply > 0) {
+            adapter.fundAdapterAndApproveHomoraBank(
+                contractInfo.bank,
+                pairInfo.assetToken,
+                assetSupply
+            );
+        }
+
+        // Encode the calling function.
+        bytes memory addLiquidityBytes = abi.encodeWithSelector(
+            ADD_LIQUIDITY_SIG,
+            pairInfo.stableToken,
+            pairInfo.assetToken,
+            [
+                stableSupply,
+                assetSupply,
+                0,
+                stableBorrow,
+                assetBorrow,
+                0,
+                0,
+                0
+            ],
+            pid
+        );
+
+        // Call Homora's execute() along with any native token received.
+        homoraBankPosId = abi.decode(
+            adapter.homoraExecute(
+                contractInfo.bank,
+                homoraBankPosId,
+                contractInfo.spell,
+                addLiquidityBytes,
+                pairInfo,
+                value
+            ),
+            (uint256)
+        );
+
+        // Cancel HomoraBank's allowance.
+        adapter.fundAdapterAndApproveHomoraBank(
+            contractInfo.bank,
+            pairInfo.stableToken,
+            0
+        );
+        adapter.fundAdapterAndApproveHomoraBank(
+            contractInfo.bank,
+            pairInfo.assetToken,
+            0
+        );
+        return homoraBankPosId;
+    }
+
+    /// @dev Remove liquidity through HomoraBank
+    /// @param contractInfo: Contract address info including adapter, bank and spell
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    /// @param collWithdrawAmt: Amount of collateral/LP to withdraw by Homora
+    /// @param amtARepay: Amount of stable token repaid to Homora
+    /// @param amtBRepay: Amount of asset token repaid to Homora
+    function removeLiquidity(
+        ContractInfo storage contractInfo,
+        uint256 homoraBankPosId,
+        PairInfo storage pairInfo,
+        uint256 collWithdrawAmt,
+        uint256 amtARepay,
+        uint256 amtBRepay
+    ) internal {
+        IHomoraAdapter(contractInfo.adapter).homoraExecute(
+            contractInfo.bank,
+            homoraBankPosId,
+            contractInfo.spell,
+            abi.encodeWithSelector(
+                REMOVE_LIQUIDITY_SIG,
+                pairInfo.stableToken,
+                pairInfo.assetToken,
+                [
+                    collWithdrawAmt,
+                    0,
+                    amtARepay,
+                    amtBRepay,
+                    0,
+                    0,
+                    0
+                ]
+            ),
+            pairInfo,
+            0
+        );
     }
 
     function collectManagementFee(
@@ -497,109 +747,6 @@ library VaultLib {
         vaultState.totalShareAmount += shareAmtMint;
         // Update fee collector's position state.
         positions[0][0].shareAmount += shareAmtMint;
-    }
-
-    /// @dev Main deposit logic
-    /// @param contractInfo: Contract address info including adapter, bank and spell
-    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param pairInfo: Addresses in the pair
-    function deposit(
-        ContractInfo storage contractInfo,
-        uint256 homoraBankPosId,
-        PairInfo storage pairInfo,
-        uint256 stableTokenDepositAmount,
-        uint256 assetTokenDepositAmount,
-        uint256 leverageLevel,
-        uint256 pid
-    ) external returns (uint256)
-    {
-        IHomoraAdapter adapter = IHomoraAdapter(contractInfo.adapter);
-
-        // 1. Transfer user's deposit tokens to current contract.
-        if (stableTokenDepositAmount > 0) {
-            IERC20(pairInfo.stableToken).safeTransferFrom(
-                msg.sender,
-                address(this),
-                stableTokenDepositAmount
-            );
-        }
-        if (assetTokenDepositAmount > 0) {
-            IERC20(pairInfo.assetToken).safeTransferFrom(
-                msg.sender,
-                address(this),
-                assetTokenDepositAmount
-            );
-        }
-
-        (
-            uint256 stableTokenBorrowAmount,
-            uint256 assetTokenBorrowAmount
-        ) = deltaNeutral(
-                pairInfo,
-                stableTokenDepositAmount,
-                assetTokenDepositAmount,
-                leverageLevel
-            );
-
-        // 2. Transfer user's deposit tokens to adapter contract.
-        // 3. Let adapter contract to approve HomoraBank.
-        if (stableTokenDepositAmount > 0) {
-            adapter.fundAdapterAndApproveHomoraBank(
-                contractInfo.bank,
-                pairInfo.stableToken,
-                stableTokenDepositAmount
-            );
-        }
-        if (assetTokenDepositAmount > 0) {
-            adapter.fundAdapterAndApproveHomoraBank(
-                contractInfo.bank,
-                pairInfo.assetToken,
-                assetTokenDepositAmount
-            );
-        }
-
-        // 4. Call Homora's execute() along with any native token received.
-        bytes memory addLiquidityBytes = abi.encodeWithSelector(
-            ADD_LIQUIDITY_SIG,
-            pairInfo.stableToken,
-            pairInfo.assetToken,
-            [
-                stableTokenDepositAmount,
-                assetTokenDepositAmount,
-                0,
-                stableTokenBorrowAmount,
-                assetTokenBorrowAmount,
-                0,
-                0,
-                0
-            ],
-            pid
-        );
-
-        homoraBankPosId = abi.decode(
-            adapter.homoraExecute(
-                contractInfo.bank,
-                homoraBankPosId,
-                contractInfo.spell,
-                addLiquidityBytes,
-                pairInfo,
-                msg.value
-            ),
-            (uint256)
-        );
-
-        // 5. Revoke HomoraBank's allowance from adapter contract.
-        adapter.adapterApproveHomoraBank(
-            contractInfo.bank,
-            pairInfo.stableToken,
-            0
-        );
-        adapter.adapterApproveHomoraBank(
-            contractInfo.bank,
-            pairInfo.assetToken,
-            0
-        );
-        return homoraBankPosId;
     }
 
     /// @dev Harvest farming rewards
@@ -618,118 +765,6 @@ library VaultLib {
             HARVEST_DATA,
             pairInfo,
             0
-        );
-    }
-
-    function reinvestExec(
-        ContractInfo storage contractInfo,
-        uint256 homoraBankPosId,
-        PairInfo storage pairInfo,
-        uint256 stableTokenBalance,
-        uint256 assetTokenBalance,
-        uint256 stableTokenBorrowAmount,
-        uint256 assetTokenBorrowAmount,
-        uint256 pid
-    ) internal {
-        IHomoraAdapter adapter = IHomoraAdapter(contractInfo.adapter);
-
-        // Encode the calling function.
-        adapter.homoraExecute(
-            contractInfo.bank,
-            homoraBankPosId,
-            contractInfo.spell,
-            abi.encodeWithSelector(
-                ADD_LIQUIDITY_SIG,
-                pairInfo.stableToken,
-                pairInfo.assetToken,
-                [
-                    stableTokenBalance,
-                    assetTokenBalance,
-                    0,
-                    stableTokenBorrowAmount,
-                    assetTokenBorrowAmount,
-                    0,
-                    0,
-                    0
-                ],
-                pid
-            ),
-            pairInfo,
-            0
-        );
-
-        // Cancel HomoraBank's allowance.
-        adapter.fundAdapterAndApproveHomoraBank(
-            contractInfo.bank,
-            pairInfo.stableToken,
-            0
-        );
-        adapter.fundAdapterAndApproveHomoraBank(
-            contractInfo.bank,
-            pairInfo.assetToken,
-            assetTokenBalance
-        );
-    }
-
-    /// @dev Collect reward tokens and reinvest
-    /// @param contractInfo: Contract address info including adapter, bank and spell
-    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param pairInfo: Addresses in the pair
-    /// @param leverageLevel: Target leverage
-    /// @param pid: Pool id
-    function reinvest(
-        ContractInfo storage contractInfo,
-        uint256 homoraBankPosId,
-        PairInfo storage pairInfo,
-        uint256 leverageLevel,
-        uint256 pid
-    ) external {
-        uint256 stableTokenBalance = IERC20(pairInfo.stableToken).balanceOf(
-            address(this)
-        );
-        uint256 assetTokenBalance = IERC20(pairInfo.assetToken).balanceOf(
-            address(this)
-        );
-
-        // Skip reinvest if no balance available.
-        if (stableTokenBalance + assetTokenBalance == 0) {
-            return;
-        }
-
-        (
-            uint256 stableTokenBorrowAmount,
-            uint256 assetTokenBorrowAmount
-        ) = deltaNeutral(
-                pairInfo,
-                stableTokenBalance,
-                assetTokenBalance,
-                leverageLevel
-            );
-
-        // Approve HomoraBank transferring tokens.
-        if (stableTokenBalance > 0) {
-            IHomoraAdapter(contractInfo.adapter).fundAdapterAndApproveHomoraBank(
-                contractInfo.bank,
-                pairInfo.stableToken,
-                stableTokenBalance
-            );
-        }
-        if (assetTokenBalance > 0) {
-            IHomoraAdapter(contractInfo.adapter).fundAdapterAndApproveHomoraBank(
-                contractInfo.bank,
-                pairInfo.assetToken,
-                assetTokenBalance
-            );
-        }
-        reinvestExec(
-            contractInfo,
-            homoraBankPosId,
-            pairInfo,
-            stableTokenBalance,
-            assetTokenBalance,
-            stableTokenBorrowAmount,
-            assetTokenBorrowAmount,
-            pid
         );
     }
 
@@ -766,28 +801,14 @@ library VaultLib {
             leverageLevel
         );
 
-        IHomoraAdapter(contractInfo.adapter).homoraExecute(
-            contractInfo.bank,
+        removeLiquidity(
+            contractInfo,
             homoraBankPosId,
-            contractInfo.spell,
-            abi.encodeWithSelector(
-                REMOVE_LIQUIDITY_SIG,
-                pairInfo.stableToken,
-                pairInfo.assetToken,
-                [
-                    vars.collWithdrawAmt,
-                    0,
-                    vars.amtARepay,
-                    vars.amtBRepay,
-                    0,
-                    0,
-                    0
-                ]
-            ),
             pairInfo,
-            0
+            vars.collWithdrawAmt,
+            vars.amtARepay,
+            vars.amtBRepay
         );
-
         return (vars.Sa, vars.Sb);
     }
 
@@ -803,44 +824,6 @@ library VaultLib {
             pos,
             leverageLevel,
             vars
-        );
-    }
-
-    function rebalanceLongExec(
-        ContractInfo storage contractInfo,
-        uint256 homoraBankPosId,
-        PairInfo storage pairInfo,
-        uint256 pid,
-        LongHelper memory vars
-    ) internal {
-        IHomoraAdapter(contractInfo.adapter).homoraExecute(
-            contractInfo.bank,
-            homoraBankPosId,
-            contractInfo.spell,
-            abi.encodeWithSelector(
-                ADD_LIQUIDITY_SIG,
-                pairInfo.stableToken,
-                pairInfo.assetToken,
-                [
-                    vars.amtAReward,
-                    0,
-                    0,
-                    vars.amtABorrow,
-                    vars.amtBBorrow,
-                    0,
-                    0,
-                    0
-                ],
-                pid
-            ),
-            pairInfo,
-            0
-        );
-
-        IHomoraAdapter(contractInfo.adapter).fundAdapterAndApproveHomoraBank(
-            contractInfo.bank,
-            pairInfo.stableToken,
-            0
         );
     }
 
@@ -865,22 +848,17 @@ library VaultLib {
             leverageLevel
         );
 
-        if (vars.amtAReward > 0) {
-            IHomoraAdapter(contractInfo.adapter).fundAdapterAndApproveHomoraBank(
-                contractInfo.bank,
-                pairInfo.stableToken,
-                vars.amtAReward
-            );
-        }
-
-        rebalanceLongExec(
+        addLiquidity(
             contractInfo,
             homoraBankPosId,
             pairInfo,
+            vars.amtAReward,
+            0,
+            vars.amtABorrow,
+            vars.amtBBorrow,
             pid,
-            vars
+            0
         );
-
         return (vars.Sa, vars.Sb);
     }
 
