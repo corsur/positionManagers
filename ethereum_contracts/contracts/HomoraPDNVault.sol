@@ -126,8 +126,8 @@ contract HomoraPDNVault is
         isController[_controller] = true;
         contractInfo.adapter = _adapter;
         contractInfo.bank = _homoraBank;
-        contractInfo.spell = _spell;
         contractInfo.oracle = IHomoraBank(_homoraBank).oracle();
+        contractInfo.spell = _spell;
         require(VaultLib.support(contractInfo.oracle, _stableToken));
         require(VaultLib.support(contractInfo.oracle, _assetToken));
         pairInfo.stableToken = _stableToken;
@@ -237,14 +237,9 @@ contract HomoraPDNVault is
             assetBorrowFactor
         );
         require(
-            (
-                _targetDebtRatio > calculatedDebtRatio
-                    ? _targetDebtRatio - calculatedDebtRatio
-                    : calculatedDebtRatio - _targetDebtRatio
-            ) <= 10,
+            VaultLib.abs(_targetDebtRatio, calculatedDebtRatio) <= 10,
             "Invalid debt ratio"
         );
-
         targetDebtRatio = _targetDebtRatio;
         minDebtRatio = targetDebtRatio - _debtRatioWidth;
         maxDebtRatio = targetDebtRatio + _debtRatioWidth;
@@ -258,11 +253,7 @@ contract HomoraPDNVault is
             assetBorrowFactor
         );
         require(
-            (
-                _deltaThreshold > calculatedDeltaTh
-                    ? _deltaThreshold - calculatedDeltaTh
-                    : calculatedDeltaTh - _deltaThreshold
-            ) <= 10,
+            VaultLib.abs(_deltaThreshold, calculatedDeltaTh) <= 10,
             "Invalid delta threshold"
         );
         deltaThreshold = _deltaThreshold;
@@ -422,7 +413,7 @@ contract HomoraPDNVault is
         // Calculate user share amount.
         uint256 shareAmount = equityBefore == 0
             ? equityChange
-            : vaultState.totalShareAmount.mulDiv(equityChange, equityBefore);
+            : getTotalShare().mulDiv(equityChange, equityBefore);
 
         if (equityChange < minEquityETH) {
             revert Insufficient_Liquidity_Mint();
@@ -507,9 +498,9 @@ contract HomoraPDNVault is
             contractInfo,
             homoraBankPosId,
             pairInfo,
-            VaultLib.someLargeNumber.mulDiv(
+            VaultLib.SOME_LARGE_NUMBER.mulDiv(
                 withdrawShareAmount,
-                vaultState.totalShareAmount
+                getTotalShare()
             ),
             feeConfig.withdrawFee
         );
@@ -536,15 +527,22 @@ contract HomoraPDNVault is
         payable(feeCollector).transfer(address(this).balance);
 
         // Slippage control
-        if (
-            withdrawAmounts[0] < minStableReceived ||
-            (pairInfo.assetToken != WAVAX &&
-                withdrawAmounts[1] < minAssetReceived) ||
-            // WAVAX is refunded as native AVAX by Homora's Spell
-            (pairInfo.assetToken == WAVAX &&
-                withdrawAmounts[2] < minAssetReceived)
-        ) {
-            revert Insufficient_Token_Withdrawn();
+        // WAVAX is refunded as native AVAX by Homora's Spell
+        if (pairInfo.stableToken == WAVAX) {
+            if (withdrawAmounts[0] + withdrawAmounts[2] < minStableReceived ||
+            withdrawAmounts[1] < minAssetReceived) {
+                revert Insufficient_Token_Withdrawn();
+            }
+        } else if (pairInfo.assetToken == WAVAX) {
+            if (withdrawAmounts[0] < minStableReceived ||
+            withdrawAmounts[1] + withdrawAmounts[2] < minAssetReceived) {
+                revert Insufficient_Token_Withdrawn();
+            }
+        } else {
+            if (withdrawAmounts[0] < minStableReceived ||
+            withdrawAmounts[1] < minAssetReceived) {
+                revert Insufficient_Token_Withdrawn();
+            }
         }
 
         // Check position equity after removing liquidity
@@ -586,7 +584,7 @@ contract HomoraPDNVault is
         // Position nonexistent
         if (
             homoraBankPosId == VaultLib._NO_ID ||
-            vaultState.totalShareAmount == 0
+            getTotalShare() == 0
         ) {
             return;
         }
@@ -760,6 +758,15 @@ contract HomoraPDNVault is
                 stableBorrowFactor,
                 assetBorrowFactor
             );
+    }
+
+    /// @dev Total share amount in the vault
+    function getTotalShare()
+        public
+        view
+        returns (uint256)
+    {
+        return vaultState.totalShareAmount;
     }
 
     /// @dev Query a user position's share

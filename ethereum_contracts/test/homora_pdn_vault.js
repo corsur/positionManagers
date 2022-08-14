@@ -447,7 +447,7 @@ async function testDepositAndWithdraw(
 
   // // Colletral size of each wallet.
   var totalCollateralSize = res.collateralSize;
-  [totalShareAmount, lastCollectionTimestamp] = await strategyContract.vaultState();
+  var totalShareAmount = await strategyContract.getTotalShare();
   var shareAmount0 = await strategyContract.positions(CHAIN_ID_AVAX, 0); // position id 0
   console.log("share amount 0: ", shareAmount0.toString());
   var shareAmount1 = await strategyContract.positions(CHAIN_ID_AVAX, 1); // position id 1

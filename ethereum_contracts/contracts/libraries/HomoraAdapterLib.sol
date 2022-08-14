@@ -91,9 +91,8 @@ library HomoraAdapterLib {
 
     function homoraExecute(
         IHomoraAdapter self,
-        address homoraBank,
+        ContractInfo storage contractInfo,
         uint256 posId,
-        address spell,
         bytes memory spellBytes,
         PairInfo storage pairInfo,
         uint256 value
@@ -101,12 +100,12 @@ library HomoraAdapterLib {
         bytes memory homoraExecuteBytes = abi.encodeWithSelector(
             HOMORA_EXECUTE_SIG,
             posId,
-            spell,
+            contractInfo.spell,
             spellBytes
         );
 
         bytes memory returndata = self.doWork{value: value}(
-            homoraBank,
+            contractInfo.bank,
             msg.value,
             homoraExecuteBytes
         );

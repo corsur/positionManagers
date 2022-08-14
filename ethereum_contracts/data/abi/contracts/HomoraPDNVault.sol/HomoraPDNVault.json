@@ -30,6 +30,7 @@
   "function getCollateralSize() view returns (uint256)",
   "function getDebtAmounts() view returns (uint256, uint256)",
   "function getShareAmount(tuple(uint128,uint16)) view returns (uint256)",
+  "function getTotalShare() view returns (uint256)",
   "function homoraBankPosId() view returns (uint256)",
   "function increasePosition(tuple(uint128,uint16),bytes) payable",
   "function initialize(address,address,address,address,address,address,address,address,address,uint256)",
