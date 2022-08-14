@@ -1,21 +1,10 @@
 const { ethers, upgrades } = require("hardhat");
-const { expect } = require("chai");
+const { AVAX_MAINNET_URL } = require("../constants.js");
 
 const erc20ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function approve(address spender, uint256 value) returns (bool)",
 ];
-
-async function getImpersonatedSigner(addr) {
-  const accountToImpersonate = addr;
-
-  await hre.network.provider.request({
-    method: "hardhat_impersonateAccount",
-    params: [accountToImpersonate],
-  });
-
-  return await ethers.getSigner(accountToImpersonate);
-}
 
 describe("LendingOptimizer tests", function () {
   let owner, user1, user2, optimizer;
@@ -24,9 +13,21 @@ describe("LendingOptimizer tests", function () {
   const USDT = "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7";
 
   beforeEach("Setup before each test", async function () {
-    owner = await getImpersonatedSigner("0x42d6Ce661bB2e5F5cc639E7BEFE74Ff9Fd649541");
-    user1 = await getImpersonatedSigner("0x9f8c163cBA728e99993ABe7495F06c0A3c8Ac8b9"); // Binance C-Chain Hot Wallet
-    user2 = await getImpersonatedSigner("0x4aeFa39caEAdD662aE31ab0CE7c8C2c9c0a013E8");
+    await network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: AVAX_MAINNET_URL,
+            blockNumber: 16681756
+          },
+        },
+      ],
+    });
+
+    owner = await ethers.getImpersonatedSigner("0x42d6Ce661bB2e5F5cc639E7BEFE74Ff9Fd649541");
+    user1 = await ethers.getImpersonatedSigner("0x9f8c163cBA728e99993ABe7495F06c0A3c8Ac8b9"); // Binance C-Chain Hot Wallet
+    user2 = await ethers.getImpersonatedSigner("0x4aeFa39caEAdD662aE31ab0CE7c8C2c9c0a013E8");
 
     const LendingOptimizer = await ethers.getContractFactory("LendingOptimizer", owner);
     optimizer = await upgrades.deployProxy(

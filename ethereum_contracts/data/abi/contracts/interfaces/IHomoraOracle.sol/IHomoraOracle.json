@@ -1,0 +1,7 @@
+[
+  "function asETHBorrow(address,uint256,address) view returns (uint256)",
+  "function asETHCollateral(address,uint256,uint256,address) view returns (uint256)",
+  "function support(address) view returns (bool)",
+  "function supportWrappedToken(address,uint256) view returns (bool)",
+  "function tokenFactors(address) view returns (uint16, uint16, uint16)"
+]

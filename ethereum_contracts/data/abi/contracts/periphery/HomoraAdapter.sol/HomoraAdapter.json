@@ -1,0 +1,11 @@
+[
+  "event OwnershipTransferred(address indexed,address indexed)",
+  "function doWork(address,uint256,bytes) payable returns (bytes)",
+  "function owner() view returns (address)",
+  "function renounceOwnership()",
+  "function setCaller(address,bool)",
+  "function setTarget(address,bool)",
+  "function transferOwnership(address)",
+  "function whitelistedCallers(address) view returns (bool)",
+  "function whitelistedTargets(address) view returns (bool)"
+]

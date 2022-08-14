@@ -2,8 +2,14 @@ const { CHAIN_ID_AVAX } = require("@certusone/wormhole-sdk");
 const { expect, assert } = require("chai");
 const { BigNumber } = require("ethers");
 const { ethers, upgrades } = require("hardhat");
-const { AVAX_MAINNET_TOKEN_BRIDGE_ADDR } = require("../constants.js");
-const { deployEthereumManagerSimple } = require("../utils/deploy.js");
+const {
+  AVAX_MAINNET_TOKEN_BRIDGE_ADDR,
+  AVAX_MAINNET_URL,
+} = require("../constants.js");
+const {
+  deployApertureManager,
+  deployHomoraAdapter,
+} = require("../utils/deploy.js");
 
 const { homoraBankABI } = require("./abi/homoraBankABI.js");
 
@@ -377,11 +383,6 @@ async function deposit(managerContract, strategyContract) {
       ]
     )
   );
-  // console.log("print out uint8 array: ", openPositionBytesArray);
-  console.log(
-    "openPositionBytesArray: ",
-    ethers.utils.hexlify(openPositionBytesArray)
-  );
 
   // Deposit 1000 USDC to vault from wallet 0.
   await managerContract
@@ -393,10 +394,10 @@ async function deposit(managerContract, strategyContract) {
       openPositionBytesArray,
       txOptions
     );
-
-  console.log("using wallet: ", wallets[1].address);
+  console.log(`created position with ${usdcDepositAmount0} USDC`);
 
   // Deposit 500 USDC to vault from wallet 1.
+  console.log("using wallet: ", wallets[1].address);
   await USDC.connect(wallets[1]).approve(
     managerContract.address,
     usdcDepositAmount1
@@ -416,18 +417,23 @@ async function deposit(managerContract, strategyContract) {
       openPositionBytesArray1,
       txOptions
     );
+  console.log(`created position with ${usdcDepositAmount1} USDC`);
 }
 
-async function testDepositAndWithdraw(managerContract, strategyContract) {
+async function testDepositAndWithdraw(
+  managerContract,
+  strategyContract,
+  homoraAdapter
+) {
   await deposit(managerContract, strategyContract);
 
   // Check whether it initiates a position in HomoraBank.
   var homoraBankPosId = (await strategyContract.homoraBankPosId()).toNumber();
   expect(homoraBankPosId).not.to.equal(0);
 
-  // Check whether the vault contract is the owner of the HomoraBank position.
+  // Check whether the adapter contract is the owner of the HomoraBank position.
   var res = await homoraBank.getPositionInfo(homoraBankPosId);
-  expect(res.owner).to.equal(strategyContract.address);
+  expect(res.owner).to.equal(homoraAdapter.address);
 
   // // Colletral size of each wallet.
   var totalCollateralSize = res.collateralSize;
@@ -483,7 +489,7 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
     .connect(wallets[0])
     .executeStrategy(
       /*positionId=*/ 0,
-      /*assetInfos=*/ [],
+      /*assetInfos=*/[],
       encodedWithdrawData,
       txOptions
     );
@@ -498,16 +504,32 @@ async function testDepositAndWithdraw(managerContract, strategyContract) {
 
 describe.only("HomoraPDNVault Initialization", function () {
   var managerContract = undefined;
+  var homoraAdapter = undefined;
   var strategyFactory = undefined;
   var strategyContract = undefined;
 
   beforeEach("Setup before each test", async function () {
+    await network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: AVAX_MAINNET_URL,
+            blockNumber: 16681756,
+          },
+        },
+      ],
+    });
+
     // Aperture manager contract.
-    managerContract = await deployEthereumManagerSimple(
+    managerContract = await deployApertureManager(
       mainWallet,
       AVAX_MAINNET_TOKEN_BRIDGE_ADDR
     );
     console.log("Aperture manager deployed at: ", managerContract.address);
+
+    // Deploy Homora adapter contract.
+    homoraAdapter = await deployHomoraAdapter(mainWallet);
 
     // HomoraPDNVault contract.
     library = await ethers.getContractFactory("VaultLib");
@@ -524,6 +546,7 @@ describe.only("HomoraPDNVault Initialization", function () {
       strategyFactory,
       [
         managerContract.address,
+        homoraAdapter.address,
         wallets[0].address,
         wallets[0].address,
         USDC_TOKEN_ADDRESS,
@@ -536,6 +559,14 @@ describe.only("HomoraPDNVault Initialization", function () {
       { unsafeAllow: ["delegatecall"], kind: "uups" }
     );
     await strategyContract.connect(mainWallet).deployed(txOptions);
+
+    // Set up Homora adapter contract.
+    await homoraAdapter.setCaller(strategyContract.address, true);
+    await homoraAdapter.setTarget(strategyContract.address, true);
+    await homoraAdapter.setTarget(homoraBank.address, true);
+    await homoraAdapter.setTarget(USDC.address, true);
+    await homoraAdapter.setTarget(WAVAX.address, true);
+    await homoraAdapter.setTarget(JOE.address, true);
 
     console.log("Homora PDN contract deployed at: ", strategyContract.address);
     await strategyContract.connect(mainWallet).initializeConfig(
@@ -550,7 +581,7 @@ describe.only("HomoraPDNVault Initialization", function () {
     );
     console.log("Homora PDN contract initialized");
 
-    await whitelistContractAndAddCredit(strategyContract.address);
+    await whitelistContractAndAddCredit(homoraAdapter.address);
     await initialize(strategyContract);
 
     // Add strategy into Aperture manager.
@@ -578,7 +609,11 @@ describe.only("HomoraPDNVault Initialization", function () {
   });
 
   it("HomoraPDNVault DepositAndWithdraw", async function () {
-    await testDepositAndWithdraw(managerContract, strategyContract);
+    await testDepositAndWithdraw(
+      managerContract,
+      strategyContract,
+      homoraAdapter
+    );
   });
 
   it("Deposit and test rebalance", async function () {

@@ -1,8 +1,6 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
-
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -15,8 +13,9 @@ import "./interfaces/IHomoraAvaxRouter.sol";
 import "./interfaces/IHomoraBank.sol";
 import "./interfaces/IHomoraOracle.sol";
 import "./interfaces/IHomoraSpell.sol";
+import "./interfaces/IHomoraAdapter.sol";
+
 import "./libraries/VaultLib.sol";
-import "./libraries/OracleLib.sol";
 
 // Allow external linking of library. Our library doesn't contain assembly and
 // can't corrupt contract state to make it unsafe to upgrade.
@@ -61,10 +60,17 @@ contract HomoraPDNVault is
                 "removeLiquidityWMasterChef(address,address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256))"
             )
         );
+    bytes4 private constant HOMORA_EXECUTE_SIG =
+        bytes4(keccak256("execute(uint256,address,bytes)"));
+    bytes4 private constant ERC20_APPROVE_SIG =
+        bytes4(keccak256("approve(address,uint256)"));
+    bytes4 private constant ERC20_TRANSFER_SIG =
+        bytes4(keccak256("transfer(address,uint256)"));
 
     // --- accounts ---
     address public apertureManager;
     address public feeCollector;
+    IHomoraAdapter public adapter; // Immutable adapter to HomoraBank.
     mapping(address => bool) public isController;
 
     // --- config ---
@@ -76,22 +82,16 @@ contract HomoraPDNVault is
     uint256 public leverageLevel; // target leverage
     uint256 public pid; // pool id
     IHomoraBank public homoraBank;
-    address public oracle; // HomoraBank's oracle for determining prices.
+    IHomoraOracle public oracle; // HomoraBank's oracle for determining prices.
     IHomoraAvaxRouter public router;
 
-    uint256 public collateralFactor; // LP collateral factor on Homora
-    uint256 public stableBorrowFactor; // stable token borrow factor on Homora
-    uint256 public assetBorrowFactor; // asset token borrow factor on Homora
     uint256 public targetDebtRatio; // target debt ratio * 10000, 92% -> 9200
     uint256 public minDebtRatio; // minimum debt ratio * 10000
     uint256 public maxDebtRatio; // maximum debt ratio * 10000
-    uint256 public deltaThreshold; // delta deviation percentage * 10000
+    uint256 public dnThreshold; // delta deviation percentage * 10000
 
-    uint256 public maxCapacity; // Maximum amount allowed in stable across the vault
-    uint256 public maxOpenPerTx; // Maximum amount allowed in stable to add in one transaction
-    uint256 public maxWithdrawPerTx; // Maximum amount allowed in stable to withdraw in one transaction
-//    uint256 public withdrawFee; // multiplied by 1e4
-//    uint256 public harvestFee; // multiplied by 1e4
+    uint256 public maxOpen; // Maximum amount allowed in stable to add in one transaction
+    uint256 public maxWithdraw; // Maximum amount allowed in stable to withdraw in one transaction
     uint256 lastCollectionTimestamp; // Last timestamp when collecting management fee
 
     ApertureFeeConfig public feeConfig;
@@ -124,17 +124,15 @@ contract HomoraPDNVault is
     error HomoraPDNVault_PositionIsHealthy();
     error HomoraPDNVault_DeltaNotNeutral();
     error HomoraPDNVault_DebtRatioNotHealthy();
-    error Vault_Limit_Exceeded();
     error Insufficient_Liquidity_Mint();
     error Zero_Withdrawal_Amount();
-    error Insufficient_Withdrawn_Share();
-    error Insufficient_Token_Withdrawn();
-    error Slippage_Too_Large();
+    error Insufficient_Share_Withdraw();
 
     // `initializer` is a modifier from OpenZeppelin to ensure contract is
     // only initialized once (thanks to Initializable).
     function initialize(
         address _apertureManager,
+        address _adapter,
         address _feeCollector,
         address _controller,
         address _stableToken,
@@ -148,14 +146,21 @@ contract HomoraPDNVault is
         __UUPSUpgradeable_init();
 
         apertureManager = _apertureManager;
+        adapter = IHomoraAdapter(_adapter);
         feeCollector = _feeCollector;
         isController[_controller] = true;
         stableToken = _stableToken;
         assetToken = _assetToken;
         homoraBank = IHomoraBank(_homoraBank);
-        oracle = homoraBank.oracle();
-        require(OracleLib.support(oracle, _stableToken), "Oracle doesn't support stable token.");
-        require(OracleLib.support(oracle, _assetToken), "Oracle doesn't support asset token.");
+        oracle = IHomoraOracle(homoraBank.oracle());
+        require(
+            oracle.support(_stableToken),
+            "Oracle doesn't support stable token."
+        );
+        require(
+            oracle.support(_assetToken),
+            "Oracle doesn't support asset token."
+        );
 
         spell = _spell;
         rewardToken = _rewardToken;
@@ -163,7 +168,8 @@ contract HomoraPDNVault is
         homoraBankPosId = _NO_ID;
         lpToken = IHomoraSpell(spell).pairs(stableToken, assetToken);
         require(lpToken != address(0), "Pair does not match the spell.");
-        require(OracleLib.supportLP(oracle, lpToken), "Oracle doesn't support lpToken.");
+        (, , uint16 liqIncentive) = oracle.tokenFactors(lpToken);
+        require(liqIncentive != 0, "Oracle doesn't support lpToken.");
         router = IHomoraAvaxRouter(IHomoraSpell(spell).router());
     }
 
@@ -173,16 +179,18 @@ contract HomoraPDNVault is
     /// @dev Set config for delta neutral valut.
     /// @param _leverageLevel: Target leverage
     /// @param _targetDebtRatio: Target debt ratio * 10000
-    /// @param _debtRatioWidth: Deviation of debt ratio * 10000
-    /// @param _deltaThreshold: Delta deviation threshold in percentage * 10000
+    /// @param _minDebtRatio: Minimum debt ratio * 10000
+    /// @param _maxDebtRatio: Maximum debt ratio * 10000
+    /// @param _dnThreshold: Delta deviation threshold in percentage * 10000
     /// @param _harvestFee: Fee collected on farming rewards
     /// @param _withdrawFee: Fee collected on user withdrawals
     /// @param _managementFee: Management fee, initially zero
     function initializeConfig(
         uint256 _leverageLevel,
         uint256 _targetDebtRatio,
-        uint256 _debtRatioWidth,
-        uint256 _deltaThreshold,
+        uint256 _minDebtRatio,
+        uint256 _maxDebtRatio,
+        uint256 _dnThreshold,
         uint256 _harvestFee,
         uint256 _withdrawFee,
         uint256 _managementFee
@@ -190,8 +198,9 @@ contract HomoraPDNVault is
         setConfig(
             _leverageLevel,
             _targetDebtRatio,
-            _debtRatioWidth,
-            _deltaThreshold
+            _minDebtRatio,
+            _maxDebtRatio,
+            _dnThreshold
         );
         setHarvestFee(_harvestFee);
         setWithdrawFee(_withdrawFee);
@@ -211,6 +220,10 @@ contract HomoraPDNVault is
         }
     }
 
+    function setAdapter(address _adapter) external onlyOwner {
+        adapter = IHomoraAdapter(_adapter);
+    }
+
     function setHarvestFee(uint256 fee) public onlyOwner {
         feeConfig.harvestFee = fee;
     }
@@ -223,56 +236,34 @@ contract HomoraPDNVault is
         feeConfig.managementFee = fee;
     }
 
-    function setVaultLimits(
-        uint256 _maxCapacity,
-        uint256 _maxOpenPerTx,
-        uint256 _maxWithdrawPerTx
-    ) public onlyAdmin {
-        maxCapacity = _maxCapacity;
-        maxOpenPerTx = _maxOpenPerTx;
-        maxWithdrawPerTx = _maxWithdrawPerTx;
-    }
-
     /// @dev Set config for delta neutral valut.
     /// @param _leverageLevel: Target leverage
     /// @param _targetDebtRatio: Target debt ratio * 10000
-    /// @param _debtRatioWidth: Deviation of debt ratio * 10000
-    /// @param _deltaThreshold: Delta deviation threshold in percentage * 10000
+    /// @param _minDebtRatio: Minimum debt ratio * 10000
+    /// @param _maxDebtRatio: Maximum debt ratio * 10000
+    /// @param _dnThreshold: Delta deviation threshold in percentage * 10000
     function setConfig(
         uint256 _leverageLevel,
         uint256 _targetDebtRatio,
-        uint256 _debtRatioWidth,
-        uint256 _deltaThreshold
+        uint256 _minDebtRatio,
+        uint256 _maxDebtRatio,
+        uint256 _dnThreshold
     ) public onlyOwner {
         require(_leverageLevel >= 2, "Leverage at least 2");
         leverageLevel = _leverageLevel;
-        collateralFactor = OracleLib.getCollateralFactor(oracle, lpToken);
-        stableBorrowFactor = OracleLib.getBorrowFactor(oracle, stableToken);
-        assetBorrowFactor = OracleLib.getBorrowFactor(oracle, assetToken);
-        uint256 calculatedDebtRatio = (stableBorrowFactor * (leverageLevel - 2) / leverageLevel
-            + assetBorrowFactor) * 10000 / (2 * collateralFactor);
-        require((_targetDebtRatio > calculatedDebtRatio
-            ? _targetDebtRatio - calculatedDebtRatio
-            : calculatedDebtRatio - _targetDebtRatio)
-            <= 10, "Invalid debt ratio");
-
+        require(
+            _minDebtRatio < _targetDebtRatio &&
+                _targetDebtRatio < _maxDebtRatio,
+            "Invalid debt ratios"
+        );
         targetDebtRatio = _targetDebtRatio;
-        minDebtRatio = targetDebtRatio - _debtRatioWidth;
-        maxDebtRatio = targetDebtRatio + _debtRatioWidth;
-        require(0 < minDebtRatio && maxDebtRatio < 10000, "Invalid debt ratio");
-
-        uint256 calculatedDeltaTh = leverageLevel * leverageLevel * collateralFactor * _debtRatioWidth
-            / (leverageLevel * assetBorrowFactor - (leverageLevel - 2) * stableBorrowFactor);
-        console.log("collateralFactor", collateralFactor);
-        console.log("stableBorrowFactor", stableBorrowFactor);
-        console.log("assetBorrowFactor", assetBorrowFactor);
-        console.log("calculatedDebtRatio", calculatedDebtRatio);
-        console.log("calculatedDeltaTh", calculatedDeltaTh);
-        require((_deltaThreshold > calculatedDeltaTh
-            ? _deltaThreshold - calculatedDeltaTh
-            : calculatedDeltaTh - _deltaThreshold)
-            <= 10, "Invalid delta threshold");
-        deltaThreshold = _deltaThreshold;
+        minDebtRatio = _minDebtRatio;
+        maxDebtRatio = _maxDebtRatio;
+        require(
+            0 < _dnThreshold && _dnThreshold < 10000,
+            "Invalid delta threshold"
+        );
+        dnThreshold = _dnThreshold;
     }
 
     receive() external payable {}
@@ -409,6 +400,86 @@ contract HomoraPDNVault is
         );
     }
 
+    function adapterApproveHomoraBank(address tokenAddr, uint256 amount)
+        internal
+    {
+        adapter.doWork(
+            tokenAddr,
+            /*value=*/
+            0,
+            abi.encodeWithSelector(
+                ERC20_APPROVE_SIG,
+                address(homoraBank),
+                amount
+            )
+        );
+    }
+
+    function pullTokenFromAdapter(address tokenAddr, uint256 amount) internal {
+        if (amount > 0) {
+            adapter.doWork(
+                tokenAddr,
+                /*value=*/
+                0,
+                abi.encodeWithSelector(
+                    ERC20_TRANSFER_SIG,
+                    address(this),
+                    amount
+                )
+            );
+        }
+    }
+
+    function pullETHFromAdapter(uint256 amount) internal {
+        adapter.doWork(address(this), amount, "");
+    }
+
+    function pullAllAssets() internal {
+        pullTokenFromAdapter(
+            stableToken,
+            IERC20(stableToken).balanceOf(address(adapter))
+        );
+        pullTokenFromAdapter(
+            assetToken,
+            IERC20(assetToken).balanceOf(address(adapter))
+        );
+        pullTokenFromAdapter(
+            rewardToken,
+            IERC20(rewardToken).balanceOf(address(adapter))
+        );
+        pullETHFromAdapter(address(adapter).balance);
+    }
+
+    /// @dev fund adapter contract and approve HomoraBank to use the fund.
+    /// @param tokenAddr the token to transfer and approve.
+    /// @param amount the amount to transfer and approve.
+    function fundAdapterAndApproveHomoraBank(address tokenAddr, uint256 amount)
+        internal
+    {
+        IERC20(tokenAddr).safeTransfer(address(adapter), amount);
+        adapterApproveHomoraBank(tokenAddr, amount);
+    }
+
+    function homoraExecute(bytes memory spellBytes, uint256 value)
+        internal
+        returns (bytes memory)
+    {
+        bytes memory homoraExecuteBytes = abi.encodeWithSelector(
+            HOMORA_EXECUTE_SIG,
+            homoraBankPosId,
+            spell,
+            spellBytes
+        );
+
+        bytes memory returndata = adapter.doWork{value: value}(
+            address(homoraBank),
+            msg.value,
+            homoraExecuteBytes
+        );
+        pullAllAssets();
+        return returndata;
+    }
+
     /// @dev Internal deposit function
     /// @param position_info: Aperture position info
     /// @param stableTokenDepositAmount: Amount of stable token supplied by user
@@ -428,11 +499,10 @@ contract HomoraPDNVault is
         } else {
             reinvestInternal(minReinvestETH);
         }
-
         // Record original position equity before adding liquidity
         uint256 equityBefore = getEquityETHValue();
 
-        // Transfer user's deposit.
+        // 1. Transfer user's deposit tokens to current contract.
         if (stableTokenDepositAmount > 0)
             IERC20(stableToken).safeTransferFrom(
                 msg.sender,
@@ -455,29 +525,23 @@ contract HomoraPDNVault is
             assetTokenBorrowAmount
         ) = deltaNeutral(stableTokenDepositAmount, assetTokenDepositAmount);
 
-//        (uint256 reserve0, uint256 reserve1) = _getReserves();
-//        (
-//            uint256 _stableTokenBorrowAmount,
-//            uint256 _assetTokenBorrowAmount
-//        ) = VaultLib.deltaNeutral(
-//            stableTokenDepositAmount,
-//            assetTokenDepositAmount,
-//            reserve0,
-//            reserve1,
-//            leverageLevel
-//        );
+        // 2. Transfer user's deposit tokens to adapter contract.
+        // 3. Let adapter contract to approve HomoraBank.
+        if (stableTokenDepositAmount > 0) {
+            fundAdapterAndApproveHomoraBank(
+                stableToken,
+                stableTokenDepositAmount
+            );
+        }
+        if (assetTokenDepositAmount > 0) {
+            fundAdapterAndApproveHomoraBank(
+                assetToken,
+                assetTokenDepositAmount
+            );
+        }
 
-        // Approve HomoraBank transferring tokens.
-        IERC20(stableToken).approve(
-            address(homoraBank),
-            stableTokenDepositAmount
-        );
-        IERC20(assetToken).approve(
-            address(homoraBank),
-            assetTokenDepositAmount
-        );
-
-        bytes memory data = abi.encodeWithSelector(
+        // 4. Call Homora's execute() along with any native token received.
+        bytes memory addLiquidityBytes = abi.encodeWithSelector(
             ADD_LIQUIDITY_SIG,
             stableToken,
             assetToken,
@@ -494,11 +558,14 @@ contract HomoraPDNVault is
             pid
         );
 
-        homoraBankPosId = homoraBank.execute(homoraBankPosId, spell, data);
+        homoraBankPosId = abi.decode(
+            homoraExecute(addLiquidityBytes, msg.value),
+            (uint256)
+        );
 
-        // Cancel HomoraBank's allowance.
-        IERC20(stableToken).approve(address(homoraBank), 0);
-        IERC20(assetToken).approve(address(homoraBank), 0);
+        // 5. Revoke HomoraBank's allowance from adapter contract.
+        adapterApproveHomoraBank(stableToken, 0);
+        adapterApproveHomoraBank(assetToken, 0);
 
         // Position equity after adding liquidity
         uint256 equityChange = getEquityETHValue() - equityBefore;
@@ -509,10 +576,6 @@ contract HomoraPDNVault is
 
         if (equityChange < minEquityETH) {
             revert Insufficient_Liquidity_Mint();
-        }
-
-        if (equityChange > OracleLib.getTokenETHValue(oracle, stableToken, maxOpenPerTx, msg.sender)) {
-            revert Vault_Limit_Exceeded();
         }
 
         // Update vault position state.
@@ -556,7 +619,7 @@ contract HomoraPDNVault is
             revert Zero_Withdrawal_Amount();
         }
         if (withdrawShareAmount > getShareAmount(position_info)) {
-            revert Insufficient_Withdrawn_Share();
+            revert Insufficient_Share_Withdraw();
         }
         // Check if the PDN position need rebalance
         if (!isDeltaNeutral() || !isDebtRatioHealthy()) {
@@ -565,12 +628,9 @@ contract HomoraPDNVault is
             reinvestInternal(minReinvestETH);
         }
 
-        // Record original position equity before removing liquidity
-        uint256 equityBefore = getEquityETHValue();
-
         // Calculate collSize to withdraw.
         uint256 collWithdrawSize = (withdrawShareAmount * getCollateralSize()) /
-        totalShareAmount;
+            totalShareAmount;
 
         // Calculate debt to repay in two tokens.
         (
@@ -587,68 +647,35 @@ contract HomoraPDNVault is
                 collWithdrawSize,
                 0,
                 (stableTokenDebtAmount * withdrawShareAmount) /
-                totalShareAmount,
-                (assetTokenDebtAmount * withdrawShareAmount) /
-                totalShareAmount,
+                    totalShareAmount,
+                (assetTokenDebtAmount * withdrawShareAmount) / totalShareAmount,
                 0,
                 0,
                 0
             ]
         );
 
-        homoraBank.execute(homoraBankPosId, spell, data);
-
-        // Position equity after removing liquidity
-        // Limit the maximum withdrawal amount in a single transaction
-        if ((equityBefore - getEquityETHValue()) > OracleLib.getTokenETHValue(oracle, stableToken, maxWithdrawPerTx, msg.sender)) {
-            revert Vault_Limit_Exceeded();
-        }
+        homoraExecute(data, 0);
 
         // Calculate token disbursement amount.
         uint256[3] memory withdrawAmounts = [
             // Stable token withdraw amount
-            (10000 - withdrawFee) * IERC20(stableToken).balanceOf(address(this)) / 10000,
+            IERC20(stableToken).balanceOf(address(this)),
             // Asset token withdraw amount
-            (10000 - withdrawFee) * IERC20(assetToken).balanceOf(address(this)) / 10000,
+            IERC20(assetToken).balanceOf(address(this)),
             // AVAX withdraw amount
-            (10000 - withdrawFee) * address(this).balance / 10000
+            address(this).balance
         ];
-
-        // Slippage control
-        if (withdrawAmounts[0] < minStableReceived) {
-            revert Insufficient_Token_Withdrawn();
-        }
-        // WAVAX is refunded as native AVAX by Homora's Spell
-        if (assetToken == router.WAVAX()) {
-            if (withdrawAmounts[2] < minAssetReceived) {
-                revert Insufficient_Token_Withdrawn();
-            }
-        } else if (withdrawAmounts[1] < minAssetReceived) {
-            revert Insufficient_Token_Withdrawn();
-        }
-
-        // Update position info.
-        positions[position_info.chainId][position_info.positionId]
-            .shareAmount -= withdrawShareAmount;
-        totalShareAmount -= withdrawShareAmount;
 
         // Transfer fund to user (caller).
         IERC20(stableToken).transfer(recipient, withdrawAmounts[0]);
         IERC20(assetToken).transfer(recipient, withdrawAmounts[1]);
         payable(recipient).transfer(withdrawAmounts[2]);
 
-        // Collect withdrawal fee
-        IERC20(stableToken).transfer(feeCollector, IERC20(stableToken).balanceOf(address(this)));
-        IERC20(assetToken).transfer(feeCollector, IERC20(assetToken).balanceOf(address(this)));
-        payable(feeCollector).transfer(address(this).balance);
-
-        // Check if the PDN position is still healthy
-        if (!isDeltaNeutral()) {
-            revert HomoraPDNVault_DeltaNotNeutral();
-        }
-        if (!isDebtRatioHealthy()) {
-            revert HomoraPDNVault_DebtRatioNotHealthy();
-        }
+        // Update position info.
+        positions[position_info.chainId][position_info.positionId]
+            .shareAmount -= withdrawShareAmount;
+        totalShareAmount -= withdrawShareAmount;
 
         // Emit event.
         emit LogWithdraw(
@@ -664,9 +691,7 @@ contract HomoraPDNVault is
     function isDeltaNeutral() public view returns (bool) {
         // Assume token A is the stable token
         VaultLib.VaultPosition memory pos = getPositionInfo();
-//        console.log("n_B", pos.amtB, "d_B", pos.debtAmtB);
-//        console.log("delta", VaultLib.getOffset(pos.amtB, pos.debtAmtB));
-        return (VaultLib.getOffset(pos.amtB, pos.debtAmtB) < deltaThreshold);
+        return (VaultLib.getOffset(pos.amtB, pos.debtAmtB) < dnThreshold);
     }
 
     function isDebtRatioHealthy() public view returns (bool) {
@@ -687,11 +712,6 @@ contract HomoraPDNVault is
     {
         reinvestInternal(minReinvestETH);
 
-        uint256 debtRatio = getDebtRatio();
-        console.log("Debt ratio before: ", debtRatio);
-        console.log("isDeltaNeutral: ", isDeltaNeutral());
-        console.log("isDebtRatioHealthy: ", isDebtRatioHealthy());
-
         // Check if the PDN position need rebalance
         if (isDeltaNeutral() && isDebtRatioHealthy()) {
             revert HomoraPDNVault_PositionIsHealthy();
@@ -701,16 +721,14 @@ contract HomoraPDNVault is
         uint256 equityBefore = getEquityETHValue();
 
         VaultLib.VaultPosition memory pos = getPositionInfo();
-        // 1. short: amtB < debtAmtB, R > Rt, swap A to B
+        // 1. short: amtB < debtAmtB, R > Rt
         if (pos.debtAmtB > pos.amtB) {
-            reBalanceShort(pos, slippage);
+            reBalanceShort(pos);
         }
-        // 2. long: amtB > debtAmtB, R < Rt, swap B to A
+        // 2. long: amtB > debtAmtB, R < Rt
         else {
-            rebalanceLong(pos, slippage);
+            rebalanceLong(pos);
         }
-
-        console.log("Debt ratio after: ", getDebtRatio());
 
         // Check if the rebalance succeeded
         if (!isDeltaNeutral()) {
@@ -723,29 +741,14 @@ contract HomoraPDNVault is
         emit LogRebalance(equityBefore, getEquityETHValue());
     }
 
-    /// @dev Rebalance when the amount of token B in the LP is less than the amount of debt in token B
-    /// @param pos: Farming position in Homora Bank
-    /// @param slippage: Slippage on the swap between stable token and asset token, multiplied by 1e4, 0.1% => 10
-    function reBalanceShort(
-        VaultLib.VaultPosition memory pos,
-        uint256 slippage
-    ) internal {
+    function reBalanceShort(VaultLib.VaultPosition memory pos) internal {
         (uint256 reserveA, uint256 reserveB) = getReserves();
 
         (
             uint256 collWithdrawAmt,
             uint256 amtARepay,
-            uint256 amtBRepay,
-            uint256 amtASwap,
-            uint256 amtBSwap
+            uint256 amtBRepay
         ) = VaultLib.rebalanceShort(pos, leverageLevel, reserveA, reserveB);
-
-        // Homora's Spell swaps token A to token B
-        uint256 valueBeforeSwap = OracleLib.getTokenETHValue(oracle, stableToken, amtASwap, msg.sender);
-        uint256 valueAfterSwap = OracleLib.getTokenETHValue(oracle, assetToken, amtBSwap, msg.sender);
-        if (valueBeforeSwap > valueAfterSwap && VaultLib.getOffset(valueAfterSwap, valueBeforeSwap) > slippage) {
-            revert Slippage_Too_Large();
-        }
 
         bytes memory data = abi.encodeWithSelector(
             REMOVE_LIQUIDITY_SIG,
@@ -754,40 +757,20 @@ contract HomoraPDNVault is
             [collWithdrawAmt, 0, amtARepay, amtBRepay, 0, 0, 0]
         );
 
-        homoraBank.execute(homoraBankPosId, spell, data);
+        homoraExecute(data, 0);
     }
 
-    /// @dev Rebalance when the amount of token B in the LP is greater than the amount of debt in token B
-    /// @param pos: Farming position in Homora Bank
-    /// @param slippage: Slippage on the swap between stable token and asset token, multiplied by 1e4, 0.1% => 10
-    function rebalanceLong(
-        VaultLib.VaultPosition memory pos,
-        uint256 slippage
-    ) internal {
+    function rebalanceLong(VaultLib.VaultPosition memory pos) internal {
         (uint256 reserveA, uint256 reserveB) = getReserves();
         uint256 amtAReward = IERC20(stableToken).balanceOf(address(this));
 
-        (
-            uint256 amtABorrow,
-            uint256 amtBBorrow,
-            uint256 amtASwap,
-            uint256 amtBSwap
-        ) = VaultLib.rebalanceLong(
-                pos,
-                leverageLevel,
-                reserveA,
-                reserveB,
-                amtAReward
-            );
-
-        // Homora's Spell swaps token B to token A
-        uint256 valueBeforeSwap = OracleLib.getTokenETHValue(oracle, assetToken, amtBSwap, msg.sender);
-        uint256 valueAfterSwap = OracleLib.getTokenETHValue(oracle, stableToken, amtASwap, msg.sender);
-        if (valueBeforeSwap > valueAfterSwap && VaultLib.getOffset(valueAfterSwap, valueBeforeSwap) > slippage) {
-            revert Slippage_Too_Large();
-        }
-
-        IERC20(stableToken).approve(address(homoraBank), VaultLib.MAX_UINT);
+        (uint256 amtABorrow, uint256 amtBBorrow) = VaultLib.rebalanceLong(
+            pos,
+            leverageLevel,
+            reserveA,
+            reserveB,
+            amtAReward
+        );
         bytes memory data = abi.encodeWithSelector(
             ADD_LIQUIDITY_SIG,
             stableToken,
@@ -795,8 +778,9 @@ contract HomoraPDNVault is
             [amtAReward, 0, 0, amtABorrow, amtBBorrow, 0, 0, 0],
             pid
         );
-        homoraBank.execute(homoraBankPosId, spell, data);
-        IERC20(stableToken).approve(address(homoraBank), 0);
+        fundAdapterAndApproveHomoraBank(stableToken, amtAReward);
+        homoraExecute(data, 0);
+        adapterApproveHomoraBank(stableToken, 0);
     }
 
     /// @dev Collect reward tokens and reinvest
@@ -806,7 +790,8 @@ contract HomoraPDNVault is
     }
 
     function harvest() internal {
-        homoraBank.execute(homoraBankPosId, spell, HARVEST_DATA);
+        // Instruct adapter to harvest HomoraBank.
+        homoraExecute(HARVEST_DATA, 0);
     }
 
     /// @dev Internal reinvest function
@@ -826,20 +811,26 @@ contract HomoraPDNVault is
         // 2. Swap any AVAX leftover
         uint256 avaxBalance = address(this).balance;
         if (avaxBalance > 0) {
-            swapAVAX(avaxBalance, stableToken);
+            address[] memory path = new address[](2);
+            (path[0], path[1]) = (router.WAVAX(), stableToken);
+            uint256[] memory amounts = router.getAmountsOut(avaxBalance, path);
+            uint256 stableAmountOut = amounts[1];
+            // Reverted by TraderJoe if stableAmountOut == 0
+            if (stableAmountOut > 0) {
+                swapAVAX(avaxBalance, stableToken);
+            }
         }
 
         // 3. Reinvest with the current balance
-        uint256 stableTokenBalance = IERC20(stableToken).balanceOf(address(this));
+        uint256 stableTokenBalance = IERC20(stableToken).balanceOf(
+            address(this)
+        );
         uint256 assetTokenBalance = IERC20(assetToken).balanceOf(address(this));
-        console.log("reinvest stableTokenBalance", stableTokenBalance);
-        console.log("reinvest assetTokenBalance", assetTokenBalance);
 
-//        (uint256 reserve0, uint256 reserve1) = getReserves();
-//        uint256 liquidity = (((stableTokenBalance * leverageLevel) / 2) *
-//            IERC20(lpToken).totalSupply()) / reserve0;
-//        console.log("liquidity", liquidity);
-//        require(liquidity > 0, "Insufficient liquidity minted");
+        // Skip reinvest if no balance available.
+        if (stableTokenBalance + assetTokenBalance == 0) {
+            return;
+        }
 
         uint256 stableTokenBorrowAmount;
         uint256 assetTokenBorrowAmount;
@@ -849,23 +840,13 @@ contract HomoraPDNVault is
             stableTokenBorrowAmount,
             assetTokenBorrowAmount
         ) = deltaNeutral(stableTokenBalance, assetTokenBalance);
-        console.log("reinvest stableTokenBorrowAmount", stableTokenBorrowAmount);
-        console.log("reinvest assetTokenBorrowAmount", assetTokenBorrowAmount);
 
-//        (
-//            uint256 stableTokenBorrowAmount,
-//            uint256 assetTokenBorrowAmount
-//        ) = VaultLib.deltaNeutral(
-//            stableTokenBalance,
-//            assetTokenBalance,
-//            reserve0,
-//            reserve1,
-//            leverageLevel
-//        );
-
-        // Approve HomoraBank transferring tokens.
-        IERC20(stableToken).approve(address(homoraBank), VaultLib.MAX_UINT);
-        IERC20(assetToken).approve(address(homoraBank), VaultLib.MAX_UINT);
+        if (stableTokenBalance > 0) {
+            fundAdapterAndApproveHomoraBank(stableToken, stableTokenBalance);
+        }
+        if (assetTokenBalance > 0) {
+            fundAdapterAndApproveHomoraBank(assetToken, assetTokenBalance);
+        }
 
         // Encode the calling function.
         bytes memory data = abi.encodeWithSelector(
@@ -885,15 +866,13 @@ contract HomoraPDNVault is
             pid
         );
 
-        homoraBank.execute(homoraBankPosId, spell, data);
+        homoraExecute(data, 0);
 
         // Cancel HomoraBank's allowance.
-        IERC20(stableToken).approve(address(homoraBank), 0);
-        IERC20(assetToken).approve(address(homoraBank), 0);
+        adapterApproveHomoraBank(stableToken, 0);
+        adapterApproveHomoraBank(assetToken, 0);
 
         uint256 equityAfter = getEquityETHValue();
-        console.log("equity before reinvest", equityBefore);
-        console.log("equity after  reinvest", equityAfter);
 
         if (equityAfter < equityBefore + minReinvestETH) {
             if (
@@ -917,7 +896,6 @@ contract HomoraPDNVault is
         pos.collateralSize = getCollateralSize();
         (pos.amtA, pos.amtB) = convertCollateralToTokens(pos.collateralSize);
         (pos.debtAmtA, pos.debtAmtB) = currentDebtAmount();
-        return pos;
     }
 
     /// @notice Swap fromToken into toToken
@@ -925,11 +903,7 @@ contract HomoraPDNVault is
         uint256 amount,
         address fromToken,
         address toToken
-    )
-//        internal
-        public
-        returns (uint256)
-    {
+    ) internal returns (uint256) {
         address[] memory path = new address[](2);
         (path[0], path[1]) = (fromToken, toToken);
         IERC20(fromToken).approve(address(router), amount);
@@ -946,39 +920,26 @@ contract HomoraPDNVault is
 
     /// @notice Swap native AVAX into toToken
     function swapAVAX(uint256 amount, address toToken)
-//        internal
-        public
+        internal
         returns (uint256)
     {
         address fromToken = router.WAVAX();
         address[] memory path = new address[](2);
         (path[0], path[1]) = (fromToken, toToken);
-        uint256[] memory amounts = router.getAmountsOut(amount, path);
-        // Reverted by TraderJoe if amounts[1] == 0
-        console.log("AmountOut", amounts[1]);
-        if (amounts[1] > 0) {
-            amounts = router.swapExactAVAXForTokens{value: amount}(
-                0,
-                path,
-                address(this),
-                block.timestamp
-            );
-        }
-        return amounts[1];
+        uint256[] memory resAmt = router.swapExactAVAXForTokens{value: amount}(
+            0,
+            path,
+            address(this),
+            block.timestamp
+        );
+        return resAmt[1];
     }
 
     /// @notice Swap reward tokens into stable tokens
     function swapReward() internal {
         uint256 rewardAmt = IERC20(rewardToken).balanceOf(address(this));
         if (rewardAmt > 0) {
-            uint256 stableRecv = swap(rewardAmt, rewardToken, stableToken);
-            uint256 harvestFeeAmt = harvestFee * stableRecv / 10000;
-            if (harvestFeeAmt > 0) {
-                IERC20(stableToken).safeTransfer(
-                    feeCollector,
-                    harvestFeeAmt
-                );
-            }
+            swap(rewardAmt, rewardToken, stableToken);
         }
     }
 
@@ -1007,27 +968,55 @@ contract HomoraPDNVault is
         }
     }
 
-    /// @dev Total position value, not weighted by the collateral factor
-    function getCollateralETHValue()
-        public view
-        returns (uint256)
+    /// @dev Query the collateral factor of the LP token on Homora, 0.84 => 8400
+    function getCollateralFactor()
+        public
+        view
+        returns (uint16 collateralFactor)
     {
-        return homoraBankPosId == _NO_ID
-            ? 0
-            : homoraBank.getCollateralETHValue(homoraBankPosId) * 10**4 / collateralFactor;
+        (, collateralFactor, ) = oracle.tokenFactors(lpToken);
     }
 
-    /// @dev Total debt value, not weighted by the borrow factors
-    function getBorrowETHValue()
-        public view
-        returns (uint256)
+    /// @dev Query the borrow factor of the debt token on Homora, 1.04 => 10400
+    /// @param token: Address of the ERC-20 debt token
+    function getBorrowFactor(address token)
+        public
+        view
+        returns (uint16 borrowFactor)
     {
-        (uint256 stableTokenDebtAmount, uint256 assetTokenDebtAmount) = currentDebtAmount();
-        return (homoraBankPosId == _NO_ID)
-            ? 0
-            // change msg.sender to adapter
-            : OracleLib.getTokenETHValue(oracle, stableToken, stableTokenDebtAmount, msg.sender)
-                + OracleLib.getTokenETHValue(oracle, assetToken, assetTokenDebtAmount, msg.sender);
+        (borrowFactor, , ) = oracle.tokenFactors(token);
+    }
+
+    /// @dev Total position value not weighted by the collateral factor
+    function getCollateralETHValue() public view returns (uint256) {
+        return
+            homoraBankPosId == _NO_ID
+                ? 0
+                : (homoraBank.getCollateralETHValue(homoraBankPosId) * 10**4) /
+                    getCollateralFactor();
+    }
+
+    /// @dev Total debt value not weighted by the borrow factors
+    function getBorrowETHValue() public view returns (uint256) {
+        (
+            uint256 stableTokenDebtAmount,
+            uint256 assetTokenDebtAmount
+        ) = currentDebtAmount();
+        return
+            (homoraBankPosId == _NO_ID)
+                ? 0
+                : (oracle.asETHBorrow(
+                    stableToken,
+                    stableTokenDebtAmount,
+                    msg.sender
+                ) * 10**4) /
+                    getBorrowFactor(stableToken) +
+                    (oracle.asETHBorrow(
+                        assetToken,
+                        assetTokenDebtAmount,
+                        msg.sender
+                    ) * 10**4) /
+                    getBorrowFactor(assetToken);
     }
 
     /// @dev Net equity value of the PDN position
