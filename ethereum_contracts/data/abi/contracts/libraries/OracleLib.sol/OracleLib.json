@@ -1,7 +1,0 @@
-[
-  "function asETHBorrow(address,address,uint256,address) view returns (uint256)",
-  "function getBorrowFactor(address,address) view returns (uint256)",
-  "function getCollateralFactor(address,address) view returns (uint256)",
-  "function support(address,address) view returns (bool)",
-  "function supportLP(address,address) view returns (bool)"
-]

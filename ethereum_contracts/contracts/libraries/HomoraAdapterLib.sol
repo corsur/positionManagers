@@ -95,7 +95,7 @@ library HomoraAdapterLib {
         uint256 posId,
         address spell,
         bytes memory spellBytes,
-        VaultLib.PairInfo storage pairInfo,
+        PairInfo storage pairInfo,
         uint256 value
     ) internal returns (bytes memory) {
         bytes memory homoraExecuteBytes = abi.encodeWithSelector(

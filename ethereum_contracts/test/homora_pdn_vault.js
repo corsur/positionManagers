@@ -538,16 +538,13 @@ describe.only("HomoraPDNVault Initialization", function () {
     adapterLib = await library.deploy();
     library = await ethers.getContractFactory("VaultLib", {
       libraries: {
-        HomoraAdapterLib: adapterLib.address,
+        HomoraAdapterLib: adapterLib.address
       },
     });
     vaultLib = await library.deploy();
-    library = await ethers.getContractFactory("OracleLib");
-    oracleLib = await library.deploy();
     strategyFactory = await ethers.getContractFactory("HomoraPDNVault", {
       libraries: {
         VaultLib: vaultLib.address,
-        OracleLib: oracleLib.address,
         HomoraAdapterLib: adapterLib.address
       },
     });
@@ -620,9 +617,9 @@ describe.only("HomoraPDNVault Initialization", function () {
     );
   });
 
-  it("Test swap functions", async function () {
-    await testSwap(strategyContract);
-  });
+  // it("Test swap functions", async function () {
+  //   await testSwap(strategyContract);
+  // });
 
   it("HomoraPDNVault DepositAndWithdraw", async function () {
     await testDepositAndWithdraw(
