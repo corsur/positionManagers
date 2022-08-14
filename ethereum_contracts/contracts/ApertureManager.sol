@@ -121,6 +121,7 @@ contract ApertureManager is
         address tokenAddress,
         bool isWhitelisted
     ) external onlyOwner {
+        require(tokenAddress != address(0), "zero tokenAddress");
         isTokenWhitelistedForStrategy[chainId][strategyId][
             tokenAddress
         ] = isWhitelisted;
@@ -134,28 +135,48 @@ contract ApertureManager is
     function validateAndTransferAssetFromSender(
         uint16 strategyChainId,
         uint64 strategyId,
-        AssetInfo[] calldata assetInfos
-    ) internal {
+        AssetInfo[] memory assetInfos
+    ) internal returns (AssetInfo[] memory) {
         for (uint256 i = 0; i < assetInfos.length; i++) {
-            if (assetInfos[i].assetType == AssetType.NativeToken) {
-                require(
-                    msg.value == assetInfos[i].amount,
-                    "insufficient msg.value"
-                );
-            } else {
-                require(
-                    isTokenWhitelistedForStrategy[strategyChainId][strategyId][
-                        assetInfos[i].assetAddr
-                    ],
-                    "token not allowed"
-                );
-                IERC20(assetInfos[i].assetAddr).safeTransferFrom(
-                    msg.sender,
-                    address(this),
-                    assetInfos[i].amount
-                );
-            }
+            require(
+                isTokenWhitelistedForStrategy[strategyChainId][strategyId][
+                    assetInfos[i].assetAddr
+                ],
+                "token not allowed"
+            );
+            require(assetInfos[i].amount > 0, "zero amount");
+            IERC20(assetInfos[i].assetAddr).safeTransferFrom(
+                msg.sender,
+                address(this),
+                assetInfos[i].amount
+            );
         }
+
+        // This message carries some ether, so we wrap it to WETH and add it to `assetInfos`.
+        if (msg.value > 0) {
+            IWETH weth = WormholeTokenBridge(
+                crossChainContext.wormholeContext.tokenBridge
+            ).WETH();
+            require(
+                isTokenWhitelistedForStrategy[strategyChainId][strategyId][
+                    address(weth)
+                ],
+                "weth not allowed"
+            );
+            weth.deposit{value: msg.value}();
+            AssetInfo[] memory expandedAssetInfos = new AssetInfo[](
+                assetInfos.length + 1
+            );
+            for (uint256 i = 0; i < assetInfos.length; ++i) {
+                expandedAssetInfos[i] = assetInfos[i];
+            }
+            expandedAssetInfos[assetInfos.length] = AssetInfo(
+                address(weth),
+                msg.value
+            );
+            return expandedAssetInfos;
+        }
+        return assetInfos;
     }
 
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
@@ -170,21 +191,6 @@ contract ApertureManager is
             strategyId
         );
         return positionId;
-    }
-
-    // Approve target contract (strategy manager/cross chain) to move assets from `this`.
-    function approveAssetTransferToTarget(
-        AssetInfo[] memory assetInfos,
-        address target
-    ) internal {
-        for (uint256 i = 0; i < assetInfos.length; i++) {
-            if (assetInfos[i].assetType != AssetType.NativeToken) {
-                IERC20(assetInfos[i].assetAddr).approve(
-                    target,
-                    assetInfos[i].amount
-                );
-            }
-        }
     }
 
     function createPositionInternal(
@@ -207,24 +213,27 @@ contract ApertureManager is
                 encodedPositionOpenData
             );
         } else {
-            StrategyMetadata memory strategy = strategyIdToMetadata[strategyId];
+            StrategyMetadata storage strategy = strategyIdToMetadata[
+                strategyId
+            ];
             require(
                 strategy.strategyManager != address(0),
                 "invalid strategyId"
             );
 
-            // Approve strategy manager to move assets.
+            // Approve strategy manager to transfer these assets out.
             for (uint256 i = 0; i < assetInfos.length; i++) {
-                address assetAddr = assetInfos[i].assetAddr;
-                uint256 amount = assetInfos[i].amount;
-                IERC20(assetAddr).approve(strategy.strategyManager, amount);
+                if (assetInfos[i].assetAddr != address(0)) {
+                    IERC20(assetInfos[i].assetAddr).approve(
+                        strategy.strategyManager,
+                        assetInfos[i].amount
+                    );
+                }
             }
-            approveAssetTransferToTarget(assetInfos, strategy.strategyManager);
 
-            IStrategyManager(strategy.strategyManager).openPosition{
-                value: msg.value
-            }(
+            IStrategyManager(strategy.strategyManager).openPosition(
                 PositionInfo(positionId, strategyChainId),
+                assetInfos,
                 encodedPositionOpenData
             );
         }
@@ -233,11 +242,11 @@ contract ApertureManager is
     function createPosition(
         uint16 strategyChainId,
         uint64 strategyId,
-        AssetInfo[] calldata assetInfos,
+        AssetInfo[] memory assetInfos,
         bytes calldata encodedPositionOpenData
     ) external payable {
         uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
-        validateAndTransferAssetFromSender(
+        assetInfos = validateAndTransferAssetFromSender(
             strategyChainId,
             strategyId,
             assetInfos
@@ -273,7 +282,7 @@ contract ApertureManager is
             minAmountOut
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
-        assetInfos[0] = AssetInfo(AssetType.Token, toToken, toTokenAmount);
+        assetInfos[0] = AssetInfo(toToken, toTokenAmount);
         createPositionInternal(
             positionId,
             strategyChainId,
@@ -313,10 +322,9 @@ contract ApertureManager is
             Action action = Action(uint8(encodedActionData[0]));
             require(action != Action.Open, "invalid action");
             if (action == Action.Increase) {
-                IStrategyManager(strategy.strategyManager).increasePosition{
-                    value: msg.value
-                }(
+                IStrategyManager(strategy.strategyManager).increasePosition(
                     PositionInfo(positionId, strategyChainId),
+                    assetInfos,
                     encodedActionData.slice(1, encodedActionData.length - 1)
                 );
             } else if (action == Action.Decrease) {
@@ -332,11 +340,11 @@ contract ApertureManager is
 
     function executeStrategy(
         uint128 positionId,
-        AssetInfo[] calldata assetInfos,
+        AssetInfo[] memory assetInfos,
         bytes calldata encodedActionData
-    ) external onlyPositionOwner(positionId) {
+    ) external payable onlyPositionOwner(positionId) {
         uint16 strategyChainId = positionIdToInfo[positionId].strategyChainId;
-        validateAndTransferAssetFromSender(
+        assetInfos = validateAndTransferAssetFromSender(
             strategyChainId,
             positionIdToInfo[positionId].strategyId,
             assetInfos
@@ -365,7 +373,7 @@ contract ApertureManager is
             minAmountOut
         );
         AssetInfo[] memory assetInfos = new AssetInfo[](1);
-        assetInfos[0] = AssetInfo(AssetType.Token, toToken, toTokenAmount);
+        assetInfos[0] = AssetInfo(toToken, toTokenAmount);
         executeStrategyInternal(
             positionId,
             positionIdToInfo[positionId].strategyChainId,

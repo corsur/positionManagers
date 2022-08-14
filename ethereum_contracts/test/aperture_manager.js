@@ -120,7 +120,7 @@ async function testUSTDeltaNeutralInvest(signer, apertureManager) {
   await apertureManager.createPosition(
     CHAIN_ID_TERRA,
     DELTA_NEUTRAL,
-    [[/*assetType=*/ 0, WORMHOLE_UST_TOKEN_ADDR, whUSTAmount]],
+    [[WORMHOLE_UST_TOKEN_ADDR, whUSTAmount]],
     encodedPositionOpenData,
     {}
   );
