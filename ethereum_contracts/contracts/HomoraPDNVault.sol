@@ -296,40 +296,51 @@ contract HomoraPDNVault is
     receive() external payable {}
 
     /// @dev Open a new Aperture position.
-    /// @param position_info: Aperture position info
-    /// @param data: Amount of assets supplied by user and minimum equity received after adding liquidity, etc
+    /// @param position_info: Aperture position info.
+    /// @param assets: At most two assets, one `stableToken`, and the other `assetToken`.
+    /// @param data: Encoded (uint256 minEquityETH, uint256 minReinvestETH).
     function openPosition(
         PositionInfo memory position_info,
+        AssetInfo[] calldata assets,
         bytes calldata data
-    ) external payable onlyApertureManager nonReentrant {
-        (
-            uint256 stableTokenDepositAmount,
-            uint256 assetTokenDepositAmount,
-            uint256 minEquityETH,
-            uint256 minReinvestETH
-        ) = abi.decode(data, (uint256, uint256, uint256, uint256));
-        depositInternal(
-            position_info,
-            stableTokenDepositAmount,
-            assetTokenDepositAmount,
-            minEquityETH,
-            minReinvestETH
-        );
+    ) external onlyApertureManager nonReentrant {
+        increasePositionInternal(position_info, assets, data);
     }
 
-    /// @dev Increase an existing Aperture position
-    /// @param position_info: Aperture position info
-    /// @param data: Amount of assets supplied by user and minimum equity received after adding liquidity, etc
+    /// @dev Increase an existing Aperture position.
+    /// @param position_info: Aperture position info.
+    /// @param assets: At most two assets, one `stableToken`, and the other `assetToken`.
+    /// @param data: Encoded (uint256 minEquityETH, uint256 minReinvestETH).
     function increasePosition(
         PositionInfo memory position_info,
+        AssetInfo[] calldata assets,
         bytes calldata data
-    ) external payable onlyApertureManager nonReentrant {
-        (
-            uint256 stableTokenDepositAmount,
-            uint256 assetTokenDepositAmount,
-            uint256 minEquityETH,
-            uint256 minReinvestETH
-        ) = abi.decode(data, (uint256, uint256, uint256, uint256));
+    ) external onlyApertureManager nonReentrant {
+        increasePositionInternal(position_info, assets, data);
+    }
+
+    function increasePositionInternal(
+        PositionInfo memory position_info,
+        AssetInfo[] calldata assets,
+        bytes calldata data
+    ) internal {
+        uint256 stableTokenDepositAmount = 0;
+        uint256 assetTokenDepositAmount = 0;
+
+        for (uint256 i = 0; i < assets.length; ++i) {
+            if (assets[i].assetAddr == pairInfo.stableToken) {
+                stableTokenDepositAmount += assets[i].amount;
+            } else if (assets[i].assetAddr == pairInfo.assetToken) {
+                assetTokenDepositAmount += assets[i].amount;
+            } else {
+                revert("unexpected token");
+            }
+        }
+
+        (uint256 minEquityETH, uint256 minReinvestETH) = abi.decode(
+            data,
+            (uint256, uint256)
+        );
         depositInternal(
             position_info,
             stableTokenDepositAmount,

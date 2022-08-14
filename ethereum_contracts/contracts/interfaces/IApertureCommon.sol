@@ -30,14 +30,9 @@ struct Config {
     address feeSink; // Fee collecting address.
 }
 
-enum AssetType {
-    Token,
-    NativeToken
-}
-
+// The address and amount of an ERC-20 token.
 struct AssetInfo {
-    AssetType assetType;
-    address assetAddr; // The ERC20 address.
+    address assetAddr;
     uint256 amount;
 }
 
@@ -54,21 +49,25 @@ struct ApertureVaultLimits {
 }
 
 interface IStrategyManager {
-    /// @dev Open a new Aperture position for `recipient`
-    /// @param position_info: Aperture position info
-    /// @param data: Amount of assets supplied by user and minimum equity received after adding liquidity, etc
+    /// @dev Open a new Aperture position.
+    /// @param position_info: Aperture position info.
+    /// @param assets: Information about assets to open this position with.
+    /// @param data: Generic bytes encoding strategy-specific params.
     function openPosition(
         PositionInfo memory position_info,
+        AssetInfo[] calldata assets,
         bytes calldata data
-    ) external payable;
+    ) external;
 
     /// @dev Increase an existing Aperture position
-    /// @param position_info: Aperture position info
-    /// @param data: Amount of assets supplied by user and minimum equity received after adding liquidity, etc
+    /// @param position_info: Aperture position info.
+    /// @param assets: Information about assets to increase this position with.
+    /// @param data: Generic bytes encoding strategy-specific params.
     function increasePosition(
         PositionInfo memory position_info,
+        AssetInfo[] calldata assets,
         bytes calldata data
-    ) external payable;
+    ) external;
 
     /// @dev Decrease an existing Aperture position
     /// @param position_info: Aperture position info

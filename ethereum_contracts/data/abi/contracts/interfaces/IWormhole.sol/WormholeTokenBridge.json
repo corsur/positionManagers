@@ -1,4 +1,5 @@
 [
+  "function WETH() view returns (address)",
   "function chainId() view returns (uint16)",
   "function completeTransfer(bytes)",
   "function isTransferCompleted(bytes32) view returns (bool)",

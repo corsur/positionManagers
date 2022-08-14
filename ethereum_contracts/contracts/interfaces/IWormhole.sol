@@ -1,6 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 interface WormholeCoreBridge {
     function publishMessage(
         uint32 nonce,
@@ -85,4 +87,12 @@ interface WormholeTokenBridge {
         returns (address);
 
     function chainId() external view returns (uint16);
+
+    function WETH() external view returns (IWETH);
+}
+
+interface IWETH is IERC20 {
+    function deposit() external payable;
+
+    function withdraw(uint amount) external;
 }

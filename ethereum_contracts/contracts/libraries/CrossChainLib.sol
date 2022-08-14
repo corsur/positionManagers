@@ -65,10 +65,6 @@ library CrossChainLib {
         CrossChainContext storage context
     ) internal returns (bytes memory payloadTransferSequences) {
         for (uint256 i = 0; i < assetInfos.length; i++) {
-            if (assetInfos[i].assetType == AssetType.NativeToken) {
-                revert("unsupported cross-chain native token");
-            }
-
             // Collect cross-chain fees if applicable.
             uint256 amount = assetInfos[i].amount;
             uint256 fee = (assetInfos[i].amount * context.feeContext.feeBps) /
@@ -389,8 +385,8 @@ library CrossChainLib {
             uint64 sequence = instructionVM.payload.toUint64(index);
             index += 8;
 
-            // TODO: Look into whether an Wormhole incoming transfer could unwrap to native ether.
-            assetInfos[i].assetType = AssetType.Token;
+            // WormholeTokenBridge has completeTransfer() and completeTransferAndUnwrapETH().
+            // Here validateAndCompleteIncomingTokenTransfer() calls the former so we always receive an ERC-20 token.
             (
                 assetInfos[i].assetAddr,
                 assetInfos[i].amount

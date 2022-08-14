@@ -1,6 +1,6 @@
 [
   "function closePosition(tuple(uint128,uint16),bytes)",
   "function decreasePosition(tuple(uint128,uint16),bytes)",
-  "function increasePosition(tuple(uint128,uint16),bytes) payable",
-  "function openPosition(tuple(uint128,uint16),bytes) payable"
+  "function increasePosition(tuple(uint128,uint16),tuple(address,uint256)[],bytes)",
+  "function openPosition(tuple(uint128,uint16),tuple(address,uint256)[],bytes)"
 ]
