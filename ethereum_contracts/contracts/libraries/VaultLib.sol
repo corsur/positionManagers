@@ -19,6 +19,23 @@ struct PairInfo {
     address rewardToken;
 }
 
+// Contract address info
+struct ContractInfo {
+    address adapter; // Aperture's adapter to interact with Homora
+    address bank; // HomoraBank's address
+    address spell; // Homora's Spell contract address
+}
+
+// User's Aperture position
+struct Position {
+    uint256 shareAmount;
+}
+
+struct VaultState{
+    uint256 totalShareAmount;
+    uint256 lastCollectionTimestamp; // last timestamp when collecting management fee
+}
+
 // Amounts of tokens in the Homora farming position
 struct VaultPosition {
     uint256 collateralSize; // amount of collateral/LP
@@ -129,15 +146,15 @@ library VaultLib {
     ///********* Homora Bank related functions *********///
 
     /// @dev Query the amount of collateral/LP in the Homora PDN position
-    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBank: HomoraBank's address
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    function getCollateralSize(IHomoraBank homoraBank, uint256 homoraBankPosId)
+    function getCollateralSize(address homoraBank, uint256 homoraBankPosId)
         public
         view
         returns (uint256)
     {
         if (homoraBankPosId == _NO_ID) return 0;
-        (, , , uint256 collateralSize) = homoraBank.getPositionInfo(
+        (, , , uint256 collateralSize) = IHomoraBank(homoraBank).getPositionInfo(
             homoraBankPosId
         );
         return collateralSize;
@@ -163,11 +180,11 @@ library VaultLib {
     }
 
     /// @dev Query the current debt amount for both tokens. Stable first
-    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBank: HomoraBank's address
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
     /// @param pairInfo: Addresses in the pair
     function getDebtAmounts(
-        IHomoraBank homoraBank,
+        address homoraBank,
         uint256 homoraBankPosId,
         PairInfo storage pairInfo
     ) public view returns (uint256, uint256) {
@@ -176,7 +193,7 @@ library VaultLib {
         } else {
             uint256 stableTokenDebtAmount;
             uint256 assetTokenDebtAmount;
-            (address[] memory tokens, uint256[] memory debts) = homoraBank
+            (address[] memory tokens, uint256[] memory debts) = IHomoraBank(homoraBank)
                 .getPositionDebts(homoraBankPosId);
             for (uint256 i = 0; i < tokens.length; i++) {
                 if (tokens[i] == pairInfo.stableToken) {
@@ -190,11 +207,11 @@ library VaultLib {
     }
 
     /// @dev Homora position info
-    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBank: HomoraBank's address
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
     /// @param pairInfo: Addresses in the pair
     function getPositionInfo(
-        IHomoraBank homoraBank,
+        address homoraBank,
         uint256 homoraBankPosId,
         PairInfo storage pairInfo
     ) public view returns (VaultPosition memory pos) {
@@ -212,28 +229,28 @@ library VaultLib {
 
     /// @notice Calculate the debt ratio and return the ratio, multiplied by 1e4
     function getDebtRatio(
-        IHomoraBank homoraBank,
+        address homoraBank,
         uint256 homoraBankPosId
     ) public view returns (uint256) {
         return
             homoraBankPosId == _NO_ID
                 ? 0
-                : homoraBank.getBorrowETHValue(homoraBankPosId).mulDiv(
+                : IHomoraBank(homoraBank).getBorrowETHValue(homoraBankPosId).mulDiv(
                     10000,
-                    homoraBank.getCollateralETHValue(homoraBankPosId)
+                    IHomoraBank(homoraBank).getCollateralETHValue(homoraBankPosId)
                 );
     }
 
     /// @dev Total position value, not weighted by the collateral factor
     function getCollateralETHValue(
-        IHomoraBank homoraBank,
+        address homoraBank,
         uint256 homoraBankPosId,
         uint256 collateralFactor
     ) public view returns (uint256) {
         return
             homoraBankPosId == _NO_ID
                 ? 0
-                : homoraBank.getCollateralETHValue(homoraBankPosId).mulDiv(
+                : IHomoraBank(homoraBank).getCollateralETHValue(homoraBankPosId).mulDiv(
                     10000,
                     collateralFactor
                 );
@@ -311,11 +328,11 @@ library VaultLib {
     }
 
     /// @dev Total debt value, *not* weighted by the borrow factors
-    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBank: HomoraBank's address
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
     /// @param pairInfo: Addresses in the pair
     function getBorrowETHValue(
-        IHomoraBank homoraBank,
+        address homoraBank,
         uint256 homoraBankPosId,
         PairInfo storage pairInfo,
         address oracle,
@@ -382,12 +399,12 @@ library VaultLib {
     }
 
     /// @dev Check if the farming position is delta neutral
-    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param homoraBank: HomoraBank's address
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
     /// @param pairInfo: Addresses in the pair
     /// @param deltaThreshold: Delta deviation threshold in percentage * 10000
     function isDeltaNeutral(
-        IHomoraBank homoraBank,
+        address homoraBank,
         uint256 homoraBankPosId,
         PairInfo storage pairInfo,
         uint256 deltaThreshold
@@ -403,7 +420,7 @@ library VaultLib {
     }
 
     function isDebtRatioHealthy(
-        IHomoraBank homoraBank,
+        address homoraBank,
         uint256 homoraBankPosId,
         uint256 minDebtRatio,
         uint256 maxDebtRatio
@@ -467,21 +484,137 @@ library VaultLib {
             1;
     }
 
-    /// @dev Harvest farming rewards
-    /// @param homoraBank: Instantiated HomoraBank Interface
+    function collectManagementFee(
+        mapping(uint16 => mapping(uint128 => Position)) storage positions,
+        VaultState storage vaultState,
+        uint256 managementFee
+    ) external {
+        uint256 shareAmtMint = vaultState.totalShareAmount
+            .mulDiv(managementFee, 10000)
+            .mulDiv(block.timestamp - vaultState.lastCollectionTimestamp, 31536000);
+        vaultState.lastCollectionTimestamp = block.timestamp;
+        // Update vault position state.
+        vaultState.totalShareAmount += shareAmtMint;
+        // Update fee collector's position state.
+        positions[0][0].shareAmount += shareAmtMint;
+    }
+
+    /// @dev Main deposit logic
+    /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param spell: Homora's Spell contract address
-    function harvest(
-        IHomoraBank homoraBank,
-        IHomoraAdapter adapter,
+    /// @param pairInfo: Addresses in the pair
+    function deposit(
+        ContractInfo storage contractInfo,
         uint256 homoraBankPosId,
-        address spell,
+        PairInfo storage pairInfo,
+        uint256 stableTokenDepositAmount,
+        uint256 assetTokenDepositAmount,
+        uint256 leverageLevel,
+        uint256 pid
+    ) external returns (uint256)
+    {
+        IHomoraAdapter adapter = IHomoraAdapter(contractInfo.adapter);
+
+        // 1. Transfer user's deposit tokens to current contract.
+        if (stableTokenDepositAmount > 0) {
+            IERC20(pairInfo.stableToken).safeTransferFrom(
+                msg.sender,
+                address(this),
+                stableTokenDepositAmount
+            );
+        }
+        if (assetTokenDepositAmount > 0) {
+            IERC20(pairInfo.assetToken).safeTransferFrom(
+                msg.sender,
+                address(this),
+                assetTokenDepositAmount
+            );
+        }
+
+        (
+            uint256 stableTokenBorrowAmount,
+            uint256 assetTokenBorrowAmount
+        ) = deltaNeutral(
+                pairInfo,
+                stableTokenDepositAmount,
+                assetTokenDepositAmount,
+                leverageLevel
+            );
+
+        // 2. Transfer user's deposit tokens to adapter contract.
+        // 3. Let adapter contract to approve HomoraBank.
+        if (stableTokenDepositAmount > 0) {
+            adapter.fundAdapterAndApproveHomoraBank(
+                contractInfo.bank,
+                pairInfo.stableToken,
+                stableTokenDepositAmount
+            );
+        }
+        if (assetTokenDepositAmount > 0) {
+            adapter.fundAdapterAndApproveHomoraBank(
+                contractInfo.bank,
+                pairInfo.assetToken,
+                assetTokenDepositAmount
+            );
+        }
+
+        // 4. Call Homora's execute() along with any native token received.
+        bytes memory addLiquidityBytes = abi.encodeWithSelector(
+            ADD_LIQUIDITY_SIG,
+            pairInfo.stableToken,
+            pairInfo.assetToken,
+            [
+                stableTokenDepositAmount,
+                assetTokenDepositAmount,
+                0,
+                stableTokenBorrowAmount,
+                assetTokenBorrowAmount,
+                0,
+                0,
+                0
+            ],
+            pid
+        );
+
+        homoraBankPosId = abi.decode(
+            adapter.homoraExecute(
+                contractInfo.bank,
+                homoraBankPosId,
+                contractInfo.spell,
+                addLiquidityBytes,
+                pairInfo,
+                msg.value
+            ),
+            (uint256)
+        );
+
+        // 5. Revoke HomoraBank's allowance from adapter contract.
+        adapter.adapterApproveHomoraBank(
+            contractInfo.bank,
+            pairInfo.stableToken,
+            0
+        );
+        adapter.adapterApproveHomoraBank(
+            contractInfo.bank,
+            pairInfo.assetToken,
+            0
+        );
+        return homoraBankPosId;
+    }
+
+    /// @dev Harvest farming rewards
+    /// @param contractInfo: Contract address info including adapter, bank and spell
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pairInfo: Addresses in the pair
+    function harvest(
+        ContractInfo storage contractInfo,
+        uint256 homoraBankPosId,
         PairInfo storage pairInfo
     ) external {
-        adapter.homoraExecute(
-            address(homoraBank),
+        IHomoraAdapter(contractInfo.adapter).homoraExecute(
+            contractInfo.bank,
             homoraBankPosId,
-            spell,
+            contractInfo.spell,
             HARVEST_DATA,
             pairInfo,
             0
@@ -489,10 +622,8 @@ library VaultLib {
     }
 
     function reinvestExec(
-        IHomoraBank homoraBank,
-        IHomoraAdapter adapter,
+        ContractInfo storage contractInfo,
         uint256 homoraBankPosId,
-        address spell,
         PairInfo storage pairInfo,
         uint256 stableTokenBalance,
         uint256 assetTokenBalance,
@@ -500,11 +631,13 @@ library VaultLib {
         uint256 assetTokenBorrowAmount,
         uint256 pid
     ) internal {
+        IHomoraAdapter adapter = IHomoraAdapter(contractInfo.adapter);
+
         // Encode the calling function.
         adapter.homoraExecute(
-            address(homoraBank),
+            contractInfo.bank,
             homoraBankPosId,
-            spell,
+            contractInfo.spell,
             abi.encodeWithSelector(
                 ADD_LIQUIDITY_SIG,
                 pairInfo.stableToken,
@@ -527,27 +660,26 @@ library VaultLib {
 
         // Cancel HomoraBank's allowance.
         adapter.fundAdapterAndApproveHomoraBank(
-            address(homoraBank),
+            contractInfo.bank,
             pairInfo.stableToken,
             0
         );
         adapter.fundAdapterAndApproveHomoraBank(
-            address(homoraBank),
+            contractInfo.bank,
             pairInfo.assetToken,
             assetTokenBalance
         );
     }
 
     /// @dev Collect reward tokens and reinvest
-    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param spell: Homora's Spell contract address
     /// @param pairInfo: Addresses in the pair
+    /// @param leverageLevel: Target leverage
+    /// @param pid: Pool id
     function reinvest(
-        IHomoraBank homoraBank,
-        IHomoraAdapter adapter,
+        ContractInfo storage contractInfo,
         uint256 homoraBankPosId,
-        address spell,
         PairInfo storage pairInfo,
         uint256 leverageLevel,
         uint256 pid
@@ -576,24 +708,22 @@ library VaultLib {
 
         // Approve HomoraBank transferring tokens.
         if (stableTokenBalance > 0) {
-            adapter.fundAdapterAndApproveHomoraBank(
-                address(homoraBank),
+            IHomoraAdapter(contractInfo.adapter).fundAdapterAndApproveHomoraBank(
+                contractInfo.bank,
                 pairInfo.stableToken,
                 stableTokenBalance
             );
         }
         if (assetTokenBalance > 0) {
-            adapter.fundAdapterAndApproveHomoraBank(
-                address(homoraBank),
+            IHomoraAdapter(contractInfo.adapter).fundAdapterAndApproveHomoraBank(
+                contractInfo.bank,
                 pairInfo.assetToken,
                 assetTokenBalance
             );
         }
         reinvestExec(
-            homoraBank,
-            adapter,
+            contractInfo,
             homoraBankPosId,
-            spell,
             pairInfo,
             stableTokenBalance,
             assetTokenBalance,
@@ -603,22 +733,11 @@ library VaultLib {
         );
     }
 
-    /// @dev Rebalance Homora Bank's farming position assuming delta is short
-    /// @param homoraBank: Instantiated HomoraBank Interface
-    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
-    /// @param pos: Farming position in Homora Bank
-    /// @param spell: Homora's Spell contract address
-    /// @param pairInfo: Addresses in the pair
-    function rebalanceShort(
-        IHomoraBank homoraBank,
-        IHomoraAdapter adapter,
-        uint256 homoraBankPosId,
+    function populateShortHelper(
         VaultPosition memory pos,
-        address spell,
         PairInfo storage pairInfo,
         uint256 leverageLevel
-    ) external returns (uint256, uint256) {
-        ShortHelper memory vars;
+    ) internal view returns (ShortHelper memory vars) {
         (vars.reserveABefore, vars.reserveBBefore) = getReserves(pairInfo);
         (
             vars.collWithdrawAmt,
@@ -627,11 +746,30 @@ library VaultLib {
             vars.Sa,
             vars.Sb
         ) = rebalanceMathShort(pos, leverageLevel, vars);
+    }
 
-        adapter.homoraExecute(
-            address(homoraBank),
+    /// @dev Rebalance Homora Bank's farming position assuming delta is short
+    /// @param contractInfo: Contract address info including adapter, bank and spell
+    /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
+    /// @param pos: Farming position in Homora Bank
+    /// @param pairInfo: Addresses in the pair
+    function rebalanceShort(
+        ContractInfo storage contractInfo,
+        uint256 homoraBankPosId,
+        VaultPosition memory pos,
+        PairInfo storage pairInfo,
+        uint256 leverageLevel
+    ) external returns (uint256, uint256) {
+        ShortHelper memory vars = populateShortHelper(
+            pos,
+            pairInfo,
+            leverageLevel
+        );
+
+        IHomoraAdapter(contractInfo.adapter).homoraExecute(
+            contractInfo.bank,
             homoraBankPosId,
-            spell,
+            contractInfo.spell,
             abi.encodeWithSelector(
                 REMOVE_LIQUIDITY_SIG,
                 pairInfo.stableToken,
@@ -669,18 +807,16 @@ library VaultLib {
     }
 
     function rebalanceLongExec(
-        IHomoraBank homoraBank,
-        IHomoraAdapter adapter,
+        ContractInfo storage contractInfo,
         uint256 homoraBankPosId,
-        address spell,
         PairInfo storage pairInfo,
         uint256 pid,
         LongHelper memory vars
     ) internal {
-        adapter.homoraExecute(
-            address(homoraBank),
+        IHomoraAdapter(contractInfo.adapter).homoraExecute(
+            contractInfo.bank,
             homoraBankPosId,
-            spell,
+            contractInfo.spell,
             abi.encodeWithSelector(
                 ADD_LIQUIDITY_SIG,
                 pairInfo.stableToken,
@@ -701,25 +837,24 @@ library VaultLib {
             0
         );
 
-        adapter.fundAdapterAndApproveHomoraBank(
-            address(homoraBank),
+        IHomoraAdapter(contractInfo.adapter).fundAdapterAndApproveHomoraBank(
+            contractInfo.bank,
             pairInfo.stableToken,
             0
         );
     }
 
     /// @dev Rebalance Homora Bank's farming position assuming delta is long
-    /// @param homoraBank: Instantiated HomoraBank Interface
+    /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraBankPosId: Position id of the PDN vault in HomoraBank
     /// @param pos: Farming position in Homora Bank
-    /// @param spell: Homora's Spell contract address
     /// @param pairInfo: Addresses in the pair
+    /// @param leverageLevel: Target leverage
+    /// @param pid: Pool id
     function rebalanceLong(
-        IHomoraBank homoraBank,
-        IHomoraAdapter adapter,
+        ContractInfo storage contractInfo,
         uint256 homoraBankPosId,
         VaultPosition memory pos,
-        address spell,
         PairInfo storage pairInfo,
         uint256 leverageLevel,
         uint256 pid
@@ -731,18 +866,16 @@ library VaultLib {
         );
 
         if (vars.amtAReward > 0) {
-            adapter.fundAdapterAndApproveHomoraBank(
-                address(homoraBank),
+            IHomoraAdapter(contractInfo.adapter).fundAdapterAndApproveHomoraBank(
+                contractInfo.bank,
                 pairInfo.stableToken,
                 vars.amtAReward
             );
         }
 
         rebalanceLongExec(
-            homoraBank,
-            adapter,
+            contractInfo,
             homoraBankPosId,
-            spell,
             pairInfo,
             pid,
             vars
