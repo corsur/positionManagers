@@ -42,6 +42,9 @@ contract ApertureManager is
     uint64 public nextStrategyId;
     mapping(uint64 => StrategyMetadata) public strategyIdToMetadata;
 
+    // Whether an address is allowed to call `disburseAssets()`.
+    mapping(address => bool) public allowedToDisburseAssets;
+
     // `initializer` is a modifier from OpenZeppelin to ensure contract is
     // only initialized once (thanks to Initializable).
     function initialize(
@@ -109,9 +112,13 @@ contract ApertureManager is
             _version,
             _strategyManager
         );
+        allowedToDisburseAssets[_strategyManager] = true;
     }
 
     function removeStrategy(uint64 _strategyId) external onlyOwner {
+        delete allowedToDisburseAssets[
+            strategyIdToMetadata[_strategyId].strategyManager
+        ];
         delete strategyIdToMetadata[_strategyId];
     }
 
