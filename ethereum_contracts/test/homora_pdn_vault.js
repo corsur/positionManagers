@@ -127,9 +127,15 @@ async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
 
 async function initialize() {
   // Impersonate USDC holder.
-  let signer = await getImpersonatedSigner("0x42d6ce661bb2e5f5cc639e7befe74ff9fd649541");
+  let signer = await getImpersonatedSigner(
+    "0x42d6ce661bb2e5f5cc639e7befe74ff9fd649541"
+  );
   await USDC.connect(signer).transfer(wallets[0].address, 5e6 * 1e6, txOptions);
-  await USDC.connect(signer).transfer(wallets[1].address, 1000 * 1e6, txOptions);
+  await USDC.connect(signer).transfer(
+    wallets[1].address,
+    1000 * 1e6,
+    txOptions
+  );
 }
 
 // testing function to swap USDC into WAVAX
@@ -192,35 +198,16 @@ async function swapWAVAX(contract, swapAmt) {
   return usdcBalance1.sub(usdcBalance0);
 }
 
-// testing swap functions
-async function testSwap(strategyContract) {
-  // Impersonate WAVAX holder and transfer.
-  signer = await getImpersonatedSigner("0x0e082F06FF657D94310cB8cE8B0D9a04541d8052");
-  await WAVAX.connect(signer).transfer(strategyContract.address, BigNumber.from(1).mul("1000000000000000000"), txOptions);
-
-  // Impersonate USDC holder and transfer.
-  signer = await getImpersonatedSigner("0x279f8940ca2a44c35ca3edf7d28945254d0f0ae6");
-  await USDC.connect(signer).transfer(strategyContract.address, BigNumber.from(200000).mul(1e6), txOptions);
-
-  let swapAmt = BigNumber.from(1);
-  let recvAmt = await strategyContract
-      .connect(wallets[0])
-      .swap(swapAmt, USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS, txOptions);
-  console.log("swap %s USDC to %d AVAX", swapAmt.toString(), recvAmt);
-
-  recvAmt = await strategyContract
-      .connect(wallets[0])
-      .swapAVAX(swapAmt, USDC_TOKEN_ADDRESS, txOptions);
-  console.log("swap %s AVAX to %d USDC", swapAmt.toString(), recvAmt);
-}
-
 // testing function for rebalance()
 async function testRebalance(managerContract, strategyContract, vaultLib) {
   await deposit(managerContract, strategyContract);
+  const homoraPosId = (await strategyContract.homoraBankPosId()).toNumber();
   // check collateral
-  let collSize = await strategyContract
-    .connect(wallets[0])
-    .getCollateralSize(txOptions);
+  let collSize = await vaultLib.getCollateralSize(
+    homoraBank.address,
+    homoraPosId,
+    txOptions
+  );
   let [usdcHold, wavaxHold] = await strategyContract
     .connect(wallets[0])
     .convertCollateralToTokens(collSize, txOptions);
@@ -237,8 +224,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
 
   // check if position state is healthy (no need to rebalance)
   await expect(
-    strategyContract.connect(wallets[0])
-        .rebalance(10, 0, txOptions)
+    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
   // Flash swap USDC and rebalance (short)
@@ -251,8 +237,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   );
 
   await expect(
-    strategyContract.connect(wallets[0])
-        .rebalance(10, 0, txOptions)
+    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
   // Swap back
   swapAmt = recvAmt;
@@ -273,18 +258,15 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   );
   console.log("Leverage changed to 2");
   await expect(
-    strategyContract.connect(wallets[0])
-        .rebalance(10, 0, txOptions)
+    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
 
   // Increase slippage and rebalance again
-  await strategyContract.connect(wallets[0])
-      .rebalance(100, 0, txOptions);
+  await strategyContract.connect(wallets[0]).rebalance(100, 0, txOptions);
 
   // expect to be in delta-neutral after rebalance
   await expect(
-    strategyContract.connect(wallets[0])
-        .rebalance(10, 0, txOptions)
+    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
   // Impersonate WAVAX holder.
@@ -305,8 +287,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     recvAmt.div(1e6).toString()
   );
   await expect(
-    strategyContract.connect(wallets[0])
-        .rebalance(10, 0, txOptions)
+    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
 
   // Swap back
@@ -318,8 +299,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     recvAmt.div("1000000000000000000").toString()
   );
   await expect(
-    strategyContract.connect(wallets[0])
-        .rebalance(10, 0, txOptions)
+    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
   // Increase leverage to trigger rebalance
@@ -331,22 +311,24 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     txOptions
   );
   console.log("Leverage changed to 3");
-  await strategyContract.connect(wallets[0])
-      .rebalance(100, 0, txOptions);
+  await strategyContract.connect(wallets[0]).rebalance(100, 0, txOptions);
 
   // expect to be in delta-neutral after rebalance
   await expect(
-    strategyContract.connect(wallets[0])
-        .rebalance(10, 0, txOptions)
+    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 }
 
-async function testReinvest(managerContract, strategyContract) {
-  await deposit(managerContract, strategyContract);
+async function testReinvest(managerContract, strategyContract, vaultLib) {
+  await deposit(managerContract);
 
-  let collateralBefore = await strategyContract
-    .connect(wallets[0])
-    .getCollateralSize(txOptions);
+  const homoraPosId = (await strategyContract.homoraBankPosId()).toNumber();
+
+  let collateralBefore = await vaultLib.getCollateralSize(
+    homoraBank.address,
+    homoraPosId,
+    txOptions
+  );
   console.log("Collateral Before reinvest: %d", collateralBefore);
 
   let reinvested = false;
@@ -360,9 +342,11 @@ async function testReinvest(managerContract, strategyContract) {
     reinvested = false;
   }
 
-  let collateralAfter = await strategyContract
-    .connect(wallets[0])
-    .getCollateralSize(txOptions);
+  let collateralAfter = await vaultLib.getCollateralSize(
+    homoraBank.address,
+    homoraPosId,
+    txOptions
+  );
 
   console.log("Collateral before reinvest: %d", collateralBefore);
   console.log("Collateral after reinvest: %d", collateralAfter);
@@ -373,7 +357,7 @@ async function testReinvest(managerContract, strategyContract) {
   }
 }
 
-async function deposit(managerContract, strategyContract) {
+async function deposit(managerContract) {
   // Deposit 1000 USDC to vault from wallet 0.
   await USDC.connect(wallets[0]).approve(
     managerContract.address,
@@ -387,7 +371,7 @@ async function deposit(managerContract, strategyContract) {
       ["uint256", "uint256"],
       [
         minEquityReceived0, // uint256 minEquityETH
-        0 // uint256 minReinvestETH
+        0, // uint256 minReinvestETH
       ]
     )
   );
@@ -443,9 +427,9 @@ async function testDepositAndWithdraw(
   var res = await homoraBank.getPositionInfo(homoraBankPosId);
   expect(res.owner).to.equal(homoraAdapter.address);
 
-  // // Colletral size of each wallet.
+  // Colletral size of each wallet.
   var totalCollateralSize = res.collateralSize;
-  [totalShareAmount, lastCollectionTimestamp] = await strategyContract.vaultState();
+  [totalShareAmount, _] = await strategyContract.vaultState();
   var shareAmount0 = await strategyContract.positions(CHAIN_ID_AVAX, 0); // position id 0
   console.log("share amount 0: ", shareAmount0.toString());
   var shareAmount1 = await strategyContract.positions(CHAIN_ID_AVAX, 1); // position id 1
@@ -473,7 +457,6 @@ async function testDepositAndWithdraw(
   // Withdraw half amount from vault for wallet 0.
   var withdrawAmount0 = shareAmount0.div(2);
   console.log("withdraw amount 0: ", withdrawAmount0.toString());
-  var usdcBalance0 = await USDC.balanceOf(wallets[0].address);
 
   // First byte is Action enum.
   // 0 -> Open, 1 -> Increase, 2 -> Decrease, 3 -> Close (not yet supported).
@@ -486,24 +469,15 @@ async function testDepositAndWithdraw(
       )
     ),
   ]);
-  // console.log("encoded withdraw data: ", encodedWithdrawData);
-  console.log(ethers.utils.hexlify(encodedWithdrawData));
 
   await managerContract
     .connect(wallets[0])
     .executeStrategy(
       /*positionId=*/ 0,
-      /*assetInfos=*/[],
+      /*assetInfos=*/ [],
       encodedWithdrawData,
       txOptions
     );
-
-  // var withdrawUsdcAmount0 =
-  //   (await USDC.balanceOf(wallets[0].address)) - usdcBalance0;
-  // expect(withdrawUsdcAmount0).to.be.closeTo(
-  //   BigNumber.from(usdcDepositAmount0).div(2),
-  //   100
-  // );
 }
 
 describe.only("HomoraPDNVault Initialization", function () {
@@ -541,7 +515,7 @@ describe.only("HomoraPDNVault Initialization", function () {
     adapterLib = await library.deploy();
     library = await ethers.getContractFactory("VaultLib", {
       libraries: {
-        HomoraAdapterLib: adapterLib.address
+        HomoraAdapterLib: adapterLib.address,
       },
     });
     vaultLib = await library.deploy();
@@ -583,21 +557,21 @@ describe.only("HomoraPDNVault Initialization", function () {
       100, // _debtRatioWidth
       300, // _deltaThreshold
       [
-          20, // withdrawFee
-          1500, // harvestFee
-          200 // managementFee
+        20, // withdrawFee
+        1500, // harvestFee
+        200, // managementFee
       ],
       [
-          BigNumber.from(1000000).mul(1e6), // maxCapacity
-          BigNumber.from(200000).mul(1e6), // maxOpenPerTx
-          BigNumber.from(200000).mul(1e6) // maxWithdrawPerTx
+        BigNumber.from(1000000).mul(1e6), // maxCapacity
+        BigNumber.from(200000).mul(1e6), // maxOpenPerTx
+        BigNumber.from(200000).mul(1e6), // maxWithdrawPerTx
       ],
       txOptions
     );
     console.log("Homora PDN contract initialized");
 
     await whitelistContractAndAddCredit(homoraAdapter.address);
-    await initialize(strategyContract);
+    await initialize();
 
     // Add strategy into Aperture manager.
     await managerContract.addStrategy(
@@ -619,10 +593,6 @@ describe.only("HomoraPDNVault Initialization", function () {
     );
   });
 
-  // it("Test swap functions", async function () {
-  //   await testSwap(strategyContract);
-  // });
-
   it("HomoraPDNVault DepositAndWithdraw", async function () {
     await testDepositAndWithdraw(
       managerContract,
@@ -636,7 +606,7 @@ describe.only("HomoraPDNVault Initialization", function () {
   });
 
   it("Deposit and test reinvest", async function () {
-    await testReinvest(managerContract, strategyContract);
+    await testReinvest(managerContract, strategyContract, vaultLib);
   });
 
   it("Should fail for doing unauthorized operations", async function () {

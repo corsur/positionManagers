@@ -27,7 +27,6 @@
   "function deltaThreshold() view returns (uint256)",
   "function feeCollector() view returns (address)",
   "function feeConfig() view returns (uint256, uint256, uint256)",
-  "function getCollateralSize() view returns (uint256)",
   "function getDebtAmounts() view returns (uint256, uint256)",
   "function getShareAmount(tuple(uint128,uint16)) view returns (uint256)",
   "function homoraBankPosId() view returns (uint256)",

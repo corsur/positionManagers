@@ -785,10 +785,6 @@ contract HomoraPDNVault is
                 .shareAmount;
     }
 
-    function getCollateralSize() public view returns (uint256) {
-        return VaultLib.getCollateralSize(contractInfo.bank, homoraBankPosId);
-    }
-
     /// @notice Evalute the current collateral's amount in terms of 2 tokens. Stable token first
     /// @param collAmount: Amount of LP token
     function convertCollateralToTokens(uint256 collAmount)
