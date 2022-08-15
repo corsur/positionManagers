@@ -424,7 +424,7 @@ contract HomoraPDNVault is
         // Calculate user share amount.
         uint256 shareAmount = equityBefore == 0
             ? equityChange
-            : getTotalShare().mulDiv(equityChange, equityBefore);
+            : vaultState.totalShareAmount.mulDiv(equityChange, equityBefore);
 
         if (equityChange < minEquityETH) {
             revert Insufficient_Liquidity_Mint();
@@ -595,7 +595,7 @@ contract HomoraPDNVault is
         // Position nonexistent
         if (
             homoraBankPosId == VaultLib._NO_ID ||
-            getTotalShare() == 0
+            vaultState.totalShareAmount == 0
         ) {
             return;
         }
