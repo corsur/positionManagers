@@ -511,7 +511,7 @@ contract HomoraPDNVault is
             pairInfo,
             VaultLib.SOME_LARGE_NUMBER.mulDiv(
                 withdrawShareAmount,
-                getTotalShare()
+                vaultState.totalShareAmount
             ),
             feeConfig.withdrawFee
         );
@@ -769,15 +769,6 @@ contract HomoraPDNVault is
             );
     }
 
-    /// @dev Total share amount in the vault
-    function getTotalShare()
-        public
-        view
-        returns (uint256)
-    {
-        return vaultState.totalShareAmount;
-    }
-
     /// @dev Query a user position's share
     /// @param position_info: Aperture position info
     function getShareAmount(PositionInfo memory position_info)
@@ -788,10 +779,6 @@ contract HomoraPDNVault is
         return
             positions[position_info.chainId][position_info.positionId]
                 .shareAmount;
-    }
-
-    function getCollateralSize() public view returns (uint256) {
-        return VaultLib.getCollateralSize(contractInfo.bank, homoraBankPosId);
     }
 
     /// @notice Evalute the current collateral's amount in terms of 2 tokens. Stable token first
