@@ -418,6 +418,62 @@ library CrossChainLib {
         SafeERC20.safeTransfer(IERC20(tokenAddress), recipient, tokenAmount);
     }
 
+    function processMultiTokenDisbursementInstruction(
+        CrossChainContext storage self,
+        WormholeCoreBridge.VM memory instructionVM,
+        bytes[] calldata encodedTokenTransferVMs
+    ) external {
+        WormholeTokenBridge wormholeTokenBridge = WormholeTokenBridge(
+            self.wormholeContext.tokenBridge
+        );
+        uint256 index = 2;
+
+        // Parse and validate recipient chain.
+        uint16 recipientChain = instructionVM.payload.toUint16(index);
+        require(
+            recipientChain == self.inferredWormholeContext.thisChainId,
+            "unexpected recipientChain"
+        );
+        index += 2;
+
+        // Parse recipient address.
+        address recipient = address(
+            uint160(instructionVM.payload.toUint256(index))
+        );
+        index += 32;
+
+        // Parse incoming token sequence length.
+        uint256 expectedTokenSequenceLength = uint256(
+            instructionVM.payload.toUint32(index)
+        );
+        index += 4;
+
+        // Validate token transfer VMs and disburse tokens to the recipient.
+        require(
+            encodedTokenTransferVMs.length == expectedTokenSequenceLength,
+            "invalid encodedTokenTransferVMs length"
+        );
+        for (uint256 i = 0; i < expectedTokenSequenceLength; ++i) {
+            uint64 expectedSequence = instructionVM.payload.toUint64(index);
+            index += 8;
+            (
+                address tokenAddress,
+                uint256 tokenAmount
+            ) = validateAndCompleteIncomingTokenTransfer(
+                    wormholeTokenBridge,
+                    encodedTokenTransferVMs[i],
+                    instructionVM.emitterChainId,
+                    expectedSequence
+                );
+            if (tokenAddress == self.inferredWormholeContext.weth) {
+                IWETH(self.inferredWormholeContext.weth).withdraw(tokenAmount);
+                payable(recipient).transfer(tokenAmount);
+            } else {
+                IERC20(tokenAddress).safeTransfer(recipient, tokenAmount);
+            }
+        }
+    }
+
     function parsePositionOpenExecuteStrategyInstructionCommonFields(
         CrossChainContext storage self,
         WormholeCoreBridge.VM memory instructionVM,

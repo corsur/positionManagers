@@ -443,6 +443,13 @@ contract ApertureManager is
                 encodedTokenTransferVMs,
                 curveRouterContext
             );
+        } else if (
+            instructionType == INSTRUCTION_TYPE_MULTI_TOKEN_DISBURSEMENT
+        ) {
+            crossChainContext.processMultiTokenDisbursementInstruction(
+                instructionVM,
+                encodedTokenTransferVMs
+            );
         } else if (instructionType == INSTRUCTION_TYPE_POSITION_OPEN) {
             (
                 uint128 positionId,
