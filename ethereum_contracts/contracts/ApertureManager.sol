@@ -48,12 +48,12 @@ contract ApertureManager is
     // `initializer` is a modifier from OpenZeppelin to ensure contract is
     // only initialized once (thanks to Initializable).
     function initialize(
-        WormholeCrossChainContext calldata wormholeCrossChainContext,
+        WormholeContext calldata wormholeContext,
         CrossChainFeeContext calldata crossChainFeeContext
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
-        crossChainContext.updateWormholeContext(wormholeCrossChainContext);
+        crossChainContext.updateWormholeContext(wormholeContext);
         crossChainContext.feeContext = crossChainFeeContext;
     }
 
@@ -61,9 +61,9 @@ contract ApertureManager is
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
     function updateWormholeCrossChainContext(
-        WormholeCrossChainContext calldata wormholeCrossChainContext
+        WormholeContext calldata newWormholeContext
     ) external onlyOwner {
-        crossChainContext.updateWormholeContext(wormholeCrossChainContext);
+        crossChainContext.updateWormholeContext(newWormholeContext);
     }
 
     function updateCrossChainFeeContext(
@@ -499,6 +499,10 @@ contract ApertureManager is
         AssetInfo[] memory assetInfos,
         Recipient calldata recipient
     ) external payable nonReentrant {
+        require(
+            allowedToDisburseAssets[msg.sender],
+            "sender not allowed to disburse"
+        );
         if (
             recipient.chainId ==
             crossChainContext.inferredWormholeContext.thisChainId

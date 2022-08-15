@@ -17,7 +17,7 @@ uint8 constant INSTRUCTION_TYPE_EXECUTE_STRATEGY = 1;
 uint8 constant INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT = 2;
 uint8 constant INSTRUCTION_TYPE_MULTI_TOKEN_DISBURSEMENT = 3;
 
-struct WormholeCrossChainContext {
+struct WormholeContext {
     // Address of the Wormhole token bridge contract.
     address tokenBridge;
     // Consistency level for published Aperture instruction message via Wormhole core bridge.
@@ -42,7 +42,7 @@ struct CrossChainFeeContext {
 }
 
 struct CrossChainContext {
-    WormholeCrossChainContext wormholeContext;
+    WormholeContext wormholeContext;
     InferredWormholeContext inferredWormholeContext;
     CrossChainFeeContext feeContext;
     // Registered Aperture Manager contract addresses on various chains.
@@ -144,11 +144,11 @@ library CrossChainLib {
 
     function updateWormholeContext(
         CrossChainContext storage self,
-        WormholeCrossChainContext calldata newWormholeCrossChainContext
+        WormholeContext calldata newWormholeContext
     ) external {
-        self.wormholeContext = newWormholeCrossChainContext;
+        self.wormholeContext = newWormholeContext;
         WormholeTokenBridge tokenBridge = WormholeTokenBridge(
-            newWormholeCrossChainContext.tokenBridge
+            newWormholeContext.tokenBridge
         );
         self.inferredWormholeContext.coreBridge = tokenBridge.wormhole();
         self.inferredWormholeContext.weth = address(tokenBridge.WETH());
