@@ -1,8 +1,9 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
+// Actions that can be taken on an existing Aperture position.
 enum Action {
-    Open,
+    Invalid, // The zero value is reserved for representing an invalid action.
     Increase,
     Decrease,
     Close
