@@ -228,23 +228,13 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
-  // Impersonate WAVAX holder.
-  signer = await getImpersonatedSigner(
-    "0x0e082F06FF657D94310cB8cE8B0D9a04541d8052"
-  );
-  await WAVAX.connect(signer).transfer(
-    wallets[0].address,
-    BigNumber.from(200000).mul("1000000000000000000"),
-    txOptions
-  );
-
-  // Flash swap AVAX and rebalance (long)
-  let swapAmt = BigNumber.from(1e5).mul("1000000000000000000");
-  let recvAmt = await swapWAVAX(router, swapAmt);
+  // Flash swap USDC and rebalance (short)
+  let swapAmt = BigNumber.from(3e6).mul(1e6);
+  let recvAmt = await swapUSDC(router, swapAmt);
   console.log(
-    "Swap %s AVAX to %s USDC",
-    swapAmt.div("1000000000000000000").toString(),
-    recvAmt.div(1e6).toString()
+    "Swap %s USDC to %s AVAX",
+    swapAmt.div(1e6).toString(),
+    recvAmt.div("1000000000000000000").toString()
   );
 
   await mine(1000, {interval: 2});
@@ -253,11 +243,11 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   ).to.be.revertedWith("Slippage_Too_Large");
   // Swap back
   swapAmt = recvAmt;
-  recvAmt = await swapUSDC(router, swapAmt);
+  recvAmt = await swapWAVAX(router, swapAmt);
   console.log(
-    "Swap %s USDC to %s AVAX",
-    swapAmt.div(1e6).toString(),
-    recvAmt.div("1000000000000000000").toString()
+    "Swap %s AVAX to %s USDC",
+    swapAmt.div("1000000000000000000").toString(),
+    recvAmt.div(1e6).toString()
   );
 
   // Decrease leverage to trigger rebalance
@@ -283,12 +273,22 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
-  // Flash swap USDC and rebalance (long)
-  recvAmt = await swapUSDC(router, swapAmt);
+  // Impersonate WAVAX holder.
+  signer = await getImpersonatedSigner(
+    "0x0e082F06FF657D94310cB8cE8B0D9a04541d8052"
+  );
+  await WAVAX.connect(signer).transfer(
+    wallets[0].address,
+    BigNumber.from(200000).mul("1000000000000000000"),
+    txOptions
+  );
+
+  // Flash swap WAVAX and rebalance (long)
+  recvAmt = await swapWAVAX(router, swapAmt);
   console.log(
-    "Swap %s USDC to %s AVAX",
-    swapAmt.div(1e6).toString(),
-    recvAmt.div("1000000000000000000").toString()
+    "Swap %s AVAX to %s USDC",
+    swapAmt.div("1000000000000000000").toString(),
+    recvAmt.div(1e6).toString()
   );
   await mine(1000, {interval: 2});
   await expect(
@@ -297,11 +297,11 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
 
   // Swap back
   swapAmt = recvAmt;
-  recvAmt = await swapWAVAX(router, swapAmt);
+  recvAmt = await swapUSDC(router, swapAmt);
   console.log(
-    "Swap %s AVAX to %s USDC",
-    swapAmt.div("1000000000000000000").toString(),
-    recvAmt.div(1e6).toString()
+    "Swap %s USDC to %s AVAX",
+    swapAmt.div(1e6).toString(),
+    recvAmt.div("1000000000000000000").toString()
   );
   await mine(1000, {interval: 2});
   await expect(
@@ -453,11 +453,11 @@ async function testDepositAndWithdraw(
 
   expect(totalAmount0InUsdc).to.be.closeTo(
     BigNumber.from(usdcDepositAmount0 * leverageLevel),
-    100
+    1000
   );
   expect(totalAmount1InUsdc).to.be.closeTo(
     BigNumber.from(usdcDepositAmount1 * leverageLevel),
-    100
+    1000
   );
 
   // Withdraw half amount from vault for wallet 0.
