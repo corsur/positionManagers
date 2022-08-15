@@ -64,12 +64,12 @@ contract HomoraPDNVault is
     ContractInfo public contractInfo;
     // .adapter: Immutable adapter to HomoraBank
     // .bank: HomoraBank's address
+    // .oracle: HomoraBank's oracle for determining prices
+    // .router: TraderJoe's router address
     // .spell: Homora's Spell contract address
     PairInfo public pairInfo; // token 0 address, token 1 address, ERC-20 LP token address
     uint256 public leverageLevel; // target leverage
     uint256 public pid; // pool id
-    address public oracle; // HomoraBank's oracle for determining prices.
-    address public router;
 
     uint256 public collateralFactor; // LP collateral factor on Homora
     uint256 public stableBorrowFactor; // stable token borrow factor on Homora
@@ -139,8 +139,10 @@ contract HomoraPDNVault is
         isController[_controller] = true;
         contractInfo.adapter = _adapter;
         contractInfo.bank = _homoraBank;
-        contractInfo.spell = _spell;
         contractInfo.oracle = IHomoraBank(_homoraBank).oracle();
+        contractInfo.spell = _spell;
+        contractInfo.router = IHomoraSpell(_spell).router();
+        WAVAX = IHomoraAvaxRouter(contractInfo.router).WAVAX();
         require(VaultLib.support(contractInfo.oracle, _stableToken));
         require(VaultLib.support(contractInfo.oracle, _assetToken));
         pairInfo.stableToken = _stableToken;
@@ -149,8 +151,6 @@ contract HomoraPDNVault is
 
         pid = _pid;
         homoraBankPosId = VaultLib._NO_ID;
-        router = IHomoraSpell(_spell).router();
-        WAVAX = IHomoraAvaxRouter(router).WAVAX();
         pairInfo.lpToken = IHomoraSpell(_spell).pairs(
             pairInfo.stableToken,
             pairInfo.assetToken
@@ -250,14 +250,9 @@ contract HomoraPDNVault is
             assetBorrowFactor
         );
         require(
-            (
-                _targetDebtRatio > calculatedDebtRatio
-                    ? _targetDebtRatio - calculatedDebtRatio
-                    : calculatedDebtRatio - _targetDebtRatio
-            ) <= 10,
+            VaultLib.abs(_targetDebtRatio, calculatedDebtRatio) <= 10,
             "Invalid debt ratio"
         );
-
         targetDebtRatio = _targetDebtRatio;
         minDebtRatio = targetDebtRatio - _debtRatioWidth;
         maxDebtRatio = targetDebtRatio + _debtRatioWidth;
@@ -271,11 +266,7 @@ contract HomoraPDNVault is
             assetBorrowFactor
         );
         require(
-            (
-                _deltaThreshold > calculatedDeltaTh
-                    ? _deltaThreshold - calculatedDeltaTh
-                    : calculatedDeltaTh - _deltaThreshold
-            ) <= 10,
+            VaultLib.abs(_deltaThreshold, calculatedDeltaTh) <= 10,
             "Invalid delta threshold"
         );
         deltaThreshold = _deltaThreshold;
@@ -531,7 +522,7 @@ contract HomoraPDNVault is
             contractInfo,
             homoraBankPosId,
             pairInfo,
-            VaultLib.someLargeNumber.mulDiv(
+            VaultLib.SOME_LARGE_NUMBER.mulDiv(
                 withdrawShareAmount,
                 vaultState.totalShareAmount
             ),
@@ -563,15 +554,28 @@ contract HomoraPDNVault is
         payable(feeCollector).transfer(address(this).balance);
 
         // Slippage control
-        if (
-            withdrawAmounts[0] < minStableReceived ||
-            (pairInfo.assetToken != WAVAX &&
-                withdrawAmounts[1] < minAssetReceived) ||
-            // WAVAX is refunded as native AVAX by Homora's Spell
-            (pairInfo.assetToken == WAVAX &&
-                withdrawAmounts[2] < minAssetReceived)
-        ) {
-            revert Insufficient_Token_Withdrawn();
+        // WAVAX is refunded as native AVAX by Homora's Spell
+        if (pairInfo.stableToken == WAVAX) {
+            if (
+                withdrawAmounts[0] + withdrawAmounts[2] < minStableReceived ||
+                withdrawAmounts[1] < minAssetReceived
+            ) {
+                revert Insufficient_Token_Withdrawn();
+            }
+        } else if (pairInfo.assetToken == WAVAX) {
+            if (
+                withdrawAmounts[0] < minStableReceived ||
+                withdrawAmounts[1] + withdrawAmounts[2] < minAssetReceived
+            ) {
+                revert Insufficient_Token_Withdrawn();
+            }
+        } else {
+            if (
+                withdrawAmounts[0] < minStableReceived ||
+                withdrawAmounts[1] < minAssetReceived
+            ) {
+                revert Insufficient_Token_Withdrawn();
+            }
         }
 
         // Check position equity after removing liquidity
@@ -625,7 +629,7 @@ contract HomoraPDNVault is
         VaultLib.harvest(contractInfo, homoraBankPosId, pairInfo);
 
         VaultLib.swapRewardCollectFee(
-            router,
+            contractInfo.router,
             feeCollector,
             pairInfo,
             feeConfig.harvestFee
@@ -634,7 +638,22 @@ contract HomoraPDNVault is
         // 2. Swap any AVAX leftover
         uint256 avaxBalance = address(this).balance;
         if (avaxBalance > 0) {
-            VaultLib.swapAVAX(router, avaxBalance, pairInfo.stableToken);
+            VaultLib.swapAVAX(
+                contractInfo.router,
+                avaxBalance,
+                pairInfo.stableToken
+            );
+        }
+
+        uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
+            address(this)
+        );
+
+        if (
+            getTokenETHValue(pairInfo.stableToken, stableBalance) <
+            minReinvestETH
+        ) {
+            revert Insufficient_Liquidity_Mint();
         }
 
         // 3. Add liquidity with the current balance
@@ -649,16 +668,6 @@ contract HomoraPDNVault is
 
         uint256 equityAfter = getEquityETHValue();
 
-        if (equityAfter < equityBefore + minReinvestETH) {
-            if (
-                VaultLib.getOffset(
-                    equityAfter,
-                    equityBefore + minReinvestETH
-                ) >= 10
-            ) {
-                revert Insufficient_Liquidity_Mint();
-            }
-        }
         emit LogReinvest(equityBefore, equityAfter);
     }
 
