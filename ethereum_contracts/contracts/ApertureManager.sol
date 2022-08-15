@@ -498,7 +498,7 @@ contract ApertureManager is
     function disburseAssets(
         AssetInfo[] memory assetInfos,
         Recipient calldata recipient
-    ) external payable nonReentrant {
+    ) external payable {
         require(
             allowedToDisburseAssets[msg.sender],
             "sender not allowed to disburse"
