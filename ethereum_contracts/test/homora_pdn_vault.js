@@ -453,11 +453,11 @@ async function testDepositAndWithdraw(
 
   expect(totalAmount0InUsdc).to.be.closeTo(
     BigNumber.from(usdcDepositAmount0 * leverageLevel),
-    1000
+    300
   );
   expect(totalAmount1InUsdc).to.be.closeTo(
     BigNumber.from(usdcDepositAmount1 * leverageLevel),
-    1000
+    300
   );
 
   // Withdraw half amount from vault for wallet 0.
@@ -468,10 +468,12 @@ async function testDepositAndWithdraw(
   // 0 -> Open, 1 -> Increase, 2 -> Decrease, 3 -> Close (not yet supported).
   const encodedWithdrawData = ethers.utils.concat([
     new Uint8Array([2]),
+    new Uint8Array([0, AVAX_CHAIN_ID]), // recipient chainId.
+    ethers.utils.zeroPad(ethers.utils.arrayify(wallets[0].address), 32), // recipient address (padded to 32 bytes).
     ethers.utils.arrayify(
       ethers.utils.defaultAbiCoder.encode(
-        ["address", "uint256", "uint256", "uint256", "uint256"],
-        [wallets[0].address, withdrawAmount0, 0, 0, 0]
+        ["uint256", "uint256", "uint256", "uint256"],
+        [withdrawAmount0, 0, 0, 0]
       )
     ),
   ]);
@@ -480,13 +482,13 @@ async function testDepositAndWithdraw(
     .connect(wallets[0])
     .executeStrategy(
       /*positionId=*/ 0,
-      /*assetInfos=*/ [],
+      /*assetInfos=*/[],
       encodedWithdrawData,
       txOptions
     );
 }
 
-describe.only("HomoraPDNVault Initialization", function () {
+describe("HomoraPDNVault Initialization", function () {
   var managerContract = undefined;
   var homoraAdapter = undefined;
   var strategyFactory = undefined;

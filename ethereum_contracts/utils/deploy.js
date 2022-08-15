@@ -5,13 +5,6 @@ const wormholeTokenBridgeABI = [
 ];
 
 async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
-  const wormholeTokenBridgeContract = new ethers.Contract(
-    wormholeTokenBridgeAddr,
-    wormholeTokenBridgeABI,
-    signer
-  );
-  const wormholeCoreBridgeAddr = await wormholeTokenBridgeContract.wormhole();
-
   const curveRouterLib = await ethers.getContractFactory(
     "CurveRouterLib",
     signer
@@ -42,7 +35,6 @@ async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
     [
       [
         wormholeTokenBridgeAddr,
-        wormholeCoreBridgeAddr,
         /*consistencyLevel=*/ 1,
       ],
       [/*feeBps=*/ 100, /*feeSink=*/ wormholeTokenBridgeAddr],

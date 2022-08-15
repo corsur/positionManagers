@@ -15,15 +15,23 @@ uint8 constant INSTRUCTION_VERSION = 0;
 uint8 constant INSTRUCTION_TYPE_POSITION_OPEN = 0;
 uint8 constant INSTRUCTION_TYPE_EXECUTE_STRATEGY = 1;
 uint8 constant INSTRUCTION_TYPE_SINGLE_TOKEN_DISBURSEMENT = 2;
+uint8 constant INSTRUCTION_TYPE_MULTI_TOKEN_DISBURSEMENT = 3;
 
-struct WormholeCrossChainContext {
+struct WormholeContext {
     // Address of the Wormhole token bridge contract.
     address tokenBridge;
-    // Address of the Wormhole core bridge contract.
-    address coreBridge;
     // Consistency level for published Aperture instruction message via Wormhole core bridge.
     // The number of blocks to wait before Wormhole guardians consider a published message final.
     uint8 consistencyLevel;
+}
+
+struct InferredWormholeContext {
+    // Address of the Wormhole core bridge contract.
+    address coreBridge;
+    // Address of WETH used by Wormhole token bridge.
+    address weth;
+    // Wormhole chain id of this chain.
+    uint16 thisChainId;
 }
 
 struct CrossChainFeeContext {
@@ -34,7 +42,8 @@ struct CrossChainFeeContext {
 }
 
 struct CrossChainContext {
-    WormholeCrossChainContext wormholeContext;
+    WormholeContext wormholeContext;
+    InferredWormholeContext inferredWormholeContext;
     CrossChainFeeContext feeContext;
     // Registered Aperture Manager contract addresses on various chains.
     mapping(uint16 => bytes32) chainIdToApertureManager;
@@ -133,6 +142,19 @@ library CrossChainLib {
             );
     }
 
+    function updateWormholeContext(
+        CrossChainContext storage self,
+        WormholeContext calldata newWormholeContext
+    ) external {
+        self.wormholeContext = newWormholeContext;
+        WormholeTokenBridge tokenBridge = WormholeTokenBridge(
+            newWormholeContext.tokenBridge
+        );
+        self.inferredWormholeContext.coreBridge = tokenBridge.wormhole();
+        self.inferredWormholeContext.weth = address(tokenBridge.WETH());
+        self.inferredWormholeContext.thisChainId = tokenBridge.chainId();
+    }
+
     function validateAndUpdateFeeContext(
         CrossChainContext storage self,
         CrossChainFeeContext calldata newFeeContext
@@ -140,6 +162,21 @@ library CrossChainLib {
         require(newFeeContext.feeBps <= MAX_FEE_BPS, "feeBps too large");
         require(newFeeContext.feeSink != address(0), "feeSink can't be null");
         self.feeContext = newFeeContext;
+    }
+
+    function wrapEtherAndExpandAssetInfos(
+        CrossChainContext storage self,
+        AssetInfo[] memory assetInfos
+    ) internal returns (AssetInfo[] memory expandedAssetInfos) {
+        IWETH(self.inferredWormholeContext.weth).deposit{value: msg.value}();
+        expandedAssetInfos = new AssetInfo[](assetInfos.length + 1);
+        for (uint256 i = 0; i < assetInfos.length; ++i) {
+            expandedAssetInfos[i] = assetInfos[i];
+        }
+        expandedAssetInfos[assetInfos.length] = AssetInfo(
+            self.inferredWormholeContext.weth,
+            msg.value
+        );
     }
 
     function publishPositionOpenInstruction(
@@ -161,11 +198,12 @@ library CrossChainLib {
                 self
             );
         // Append `strategyId` to the instruction to complete the payload and publish it via Wormhole.
-        WormholeCoreBridge(self.wormholeContext.coreBridge).publishMessage(
-            WORMHOLE_NONCE,
-            partial_payload.concat(abi.encodePacked(strategyId)),
-            self.wormholeContext.consistencyLevel
-        );
+        WormholeCoreBridge(self.inferredWormholeContext.coreBridge)
+            .publishMessage(
+                WORMHOLE_NONCE,
+                partial_payload.concat(abi.encodePacked(strategyId)),
+                self.wormholeContext.consistencyLevel
+            );
     }
 
     function publishExecuteStrategyInstruction(
@@ -175,18 +213,52 @@ library CrossChainLib {
         AssetInfo[] memory assetInfos,
         bytes calldata encodedActionData
     ) external {
-        WormholeCoreBridge(self.wormholeContext.coreBridge).publishMessage(
-            WORMHOLE_NONCE,
-            sendTokensCrossChainAndConstructCommonPayload(
-                strategyChainId,
-                INSTRUCTION_TYPE_EXECUTE_STRATEGY,
-                assetInfos,
-                positionId,
-                encodedActionData,
-                self
-            ),
-            self.wormholeContext.consistencyLevel
+        WormholeCoreBridge(self.inferredWormholeContext.coreBridge)
+            .publishMessage(
+                WORMHOLE_NONCE,
+                sendTokensCrossChainAndConstructCommonPayload(
+                    strategyChainId,
+                    INSTRUCTION_TYPE_EXECUTE_STRATEGY,
+                    assetInfos,
+                    positionId,
+                    encodedActionData,
+                    self
+                ),
+                self.wormholeContext.consistencyLevel
+            );
+    }
+
+    function publishMultiTokenDisbursementInstruction(
+        CrossChainContext storage self,
+        AssetInfo[] memory assetInfos,
+        Recipient calldata recipient
+    ) external {
+        require(
+            self.chainIdToApertureManager[recipient.chainId] != bytes32(0),
+            "invalid recipient.chainId"
         );
+
+        if (msg.value > 0) {
+            assetInfos = wrapEtherAndExpandAssetInfos(self, assetInfos);
+        }
+
+        WormholeCoreBridge(self.inferredWormholeContext.coreBridge)
+            .publishMessage(
+                WORMHOLE_NONCE,
+                abi.encodePacked(
+                    INSTRUCTION_VERSION,
+                    INSTRUCTION_TYPE_MULTI_TOKEN_DISBURSEMENT,
+                    recipient.chainId,
+                    recipient.recipientAddr,
+                    uint32(assetInfos.length),
+                    getOutgoingTokenTransferSequencePayload(
+                        assetInfos,
+                        recipient.chainId,
+                        self
+                    )
+                ),
+                self.wormholeContext.consistencyLevel
+            );
     }
 
     function decodeWormholeVM(
@@ -279,7 +351,7 @@ library CrossChainLib {
         // Parse and validate recipient chain.
         uint16 recipientChain = instructionVM.payload.toUint16(index);
         require(
-            recipientChain == wormholeTokenBridge.chainId(),
+            recipientChain == self.inferredWormholeContext.thisChainId,
             "unexpected recipientChain"
         );
         index += 2;
@@ -346,6 +418,62 @@ library CrossChainLib {
         SafeERC20.safeTransfer(IERC20(tokenAddress), recipient, tokenAmount);
     }
 
+    function processMultiTokenDisbursementInstruction(
+        CrossChainContext storage self,
+        WormholeCoreBridge.VM memory instructionVM,
+        bytes[] calldata encodedTokenTransferVMs
+    ) external {
+        WormholeTokenBridge wormholeTokenBridge = WormholeTokenBridge(
+            self.wormholeContext.tokenBridge
+        );
+        uint256 index = 2;
+
+        // Parse and validate recipient chain.
+        uint16 recipientChain = instructionVM.payload.toUint16(index);
+        require(
+            recipientChain == self.inferredWormholeContext.thisChainId,
+            "unexpected recipientChain"
+        );
+        index += 2;
+
+        // Parse recipient address.
+        address recipient = address(
+            uint160(instructionVM.payload.toUint256(index))
+        );
+        index += 32;
+
+        // Parse incoming token sequence length.
+        uint256 expectedTokenSequenceLength = uint256(
+            instructionVM.payload.toUint32(index)
+        );
+        index += 4;
+
+        // Validate token transfer VMs and disburse tokens to the recipient.
+        require(
+            encodedTokenTransferVMs.length == expectedTokenSequenceLength,
+            "invalid encodedTokenTransferVMs length"
+        );
+        for (uint256 i = 0; i < expectedTokenSequenceLength; ++i) {
+            uint64 expectedSequence = instructionVM.payload.toUint64(index);
+            index += 8;
+            (
+                address tokenAddress,
+                uint256 tokenAmount
+            ) = validateAndCompleteIncomingTokenTransfer(
+                    wormholeTokenBridge,
+                    encodedTokenTransferVMs[i],
+                    instructionVM.emitterChainId,
+                    expectedSequence
+                );
+            if (tokenAddress == self.inferredWormholeContext.weth) {
+                IWETH(self.inferredWormholeContext.weth).withdraw(tokenAmount);
+                payable(recipient).transfer(tokenAmount);
+            } else {
+                IERC20(tokenAddress).safeTransfer(recipient, tokenAmount);
+            }
+        }
+    }
+
     function parsePositionOpenExecuteStrategyInstructionCommonFields(
         CrossChainContext storage self,
         WormholeCoreBridge.VM memory instructionVM,
@@ -368,8 +496,7 @@ library CrossChainLib {
         strategyChainId = instructionVM.payload.toUint16(index);
         index += 2;
         require(
-            strategyChainId ==
-                WormholeTokenBridge(self.wormholeContext.tokenBridge).chainId(),
+            strategyChainId == self.inferredWormholeContext.thisChainId,
             "strategyChainId mismatch"
         );
 
@@ -478,7 +605,7 @@ library CrossChainLib {
         // Parse and validate instruction VM.
         instructionVM = CrossChainLib.decodeWormholeVM(
             encodedInstructionVM,
-            self.wormholeContext.coreBridge
+            self.inferredWormholeContext.coreBridge
         );
         require(
             self.chainIdToApertureManager[instructionVM.emitterChainId] ==

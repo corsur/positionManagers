@@ -42,15 +42,18 @@ contract ApertureManager is
     uint64 public nextStrategyId;
     mapping(uint64 => StrategyMetadata) public strategyIdToMetadata;
 
+    // Whether an address is allowed to call `disburseAssets()`.
+    mapping(address => bool) public allowedToDisburseAssets;
+
     // `initializer` is a modifier from OpenZeppelin to ensure contract is
     // only initialized once (thanks to Initializable).
     function initialize(
-        WormholeCrossChainContext calldata wormholeCrossChainContext,
+        WormholeContext calldata wormholeContext,
         CrossChainFeeContext calldata crossChainFeeContext
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
-        crossChainContext.wormholeContext = wormholeCrossChainContext;
+        crossChainContext.updateWormholeContext(wormholeContext);
         crossChainContext.feeContext = crossChainFeeContext;
     }
 
@@ -58,9 +61,9 @@ contract ApertureManager is
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
     function updateWormholeCrossChainContext(
-        WormholeCrossChainContext calldata wormholeCrossChainContext
+        WormholeContext calldata newWormholeContext
     ) external onlyOwner {
-        crossChainContext.wormholeContext = wormholeCrossChainContext;
+        crossChainContext.updateWormholeContext(newWormholeContext);
     }
 
     function updateCrossChainFeeContext(
@@ -79,8 +82,9 @@ contract ApertureManager is
         require(
             chainId > 0 &&
                 chainId !=
-                WormholeCoreBridge(crossChainContext.wormholeContext.coreBridge)
-                    .chainId(),
+                WormholeCoreBridge(
+                    crossChainContext.inferredWormholeContext.coreBridge
+                ).chainId(),
             "invalid chainId"
         );
         crossChainContext.chainIdToApertureManager[chainId] = managerAddress;
@@ -108,9 +112,13 @@ contract ApertureManager is
             _version,
             _strategyManager
         );
+        allowedToDisburseAssets[_strategyManager] = true;
     }
 
     function removeStrategy(uint64 _strategyId) external onlyOwner {
+        delete allowedToDisburseAssets[
+            strategyIdToMetadata[_strategyId].strategyManager
+        ];
         delete strategyIdToMetadata[_strategyId];
     }
 
@@ -154,34 +162,19 @@ contract ApertureManager is
 
         // This message carries some ether, so we wrap it to WETH and add it to `assetInfos`.
         if (msg.value > 0) {
-            IWETH weth = WormholeTokenBridge(
-                crossChainContext.wormholeContext.tokenBridge
-            ).WETH();
             require(
                 isTokenWhitelistedForStrategy[strategyChainId][strategyId][
-                    address(weth)
+                    crossChainContext.inferredWormholeContext.weth
                 ],
                 "weth not allowed"
             );
-            weth.deposit{value: msg.value}();
-            AssetInfo[] memory expandedAssetInfos = new AssetInfo[](
-                assetInfos.length + 1
-            );
-            for (uint256 i = 0; i < assetInfos.length; ++i) {
-                expandedAssetInfos[i] = assetInfos[i];
-            }
-            expandedAssetInfos[assetInfos.length] = AssetInfo(
-                address(weth),
-                msg.value
-            );
-            return expandedAssetInfos;
+            return crossChainContext.wrapEtherAndExpandAssetInfos(assetInfos);
         }
         return assetInfos;
     }
 
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
         internal
-        nonReentrant
         returns (uint128)
     {
         uint128 positionId = nextPositionId++;
@@ -202,8 +195,9 @@ contract ApertureManager is
     ) internal {
         if (
             strategyChainId !=
-            WormholeCoreBridge(crossChainContext.wormholeContext.coreBridge)
-                .chainId()
+            WormholeCoreBridge(
+                crossChainContext.inferredWormholeContext.coreBridge
+            ).chainId()
         ) {
             crossChainContext.publishPositionOpenInstruction(
                 strategyChainId,
@@ -244,7 +238,7 @@ contract ApertureManager is
         uint64 strategyId,
         AssetInfo[] memory assetInfos,
         bytes calldata encodedPositionOpenData
-    ) external payable {
+    ) external payable nonReentrant {
         uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
         assetInfos = validateAndTransferAssetFromSender(
             strategyChainId,
@@ -268,7 +262,7 @@ contract ApertureManager is
         uint64 strategyId,
         uint16 strategyChainId,
         bytes calldata encodedPositionOpenData
-    ) external {
+    ) external nonReentrant {
         require(
             isTokenWhitelistedForStrategy[strategyChainId][strategyId][toToken],
             "toToken not allowed"
@@ -300,8 +294,9 @@ contract ApertureManager is
     ) internal {
         if (
             strategyChainId !=
-            WormholeCoreBridge(crossChainContext.wormholeContext.coreBridge)
-                .chainId()
+            WormholeCoreBridge(
+                crossChainContext.inferredWormholeContext.coreBridge
+            ).chainId()
         ) {
             crossChainContext.publishExecuteStrategyInstruction(
                 strategyChainId,
@@ -320,18 +315,43 @@ contract ApertureManager is
             // Parse action based on encodedActionData.
             // Note that Solidity checks array index for possible out of bounds, so there is no need to validate encodedActionData.length.
             Action action = Action(uint8(encodedActionData[0]));
-            require(action != Action.Open, "invalid action");
             if (action == Action.Increase) {
                 IStrategyManager(strategy.strategyManager).increasePosition(
                     PositionInfo(positionId, strategyChainId),
                     assetInfos,
                     encodedActionData.slice(1, encodedActionData.length - 1)
                 );
-            } else if (action == Action.Decrease) {
-                IStrategyManager(strategy.strategyManager).decreasePosition(
-                    PositionInfo(positionId, strategyChainId),
-                    encodedActionData.slice(1, encodedActionData.length - 1)
+            } else if (action == Action.Decrease || action == Action.Close) {
+                // encodedActionData:
+                // Index 0: action enum.
+                // Index 1~2: recipient.chainId (uint16).
+                // Index 3~34: recipient.recipientAddr (bytes32).
+                // Index 35 and later: strategy-specific data.
+
+                // Parse recipient from `encodedActionData`.
+                Recipient memory recipient;
+                recipient.chainId = encodedActionData.toUint16(1);
+                recipient.recipientAddr = encodedActionData.toBytes32(3);
+
+                // Strategy-specific encoded params.
+                bytes memory data = encodedActionData.slice(
+                    35,
+                    encodedActionData.length - 35
                 );
+
+                if (action == Action.Decrease) {
+                    IStrategyManager(strategy.strategyManager).decreasePosition(
+                            PositionInfo(positionId, strategyChainId),
+                            recipient,
+                            data
+                        );
+                } else {
+                    IStrategyManager(strategy.strategyManager).closePosition(
+                        PositionInfo(positionId, strategyChainId),
+                        recipient,
+                        data
+                    );
+                }
             } else {
                 revert("invalid action");
             }
@@ -342,7 +362,7 @@ contract ApertureManager is
         uint128 positionId,
         AssetInfo[] memory assetInfos,
         bytes calldata encodedActionData
-    ) external payable onlyPositionOwner(positionId) {
+    ) external payable nonReentrant onlyPositionOwner(positionId) {
         uint16 strategyChainId = positionIdToInfo[positionId].strategyChainId;
         assetInfos = validateAndTransferAssetFromSender(
             strategyChainId,
@@ -364,7 +384,7 @@ contract ApertureManager is
         uint256 minAmountOut,
         uint128 positionId,
         bytes calldata encodedActionData
-    ) external onlyPositionOwner(positionId) {
+    ) external nonReentrant onlyPositionOwner(positionId) {
         IERC20(fromToken).safeTransferFrom(msg.sender, address(this), amount);
         uint256 toTokenAmount = curveRouterContext.swapToken(
             fromToken,
@@ -418,7 +438,7 @@ contract ApertureManager is
     function processApertureInstruction(
         bytes calldata encodedInstructionVM,
         bytes[] calldata encodedTokenTransferVMs
-    ) external {
+    ) external nonReentrant {
         (
             WormholeCoreBridge.VM memory instructionVM,
             uint8 instructionType
@@ -428,6 +448,13 @@ contract ApertureManager is
                 instructionVM,
                 encodedTokenTransferVMs,
                 curveRouterContext
+            );
+        } else if (
+            instructionType == INSTRUCTION_TYPE_MULTI_TOKEN_DISBURSEMENT
+        ) {
+            crossChainContext.processMultiTokenDisbursementInstruction(
+                instructionVM,
+                encodedTokenTransferVMs
             );
         } else if (instructionType == INSTRUCTION_TYPE_POSITION_OPEN) {
             (
@@ -465,6 +492,36 @@ contract ApertureManager is
             );
         } else {
             revert("invalid ix type");
+        }
+    }
+
+    function disburseAssets(
+        AssetInfo[] memory assetInfos,
+        Recipient calldata recipient
+    ) external payable nonReentrant {
+        require(
+            allowedToDisburseAssets[msg.sender],
+            "sender not allowed to disburse"
+        );
+        if (
+            recipient.chainId ==
+            crossChainContext.inferredWormholeContext.thisChainId
+        ) {
+            address to = address(uint160(uint256(recipient.recipientAddr)));
+            for (uint256 i = 0; i < assetInfos.length; ++i) {
+                IERC20(assetInfos[i].assetAddr).safeTransfer(
+                    to,
+                    assetInfos[i].amount
+                );
+            }
+            if (msg.value > 0) {
+                payable(to).transfer(msg.value);
+            }
+        } else {
+            crossChainContext.publishMultiTokenDisbursementInstruction(
+                assetInfos,
+                recipient
+            );
         }
     }
 }

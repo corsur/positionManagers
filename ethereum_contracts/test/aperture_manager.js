@@ -182,8 +182,8 @@ describe("Aperture manager tests on Ethereum Mainnet Fork", function () {
 
   it("Should update cross-chain fee context", async function () {
     await apertureManager.updateCrossChainFeeContext([/*feeBps=*/20, /*feeSink=*/signer.address]);
-    expect((await apertureManager.crossChainContext())[1][0]).to.equal(20);
-    expect((await apertureManager.crossChainContext())[1][1]).to.equal(signer.address);
+    expect((await apertureManager.crossChainContext())[2][0]).to.equal(20);
+    expect((await apertureManager.crossChainContext())[2][1]).to.equal(signer.address);
   });
 
   it("Should not be able to set cross-chain fee above 100 bps", async function () {
