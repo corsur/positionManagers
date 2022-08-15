@@ -540,18 +540,24 @@ contract HomoraPDNVault is
         // Slippage control
         // WAVAX is refunded as native AVAX by Homora's Spell
         if (pairInfo.stableToken == WAVAX) {
-            if (withdrawAmounts[0] + withdrawAmounts[2] < minStableReceived ||
-            withdrawAmounts[1] < minAssetReceived) {
+            if (
+                withdrawAmounts[0] + withdrawAmounts[2] < minStableReceived ||
+                withdrawAmounts[1] < minAssetReceived
+            ) {
                 revert Insufficient_Token_Withdrawn();
             }
         } else if (pairInfo.assetToken == WAVAX) {
-            if (withdrawAmounts[0] < minStableReceived ||
-            withdrawAmounts[1] + withdrawAmounts[2] < minAssetReceived) {
+            if (
+                withdrawAmounts[0] < minStableReceived ||
+                withdrawAmounts[1] + withdrawAmounts[2] < minAssetReceived
+            ) {
                 revert Insufficient_Token_Withdrawn();
             }
         } else {
-            if (withdrawAmounts[0] < minStableReceived ||
-            withdrawAmounts[1] < minAssetReceived) {
+            if (
+                withdrawAmounts[0] < minStableReceived ||
+                withdrawAmounts[1] < minAssetReceived
+            ) {
                 revert Insufficient_Token_Withdrawn();
             }
         }
@@ -615,14 +621,21 @@ contract HomoraPDNVault is
         // 2. Swap any AVAX leftover
         uint256 avaxBalance = address(this).balance;
         if (avaxBalance > 0) {
-            VaultLib.swapAVAX(contractInfo.router, avaxBalance, pairInfo.stableToken);
+            VaultLib.swapAVAX(
+                contractInfo.router,
+                avaxBalance,
+                pairInfo.stableToken
+            );
         }
 
         uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
             address(this)
         );
 
-        if (getTokenETHValue(pairInfo.stableToken, stableBalance) < minReinvestETH) {
+        if (
+            getTokenETHValue(pairInfo.stableToken, stableBalance) <
+            minReinvestETH
+        ) {
             revert Insufficient_Liquidity_Mint();
         }
 

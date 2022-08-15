@@ -55,37 +55,33 @@ struct RebalanceHelper {
 }
 
 struct ShortHelper {
-    uint256 Ka;
-    uint256 Kb;
-    uint256 Sa;
-    uint256 Sb;
-    uint256 collWithdrawAmt;
-    uint256 amtARepay;
-    uint256 amtBRepay;
-    uint256 amtAWithdraw;
-    uint256 amtBWithdraw;
-    uint256 reserveABefore;
-    uint256 reserveBBefore;
-    uint256 reserveAAfter;
-    uint256 reserveBAfter;
-    uint256 collWithdrawErr;
-    uint256 amtARepayErr;
-    uint256 amtBRepayErr;
+    uint256 L; // leverage
+    uint256 Ka; // Sa = Ka * reserveAAfter
+    uint256 Sa; // token A swap amount
+    uint256 Sb; // token B receive amount
+    uint256 collWithdrawAmt; // amount of LP to remove
+    uint256 amtARepay; // token A repay amount, amtARepay = amtAWithdraw - Sa
+    uint256 amtBRepay; // token B repay amount, amtBRepay = amtBWithdraw + Sb
+    uint256 amtAWithdraw; // token A removed from LP
+    uint256 amtBWithdraw; // token B removed from LP
+    uint256 reserveABefore; // A's pool reserve before LP removal
+    uint256 reserveBBefore; // B's pool reserve before LP removal
+    uint256 reserveAAfter; // A's pool reserve after LP removal
+    uint256 reserveBAfter; // B's pool reserve after LP removal
 }
 
 struct LongHelper {
-    uint256 Sa;
-    uint256 Sb;
-    uint256 reserveABefore;
-    uint256 reserveBBefore;
-    uint256 amtABorrow;
-    uint256 amtBBorrow;
-    uint256 amtAAfter;
-    uint256 amtBAfter;
-    uint256 debtAAfter;
-    uint256 amtAReward;
-    uint256 amtABorrowErr;
-    uint256 amtBBorrowErr;
+    uint256 L; // leverage
+    uint256 Sa; // token A receive amount
+    uint256 Sb; // token B swap amount
+    uint256 reserveABefore; // A's pool reserve before swapping
+    uint256 reserveBBefore; // B's pool reserve before swapping
+    uint256 amtABorrow; // token A borrow amount
+    uint256 amtBBorrow; // token B borrow amount
+    uint256 amtAAfter; // amount of token A in the LP after rebalance
+    uint256 amtBAfter; // amount of token B in the LP after rebalance
+    uint256 debtAAfter; // amount of debt in token A after rebalance
+    uint256 amtAReward; // amount of rewards swapped to token A
 }
 
 /// @custom:oz-upgrades-unsafe-allow external-library-linking
@@ -110,6 +106,8 @@ library VaultLib {
             )
         );
 
+    Math.Rounding public constant UP = Math.Rounding.Up;
+    Math.Rounding public constant DOWN = Math.Rounding.Down;
     uint256 public constant _NO_ID = 0;
     uint256 public constant FEE_RATE = 30; // feeRate = 0.3%
     uint256 public constant UNITY = 10000;
@@ -120,14 +118,8 @@ library VaultLib {
     error Slippage_Too_Large();
 
     ///********* Helper functions *********///
-    function abs(uint256 x, uint256 y)
-        public
-        pure
-        returns (uint256)
-    {
-        return x > y
-            ? x - y
-            : y - x;
+    function abs(uint256 x, uint256 y) public pure returns (uint256) {
+        return x > y ? x - y : y - x;
     }
 
     /// @notice Calculate offset ratio, multiplied by 1e4
@@ -472,8 +464,10 @@ library VaultLib {
                 Nb.mulDiv(Ua, Na));
         uint256 squareRoot = Math.sqrt(b * b + 8 * c);
         debtBAmt = (squareRoot - b) / 4;
-        debtAAmt =
-            ((L - 2) * debtBAmt).mulDiv(Na + Ua, L * (Nb + Ub) + 2 * debtBAmt);
+        debtAAmt = ((L - 2) * debtBAmt).mulDiv(
+            Na + Ua,
+            L * (Nb + Ub) + 2 * debtBAmt
+        );
         // Internally Homora's Spell swaps Ub token B to A. It will be reverted by TraderJoe if amtAOut == 0
         if (Ub > 0) {
             if (IHomoraAvaxRouter(router).getAmountOut(Ub, Nb, Na) == 0) {
@@ -735,6 +729,7 @@ library VaultLib {
         PairInfo storage pairInfo,
         uint256 leverageLevel
     ) internal view returns (ShortHelper memory vars) {
+        vars.L = leverageLevel;
         (vars.reserveABefore, vars.reserveBBefore) = getReserves(pairInfo);
         (
             vars.collWithdrawAmt,
@@ -742,7 +737,7 @@ library VaultLib {
             vars.amtBRepay,
             vars.Sa,
             vars.Sb
-        ) = rebalanceMathShort(pos, leverageLevel, vars);
+        ) = rebalanceMathShort(pos, vars);
     }
 
     /// @dev Rebalance Homora Bank's farming position assuming delta is short
@@ -799,6 +794,7 @@ library VaultLib {
         PairInfo storage pairInfo,
         uint256 leverageLevel
     ) internal view returns (LongHelper memory vars) {
+        vars.L = leverageLevel;
         (vars.reserveABefore, vars.reserveBBefore) = getReserves(pairInfo);
         vars.amtAReward = IERC20(pairInfo.stableToken).balanceOf(address(this));
 
@@ -807,7 +803,7 @@ library VaultLib {
             vars.amtBBorrow,
             vars.Sa,
             vars.Sb
-        ) = rebalanceMathLong(pos, leverageLevel, vars);
+        ) = rebalanceMathLong(pos, vars);
     }
 
     /// @dev Rebalance Homora Bank's farming position assuming delta is long
@@ -867,11 +863,9 @@ library VaultLib {
     /// @dev Calculate the amount of collateral to withdraw and the amount of each token to repay by Homora to reach DN
     /// @dev Assume `pos.debtAmtB > pos.amtB`. Check before calling
     /// @param pos: Farming position in Homora Bank
-    /// @param leverageLevel: Target leverage
     /// @param vars: Helper struct
     function rebalanceMathShort(
         VaultPosition memory pos,
-        uint256 leverageLevel,
         ShortHelper memory vars
     )
         internal
@@ -887,79 +881,56 @@ library VaultLib {
         // Ka << 1, multiply by someLargeNumber 1e18
         vars.Ka = SOME_LARGE_NUMBER.mulDiv(
             UNITY * (pos.debtAmtB - pos.amtB),
-            UNITY_MINUS_FEE * (vars.reserveBBefore - pos.debtAmtB)
-        );
-        vars.Kb = SOME_LARGE_NUMBER.mulDiv(
-            pos.debtAmtB - pos.amtB,
-            vars.reserveBBefore - pos.amtB
+            UNITY_MINUS_FEE * (vars.reserveBBefore - pos.debtAmtB),
+            UP
         );
         vars.collWithdrawAmt =
             pos.collateralSize.mulDiv(
-                leverageLevel *
+                vars.L *
                     (pos.debtAmtA *
-                    SOME_LARGE_NUMBER +
+                        SOME_LARGE_NUMBER +
                         vars.Ka *
                         vars.reserveABefore),
                 2 * (SOME_LARGE_NUMBER + vars.Ka) * pos.amtA,
-                Math.Rounding.Up
+                UP // round up to withdraw enough LP to repay A/B
             ) -
-            pos.collateralSize.mulDiv(leverageLevel - 2, 2);
+            pos.collateralSize.mulDiv(vars.L - 2, 2, DOWN);
         require(vars.collWithdrawAmt > 0, "Must withdraw >0");
 
         vars.amtAWithdraw = pos.amtA.mulDiv(
-            vars.collWithdrawAmt,
-            pos.collateralSize
+            vars.collWithdrawAmt - 1, // round down repay amounts
+            pos.collateralSize,
+            DOWN
         );
         vars.reserveAAfter = vars.reserveABefore - vars.amtAWithdraw;
-        vars.Sa = vars.reserveAAfter.mulDiv(vars.Ka, SOME_LARGE_NUMBER);
+        vars.Sa = vars.reserveAAfter.mulDiv(vars.Ka, SOME_LARGE_NUMBER, UP);
         if (vars.amtAWithdraw > vars.Sa) {
             vars.amtARepay = vars.amtAWithdraw - vars.Sa;
         } else {
             vars.amtARepay = 0;
             vars.collWithdrawAmt = pos.collateralSize.mulDiv(
                 vars.Ka * vars.reserveABefore,
-                (SOME_LARGE_NUMBER + vars.Ka) * pos.amtA
+                (SOME_LARGE_NUMBER + vars.Ka) * pos.amtA,
+                UP
             );
         }
         vars.amtBWithdraw = pos.amtB.mulDiv(
-            vars.collWithdrawAmt,
-            pos.collateralSize
+            vars.collWithdrawAmt - 1,
+            pos.collateralSize,
+            DOWN
         );
-        vars.reserveBAfter = vars.reserveBBefore - vars.amtBWithdraw;
-        vars.Sb = vars.reserveBAfter.mulDiv(vars.Kb, SOME_LARGE_NUMBER);
+        vars.reserveBAfter = vars.reserveBBefore - vars.amtBWithdraw - 1;
+        vars.Sb = vars.reserveBAfter.mulDiv(
+            pos.debtAmtB - pos.amtB,
+            vars.reserveBBefore - pos.amtB,
+            DOWN
+        );
         vars.amtBRepay = vars.amtBWithdraw + vars.Sb;
 
-        vars.collWithdrawErr = (leverageLevel * vars.reserveABefore).mulDiv(
-            pos.collateralSize,
-            2 * SOME_LARGE_NUMBER * pos.amtA,
-            Math.Rounding.Up
-        );
-        vars.amtARepayErr = vars.reserveAAfter.ceilDiv(SOME_LARGE_NUMBER);
-        vars.amtBRepayErr =
-            vars
-                .Kb
-                .mulDiv(
-                    leverageLevel *
-                        vars.reserveBBefore *
-                        pos.collateralSize +
-                        2 *
-                        SOME_LARGE_NUMBER *
-                        pos.amtB,
-                    2 * SOME_LARGE_NUMBER * pos.collateralSize
-                )
-                .ceilDiv(SOME_LARGE_NUMBER) +
-            vars.Kb.ceilDiv(SOME_LARGE_NUMBER);
-        require(
-            vars.amtBRepay > vars.amtBRepayErr,
-            "Must repay >0"
-        );
-
         return (
-            vars.collWithdrawAmt + vars.collWithdrawErr,
-            vars.amtARepay > vars.amtARepayErr
-                ? vars.amtARepay - vars.amtARepayErr
-                : 0,
-            vars.amtBRepay - vars.amtBRepayErr,
+            vars.collWithdrawAmt,
+            vars.amtARepay,
+            vars.amtBRepay,
             vars.Sa,
             vars.Sb
         );
@@ -968,13 +939,8 @@ library VaultLib {
     /// @dev Calculate the amount of each token to borrow by Homora to reach DN
     /// @dev Assume `pos.debtAmtB < pos.amtB`. Check before calling
     /// @param pos: Farming position in Homora Bank
-    /// @param leverageLevel: Target leverage
     /// @param vars: Helper struct
-    function rebalanceMathLong(
-        VaultPosition memory pos,
-        uint256 leverageLevel,
-        LongHelper memory vars
-    )
+    function rebalanceMathLong(VaultPosition memory pos, LongHelper memory vars)
         internal
         pure
         returns (
@@ -986,7 +952,8 @@ library VaultLib {
     {
         vars.Sb = vars.reserveBBefore.mulDiv(
             pos.amtB - pos.debtAmtB,
-            vars.reserveBBefore - pos.amtB
+            vars.reserveBBefore - pos.amtB,
+            UP
         );
         vars.Sa = vars.reserveABefore.mulDiv(
             UNITY_MINUS_FEE * (pos.amtB - pos.debtAmtB),
@@ -995,40 +962,33 @@ library VaultLib {
                 FEE_RATE *
                 pos.amtB -
                 UNITY_MINUS_FEE *
-                pos.debtAmtB
+                pos.debtAmtB,
+            UP
         );
-        vars.amtAAfter = leverageLevel.mulDiv(
+        vars.amtAAfter = vars.L.mulDiv(
             pos.amtA.mulDiv(
                 vars.reserveABefore - vars.Sa,
-                vars.reserveABefore
+                vars.reserveABefore,
+                UP
             ) -
                 pos.debtAmtA +
                 vars.Sa +
                 vars.amtAReward,
-            2
+            2,
+            UP
         ); // n_af
 
-        vars.debtAAfter = vars.amtAAfter.mulDiv(
-            leverageLevel - 2,
-            leverageLevel
-        );
+        vars.debtAAfter = vars.amtAAfter.mulDiv(vars.L - 2, vars.L, UP);
 
         if (vars.debtAAfter > pos.debtAmtA) {
             vars.amtABorrow = vars.debtAAfter - pos.debtAmtA;
-            vars.amtBAfter = pos
+            // `temp` is necessary to avoid "Stack too deep".
+            uint256 temp = pos
                 .amtB
-                .mulDiv(vars.reserveABefore, vars.reserveABefore - vars.Sa)
-                .mulDiv(vars.reserveBBefore + vars.Sb, vars.reserveBBefore)
-                .mulDiv(vars.amtAAfter, pos.amtA);
+                .mulDiv(vars.reserveABefore, vars.reserveABefore - vars.Sa, UP)
+                .mulDiv(vars.reserveBBefore + vars.Sb, vars.reserveBBefore, UP);
+            vars.amtBAfter = temp.mulDiv(vars.amtAAfter, pos.amtA, UP);
             vars.amtBBorrow = vars.amtBAfter - pos.debtAmtB;
-            vars.amtABorrowErr = (leverageLevel - 2).ceilDiv(2);
-            vars.amtBBorrowErr =
-                (leverageLevel + 2).mulDiv(
-                    vars.reserveBBefore,
-                    2 * vars.reserveABefore,
-                    Math.Rounding.Up
-                ) +
-                1;
         } else {
             vars.amtABorrow = 0;
             vars.amtBBorrow =
@@ -1040,26 +1000,22 @@ library VaultLib {
                             pos.amtB -
                             UNITY_MINUS_FEE *
                             pos.debtAmtB,
-                        UNITY * (vars.reserveBBefore - pos.amtB)
+                        UNITY * (vars.reserveBBefore - pos.amtB),
+                        UP
                     )
                     .mulDiv(
                         vars.reserveABefore + vars.amtAReward,
-                        vars.reserveABefore
+                        vars.reserveABefore,
+                        UP
                     ) +
                 vars.amtAReward.mulDiv(
                     vars.reserveBBefore,
-                    vars.reserveABefore
+                    vars.reserveABefore,
+                    UP
                 );
-            vars.amtABorrowErr = 0;
-            vars.amtBBorrowErr = 3;
         }
 
-        return (
-            vars.amtABorrow + vars.amtABorrowErr,
-            vars.amtBBorrow + vars.amtBBorrowErr,
-            vars.Sa,
-            vars.Sb
-        );
+        return (vars.amtABorrow, vars.amtBBorrow, vars.Sa, vars.Sb);
     }
 
     /// @notice Swap fromToken into toToken
