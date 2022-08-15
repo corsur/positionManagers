@@ -320,7 +320,6 @@ contract ApertureManager is
             // Parse action based on encodedActionData.
             // Note that Solidity checks array index for possible out of bounds, so there is no need to validate encodedActionData.length.
             Action action = Action(uint8(encodedActionData[0]));
-            require(action != Action.Open, "invalid action");
             if (action == Action.Increase) {
                 IStrategyManager(strategy.strategyManager).increasePosition(
                     PositionInfo(positionId, strategyChainId),
@@ -329,6 +328,11 @@ contract ApertureManager is
                 );
             } else if (action == Action.Decrease) {
                 IStrategyManager(strategy.strategyManager).decreasePosition(
+                    PositionInfo(positionId, strategyChainId),
+                    encodedActionData.slice(1, encodedActionData.length - 1)
+                );
+            } else if (action == Action.Close) {
+                IStrategyManager(strategy.strategyManager).closePosition(
                     PositionInfo(positionId, strategyChainId),
                     encodedActionData.slice(1, encodedActionData.length - 1)
                 );

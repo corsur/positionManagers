@@ -59,7 +59,7 @@ interface IStrategyManager {
         bytes calldata data
     ) external;
 
-    /// @dev Increase an existing Aperture position
+    /// @dev Increase an existing Aperture position.
     /// @param position_info: Aperture position info.
     /// @param assets: Information about assets to increase this position with.
     /// @param data: Generic bytes encoding strategy-specific params.
@@ -69,17 +69,17 @@ interface IStrategyManager {
         bytes calldata data
     ) external;
 
-    /// @dev Decrease an existing Aperture position
+    /// @dev Decrease an existing Aperture position.
     /// @param position_info: Aperture position info
-    /// @param data: The recipient, the amount of shares to withdraw and the minimum amount of assets returned, etc
+    /// @param data: Generic bytes encoding strategy-specific params.
     function decreasePosition(
         PositionInfo memory position_info,
         bytes calldata data
     ) external;
 
-    /// @dev Close an existing Aperture position
+    /// @dev Close an existing Aperture position.
     /// @param position_info: Aperture position info
-    /// @param data: Owner of the position on Aperture and the minimum amount of assets returned, etc
+    /// @param data: Generic bytes encoding strategy-specific params.
     function closePosition(
         PositionInfo memory position_info,
         bytes calldata data
