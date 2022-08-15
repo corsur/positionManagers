@@ -32,6 +32,11 @@ struct AssetInfo {
     uint256 amount;
 }
 
+struct Recipient {
+    uint16 chainId;
+    bytes32 recipientAddr;
+}
+
 interface IStrategyManager {
     /// @dev Open a new Aperture position.
     /// @param position_info: Aperture position info.
@@ -54,18 +59,29 @@ interface IStrategyManager {
     ) external;
 
     /// @dev Decrease an existing Aperture position.
-    /// @param position_info: Aperture position info
+    /// @param position_info: Aperture position info.
+    /// @param recipient: Chain id and address of the recipient.
     /// @param data: Generic bytes encoding strategy-specific params.
     function decreasePosition(
         PositionInfo memory position_info,
+        Recipient calldata recipient,
         bytes calldata data
     ) external;
 
     /// @dev Close an existing Aperture position.
-    /// @param position_info: Aperture position info
+    /// @param position_info: Aperture position info.
+    /// @param recipient: Chain id and address of the recipient.
     /// @param data: Generic bytes encoding strategy-specific params.
     function closePosition(
         PositionInfo memory position_info,
+        Recipient calldata recipient,
         bytes calldata data
     ) external;
+}
+
+interface IApertureManager {
+    function disburseAssets(
+        AssetInfo[] memory assetInfos,
+        Recipient calldata recipient
+    ) external payable;
 }

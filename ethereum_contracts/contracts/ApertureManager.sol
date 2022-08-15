@@ -50,7 +50,7 @@ contract ApertureManager is
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
-        crossChainContext.wormholeContext = wormholeCrossChainContext;
+        crossChainContext.updateWormholeContext(wormholeCrossChainContext);
         crossChainContext.feeContext = crossChainFeeContext;
     }
 
@@ -60,7 +60,7 @@ contract ApertureManager is
     function updateWormholeCrossChainContext(
         WormholeCrossChainContext calldata wormholeCrossChainContext
     ) external onlyOwner {
-        crossChainContext.wormholeContext = wormholeCrossChainContext;
+        crossChainContext.updateWormholeContext(wormholeCrossChainContext);
     }
 
     function updateCrossChainFeeContext(
@@ -79,8 +79,9 @@ contract ApertureManager is
         require(
             chainId > 0 &&
                 chainId !=
-                WormholeCoreBridge(crossChainContext.wormholeContext.coreBridge)
-                    .chainId(),
+                WormholeCoreBridge(
+                    crossChainContext.inferredWormholeContext.coreBridge
+                ).chainId(),
             "invalid chainId"
         );
         crossChainContext.chainIdToApertureManager[chainId] = managerAddress;
@@ -154,27 +155,13 @@ contract ApertureManager is
 
         // This message carries some ether, so we wrap it to WETH and add it to `assetInfos`.
         if (msg.value > 0) {
-            IWETH weth = WormholeTokenBridge(
-                crossChainContext.wormholeContext.tokenBridge
-            ).WETH();
             require(
                 isTokenWhitelistedForStrategy[strategyChainId][strategyId][
-                    address(weth)
+                    crossChainContext.inferredWormholeContext.weth
                 ],
                 "weth not allowed"
             );
-            weth.deposit{value: msg.value}();
-            AssetInfo[] memory expandedAssetInfos = new AssetInfo[](
-                assetInfos.length + 1
-            );
-            for (uint256 i = 0; i < assetInfos.length; ++i) {
-                expandedAssetInfos[i] = assetInfos[i];
-            }
-            expandedAssetInfos[assetInfos.length] = AssetInfo(
-                address(weth),
-                msg.value
-            );
-            return expandedAssetInfos;
+            return crossChainContext.wrapEtherAndExpandAssetInfos(assetInfos);
         }
         return assetInfos;
     }
@@ -202,8 +189,9 @@ contract ApertureManager is
     ) internal {
         if (
             strategyChainId !=
-            WormholeCoreBridge(crossChainContext.wormholeContext.coreBridge)
-                .chainId()
+            WormholeCoreBridge(
+                crossChainContext.inferredWormholeContext.coreBridge
+            ).chainId()
         ) {
             crossChainContext.publishPositionOpenInstruction(
                 strategyChainId,
@@ -300,8 +288,9 @@ contract ApertureManager is
     ) internal {
         if (
             strategyChainId !=
-            WormholeCoreBridge(crossChainContext.wormholeContext.coreBridge)
-                .chainId()
+            WormholeCoreBridge(
+                crossChainContext.inferredWormholeContext.coreBridge
+            ).chainId()
         ) {
             crossChainContext.publishExecuteStrategyInstruction(
                 strategyChainId,
@@ -326,16 +315,37 @@ contract ApertureManager is
                     assetInfos,
                     encodedActionData.slice(1, encodedActionData.length - 1)
                 );
-            } else if (action == Action.Decrease) {
-                IStrategyManager(strategy.strategyManager).decreasePosition(
-                    PositionInfo(positionId, strategyChainId),
-                    encodedActionData.slice(1, encodedActionData.length - 1)
+            } else if (action == Action.Decrease || action == Action.Close) {
+                // encodedActionData:
+                // Index 0: action enum.
+                // Index 1~2: recipient.chainId (uint16).
+                // Index 3~34: recipient.recipientAddr (bytes32).
+                // Index 35 and later: strategy-specific data.
+
+                // Parse recipient from `encodedActionData`.
+                Recipient memory recipient;
+                recipient.chainId = encodedActionData.toUint16(1);
+                recipient.recipientAddr = encodedActionData.toBytes32(3);
+
+                // Strategy-specific encoded params.
+                bytes memory data = encodedActionData.slice(
+                    35,
+                    encodedActionData.length - 35
                 );
-            } else if (action == Action.Close) {
-                IStrategyManager(strategy.strategyManager).closePosition(
-                    PositionInfo(positionId, strategyChainId),
-                    encodedActionData.slice(1, encodedActionData.length - 1)
-                );
+
+                if (action == Action.Decrease) {
+                    IStrategyManager(strategy.strategyManager).decreasePosition(
+                            PositionInfo(positionId, strategyChainId),
+                            recipient,
+                            data
+                        );
+                } else {
+                    IStrategyManager(strategy.strategyManager).closePosition(
+                        PositionInfo(positionId, strategyChainId),
+                        recipient,
+                        data
+                    );
+                }
             } else {
                 revert("invalid action");
             }
@@ -469,6 +479,32 @@ contract ApertureManager is
             );
         } else {
             revert("invalid ix type");
+        }
+    }
+
+    function disburseAssets(
+        AssetInfo[] memory assetInfos,
+        Recipient calldata recipient
+    ) external payable {
+        if (
+            recipient.chainId ==
+            crossChainContext.inferredWormholeContext.thisChainId
+        ) {
+            address to = address(uint160(uint256(recipient.recipientAddr)));
+            for (uint256 i = 0; i < assetInfos.length; ++i) {
+                IERC20(assetInfos[i].assetAddr).safeTransfer(
+                    to,
+                    assetInfos[i].amount
+                );
+            }
+            if (msg.value > 0) {
+                payable(to).transfer(msg.value);
+            }
+        } else {
+            crossChainContext.publishMultiTokenDisbursementInstruction(
+                assetInfos,
+                recipient
+            );
         }
     }
 }

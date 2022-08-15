@@ -97,7 +97,8 @@ contract HomoraPDNVault is
         uint256 shareAmount
     );
     event LogWithdraw(
-        address indexed _to,
+        uint16 indexed recipientChainId,
+        bytes32 indexed recipientAddr,
         uint256 withdrawShareAmount,
         uint256 stableTokenWithdrawAmount,
         uint256 assetTokenWithdrawAmount,
@@ -339,18 +340,18 @@ contract HomoraPDNVault is
 
     /// @dev Decrease an existing Aperture position
     /// @param position_info: Aperture position info
-    /// @param data: The recipient, the amount of shares to withdraw and the minimum amount of assets returned, etc
+    /// @param data: Encoded (uint256 shareAmount, uint256 amtAMin, uint256 amtBMin, uint256 minReinvestETH).
     function decreasePosition(
         PositionInfo memory position_info,
+        Recipient calldata recipient,
         bytes calldata data
     ) external onlyApertureManager nonReentrant {
         (
-            address recipient,
             uint256 shareAmount,
             uint256 amtAMin,
             uint256 amtBMin,
             uint256 minReinvestETH
-        ) = abi.decode(data, (address, uint256, uint256, uint256, uint256));
+        ) = abi.decode(data, (uint256, uint256, uint256, uint256));
         withdrawInternal(
             position_info,
             recipient,
@@ -363,17 +364,17 @@ contract HomoraPDNVault is
 
     /// @dev Close an existing Aperture position
     /// @param position_info: Aperture position info
-    /// @param data: Owner of the position on Aperture and the minimum amount of assets returned, etc
+    /// @param data: Encoded (uint256 amtAMin, uint256 amtBMin, uint256 minReinvestETH).
     function closePosition(
         PositionInfo memory position_info,
+        Recipient calldata recipient,
         bytes calldata data
     ) external onlyApertureManager nonReentrant {
         (
-            address recipient,
             uint256 amtAMin,
             uint256 amtBMin,
             uint256 minReinvestETH
-        ) = abi.decode(data, (address, uint256, uint256, uint256));
+        ) = abi.decode(data, (uint256, uint256, uint256));
         withdrawInternal(
             position_info,
             recipient,
@@ -496,7 +497,7 @@ contract HomoraPDNVault is
     /// @param minReinvestETH: Minimum equity received after reinvesting
     function withdrawInternal(
         PositionInfo memory position_info,
-        address recipient,
+        Recipient calldata recipient,
         uint256 withdrawShareAmount,
         uint256 minStableReceived,
         uint256 minAssetReceived,
@@ -542,10 +543,13 @@ contract HomoraPDNVault is
             .shareAmount -= withdrawShareAmount;
         vaultState.totalShareAmount -= withdrawShareAmount;
 
-        // Transfer fund to user (caller).
-        IERC20(pairInfo.stableToken).transfer(recipient, withdrawAmounts[0]);
-        IERC20(pairInfo.assetToken).transfer(recipient, withdrawAmounts[1]);
-        payable(recipient).transfer(withdrawAmounts[2]);
+        // Transfer fund to the recipient (possibly initiate cross-chain transfer).
+        IERC20(pairInfo.stableToken).transfer(apertureManager, withdrawAmounts[0]);
+        IERC20(pairInfo.assetToken).transfer(apertureManager, withdrawAmounts[1]);
+        AssetInfo[] memory assetInfos = new AssetInfo[](2);
+        assetInfos[0] = AssetInfo(pairInfo.stableToken, withdrawAmounts[0]);
+        assetInfos[1] = AssetInfo(pairInfo.assetToken, withdrawAmounts[1]);
+        IApertureManager(apertureManager).disburseAssets{value: withdrawAmounts[2]}(assetInfos, recipient);
 
         // Collect withdrawal fee
         IERC20(pairInfo.stableToken).transfer(
@@ -589,7 +593,8 @@ contract HomoraPDNVault is
 
         // Emit event.
         emit LogWithdraw(
-            recipient,
+            recipient.chainId,
+            recipient.recipientAddr,
             withdrawShareAmount,
             withdrawAmounts[0],
             withdrawAmounts[1],
