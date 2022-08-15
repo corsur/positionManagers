@@ -26,27 +26,10 @@ struct StrategyMetadata {
     address strategyManager;
 }
 
-struct Config {
-    uint32 crossChainFeeBPS; // Cross-chain fee in bps.
-    address feeSink; // Fee collecting address.
-}
-
 // The address and amount of an ERC-20 token.
 struct AssetInfo {
     address assetAddr;
     uint256 amount;
-}
-
-struct ApertureFeeConfig {
-    uint256 withdrawFee; // multiplied by 1e4
-    uint256 harvestFee; // multiplied by 1e4
-    uint256 managementFee; // multiplied by 1e4
-}
-
-struct ApertureVaultLimits {
-    uint256 maxCapacity; // Maximum amount allowed in stable across the vault
-    uint256 maxOpenPerTx; // Maximum amount allowed in stable to add in one transaction
-    uint256 maxWithdrawPerTx; // Maximum amount allowed in stable to withdraw in one transaction
 }
 
 interface IStrategyManager {

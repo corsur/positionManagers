@@ -29,6 +29,18 @@ contract HomoraPDNVault is
     using SafeERC20 for IERC20;
     using Math for uint256;
 
+    struct ApertureFeeConfig {
+        uint256 withdrawFee; // multiplied by 1e4
+        uint256 harvestFee; // multiplied by 1e4
+        uint256 managementFee; // multiplied by 1e4
+    }
+
+    struct ApertureVaultLimits {
+        uint256 maxCapacity; // Maximum amount allowed in stable across the vault
+        uint256 maxOpenPerTx; // Maximum amount allowed in stable to add in one transaction
+        uint256 maxWithdrawPerTx; // Maximum amount allowed in stable to withdraw in one transaction
+    }
+
     // --- modifiers ---
     modifier onlyApertureManager() {
         require(msg.sender == apertureManager, "unauthorized mgr op");
