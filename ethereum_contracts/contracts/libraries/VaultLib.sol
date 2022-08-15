@@ -471,14 +471,12 @@ library VaultLib {
             ((UNITY_MINUS_FEE * (Na + Ua)).mulDiv(Ub, UNITY * Na) +
                 Nb.mulDiv(Ua, Na));
         uint256 squareRoot = Math.sqrt(b * b + 8 * c);
-        require(squareRoot > b, "Negative root");
         debtBAmt = (squareRoot - b) / 4;
         debtAAmt =
             ((L - 2) * debtBAmt).mulDiv(Na + Ua, L * (Nb + Ub) + 2 * debtBAmt);
         // Internally Homora's Spell swaps Ub token B to A. It will be reverted by TraderJoe if amtAOut == 0
         if (Ub > 0) {
-            uint256 amtAOut = IHomoraAvaxRouter(router).getAmountOut(Ub, Nb, Na);
-            if (amtAOut == 0) {
+            if (IHomoraAvaxRouter(router).getAmountOut(Ub, Nb, Na) == 0) {
                 // Let Homora swaps 1 token A to B.
                 debtAAmt += 1;
             }
@@ -902,10 +900,11 @@ library VaultLib {
                     SOME_LARGE_NUMBER +
                         vars.Ka *
                         vars.reserveABefore),
-                2 * (SOME_LARGE_NUMBER + vars.Ka) * pos.amtA
+                2 * (SOME_LARGE_NUMBER + vars.Ka) * pos.amtA,
+                Math.Rounding.Up
             ) -
             pos.collateralSize.mulDiv(leverageLevel - 2, 2);
-        require(vars.collWithdrawAmt > 0, "Must withdraw");
+        require(vars.collWithdrawAmt > 0, "Must withdraw >0");
 
         vars.amtAWithdraw = pos.amtA.mulDiv(
             vars.collWithdrawAmt,
@@ -952,7 +951,7 @@ library VaultLib {
             vars.Kb.ceilDiv(SOME_LARGE_NUMBER);
         require(
             vars.amtBRepay > vars.amtBRepayErr,
-            "Must repay"
+            "Must repay >0"
         );
 
         return (
