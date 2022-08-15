@@ -175,7 +175,6 @@ contract ApertureManager is
 
     function recordNewPositionInfo(uint16 strategyChainId, uint64 strategyId)
         internal
-        nonReentrant
         returns (uint128)
     {
         uint128 positionId = nextPositionId++;
@@ -239,7 +238,7 @@ contract ApertureManager is
         uint64 strategyId,
         AssetInfo[] memory assetInfos,
         bytes calldata encodedPositionOpenData
-    ) external payable {
+    ) external payable nonReentrant {
         uint128 positionId = recordNewPositionInfo(strategyChainId, strategyId);
         assetInfos = validateAndTransferAssetFromSender(
             strategyChainId,
@@ -263,7 +262,7 @@ contract ApertureManager is
         uint64 strategyId,
         uint16 strategyChainId,
         bytes calldata encodedPositionOpenData
-    ) external {
+    ) external nonReentrant {
         require(
             isTokenWhitelistedForStrategy[strategyChainId][strategyId][toToken],
             "toToken not allowed"
@@ -363,7 +362,7 @@ contract ApertureManager is
         uint128 positionId,
         AssetInfo[] memory assetInfos,
         bytes calldata encodedActionData
-    ) external payable onlyPositionOwner(positionId) {
+    ) external payable nonReentrant onlyPositionOwner(positionId) {
         uint16 strategyChainId = positionIdToInfo[positionId].strategyChainId;
         assetInfos = validateAndTransferAssetFromSender(
             strategyChainId,
@@ -385,7 +384,7 @@ contract ApertureManager is
         uint256 minAmountOut,
         uint128 positionId,
         bytes calldata encodedActionData
-    ) external onlyPositionOwner(positionId) {
+    ) external nonReentrant onlyPositionOwner(positionId) {
         IERC20(fromToken).safeTransferFrom(msg.sender, address(this), amount);
         uint256 toTokenAmount = curveRouterContext.swapToken(
             fromToken,
@@ -439,7 +438,7 @@ contract ApertureManager is
     function processApertureInstruction(
         bytes calldata encodedInstructionVM,
         bytes[] calldata encodedTokenTransferVMs
-    ) external {
+    ) external nonReentrant {
         (
             WormholeCoreBridge.VM memory instructionVM,
             uint8 instructionType
@@ -499,7 +498,7 @@ contract ApertureManager is
     function disburseAssets(
         AssetInfo[] memory assetInfos,
         Recipient calldata recipient
-    ) external payable {
+    ) external payable nonReentrant {
         if (
             recipient.chainId ==
             crossChainContext.inferredWormholeContext.thisChainId

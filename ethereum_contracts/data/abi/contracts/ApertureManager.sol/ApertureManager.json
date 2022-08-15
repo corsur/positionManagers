@@ -5,6 +5,7 @@
   "event OwnershipTransferred(address indexed,address indexed)",
   "event Upgraded(address indexed)",
   "function addStrategy(string,string,address)",
+  "function allowedToDisburseAssets(address) view returns (bool)",
   "function createPosition(uint16,uint64,tuple(address,uint256)[],bytes) payable",
   "function crossChainContext() view returns (tuple(address,uint8), tuple(address,address,uint16), tuple(uint32,address))",
   "function disburseAssets(tuple(address,uint256)[],tuple(uint16,bytes32)) payable",
