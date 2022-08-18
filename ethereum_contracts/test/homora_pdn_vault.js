@@ -209,19 +209,12 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     homoraPosId,
     txOptions
   );
-  let [usdcHold, wavaxHold] = await strategyContract
-    .connect(wallets[0])
-    .convertCollateralToTokens(collSize, txOptions);
+  let [usdcHold, wavaxHold] = await strategyContract.convertCollateralToTokens(collSize, txOptions);
   console.log("collateral: usdc: %d, wavax: %d", usdcHold, wavaxHold);
 
   // check debt
-  // let [usdcDebt, wavaxDebt] = await strategyContract
-  //   .connect(wallets[0])
-  //   .getDebtAmounts(txOptions);
-  // var homoraBankPosId = (await strategyContract.homoraBankPosId()).toNumber();
-  // let [usdcDebt, wavaxDebt] = await vaultLib
-  //   .getDebtAmounts(HOMORA_BANK_ADDRESS, homoraBankPosId, [USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS, MC_JOEV3_WAVAX_USDC_ADDRESS, JOE_TOKEN_ADDRESS]);
-  // console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
+  let [usdcDebt, wavaxDebt] = await strategyContract.getDebtAmounts();
+  console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
 
   // check if position state is healthy (no need to rebalance)
   await expect(
@@ -435,7 +428,8 @@ async function testDepositAndWithdraw(
 
   // Colletral size of each wallet.
   var totalCollateralSize = res.collateralSize;
-  [totalShareAmount, _] = await strategyContract.vaultState();
+  // [totalShareAmount, _] = await strategyContract.vaultState();
+  totalShareAmount = (await strategyContract.vaultState())[0];
   var shareAmount0 = await strategyContract.positions(CHAIN_ID_AVAX, 0); // position id 0
   console.log("share amount 0: ", shareAmount0.toString());
   var shareAmount1 = await strategyContract.positions(CHAIN_ID_AVAX, 1); // position id 1

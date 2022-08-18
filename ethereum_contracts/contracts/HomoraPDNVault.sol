@@ -783,14 +783,18 @@ contract HomoraPDNVault is
     }
 
     /// @dev Net equity value of the PDN position
-    function getEquityETHValue() internal view returns (uint256) {
-        return
-            VaultLib.getCollateralETHValue(
+    function getCollateralETHValue() public view returns (uint256) {
+        return VaultLib.getCollateralETHValue(
                 contractInfo.bank,
                 homoraBankPosId,
                 collateralFactor
-            ) -
-            VaultLib.getBorrowETHValue(
+            );
+    }
+
+    /// @dev Net equity value of the PDN position
+    function getEquityETHValue() public view returns (uint256) {
+        return getCollateralETHValue()
+            - VaultLib.getBorrowETHValue(
                 contractInfo,
                 homoraBankPosId,
                 pairInfo,
