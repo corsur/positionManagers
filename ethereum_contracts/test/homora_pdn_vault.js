@@ -1,16 +1,13 @@
 const { CHAIN_ID_AVAX } = require("@certusone/wormhole-sdk");
-const { expect, assert } = require("chai");
+const { expect } = require("chai");
 const { BigNumber } = require("ethers");
-const { ethers, upgrades } = require("hardhat");
-const { mine, time } = require("@nomicfoundation/hardhat-network-helpers");
+const { ethers } = require("hardhat");
+const { mine } = require("@nomicfoundation/hardhat-network-helpers");
 const {
   AVAX_MAINNET_TOKEN_BRIDGE_ADDR,
   AVAX_MAINNET_URL,
 } = require("../constants.js");
-const {
-  deployApertureManager,
-  deployHomoraAdapter,
-} = require("../utils/deploy.js");
+const { deployHomoraPDNVault } = require("../utils/deploy.js");
 
 const { homoraBankABI } = require("./abi/homoraBankABI.js");
 
@@ -35,6 +32,10 @@ const {
   WAVAX_USDC_POOL_ID,
   AVAX_CHAIN_ID,
 } = require("./avax_constants");
+const {
+  getImpersonatedSigner,
+  whitelistContractAndAddCredit,
+} = require("../utils/accounts.js");
 
 const provider = ethers.provider;
 const WAVAX = new ethers.Contract(WAVAX_TOKEN_ADDRESS, ERC20ABI, provider);
@@ -68,63 +69,9 @@ const wallets = [
     "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
     provider
   ),
-  new ethers.Wallet(
-    "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
-    provider
-  ),
-  new ethers.Wallet(
-    "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
-    provider
-  ),
 ];
 
 const txOptions = { gasPrice: 50000000000, gasLimit: 8500000 };
-const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
-
-async function getImpersonatedSigner(accountToImpersonate) {
-  await hre.network.provider.request({
-    method: "hardhat_impersonateAccount",
-    params: [accountToImpersonate],
-  });
-  return await ethers.getSigner(accountToImpersonate);
-}
-
-async function whitelistContractAndAddCredit(contractAddressToWhitelist) {
-  // Get impersonatedSigner as governor of homoraBank contract.
-  const homoraBankGovernor = await homoraBank.governor(txOptions);
-  const signer = await getImpersonatedSigner(homoraBankGovernor);
-
-  // Transfer AVAX to the governor and check.
-  await mainWallet.sendTransaction({
-    to: homoraBankGovernor,
-    value: ethers.utils.parseEther("100"),
-  });
-  // expect(await provider.getBalance(signer.address)).to.equal(BigInt(1e20));
-
-  // Whitelist address and check.
-  await homoraBank
-    .connect(signer)
-    .setWhitelistUsers([contractAddressToWhitelist], [true], txOptions);
-  let res = await homoraBank.whitelistedUsers(
-    contractAddressToWhitelist,
-    txOptions
-  );
-  expect(res).to.equal(true);
-
-  // Set credit to 100,000 USDC and 5,000 WAVAX.
-  await homoraBank.connect(signer).setCreditLimits(
-    [
-      [contractAddressToWhitelist, USDC_TOKEN_ADDRESS, 1e11, ZERO_ADDR],
-      [
-        contractAddressToWhitelist,
-        WAVAX_TOKEN_ADDRESS,
-        ethers.BigNumber.from("1000000000000000000000"),
-        ZERO_ADDR,
-      ],
-    ],
-    txOptions
-  );
-}
 
 async function initialize() {
   // Impersonate USDC holder.
@@ -230,7 +177,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     recvAmt.div("1000000000000000000").toString()
   );
 
-  await mine(1000, {interval: 2});
+  await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
@@ -252,12 +199,12 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     txOptions
   );
   console.log("Leverage changed to 2");
-  await mine(1000, {interval: 2});
+  await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
 
-  await mine(1000, {interval: 2});
+  await mine(1000, { interval: 2 });
   // Increase slippage and rebalance again
   await strategyContract.connect(wallets[0]).rebalance(100, 0, txOptions);
 
@@ -283,7 +230,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     swapAmt.div("1000000000000000000").toString(),
     recvAmt.div(1e6).toString()
   );
-  await mine(1000, {interval: 2});
+  await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
@@ -296,7 +243,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     swapAmt.div(1e6).toString(),
     recvAmt.div("1000000000000000000").toString()
   );
-  await mine(1000, {interval: 2});
+  await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
@@ -477,16 +424,15 @@ async function testDepositAndWithdraw(
     .connect(wallets[0])
     .executeStrategy(
       /*positionId=*/ 0,
-      /*assetInfos=*/[],
+      /*assetInfos=*/ [],
       encodedWithdrawData,
       txOptions
     );
 }
 
-describe("HomoraPDNVault Initialization", function () {
+describe.only("HomoraPDNVault Initialization", function () {
   var managerContract = undefined;
   var homoraAdapter = undefined;
-  var strategyFactory = undefined;
   var strategyContract = undefined;
   var vaultLib = undefined;
 
@@ -503,47 +449,21 @@ describe("HomoraPDNVault Initialization", function () {
       ],
     });
 
-    // Aperture manager contract.
-    managerContract = await deployApertureManager(
-      mainWallet,
-      AVAX_MAINNET_TOKEN_BRIDGE_ADDR
-    );
-    console.log("Aperture manager deployed at: ", managerContract.address);
-
-    // Deploy Homora adapter contract.
-    homoraAdapter = await deployHomoraAdapter(mainWallet);
-
-    // HomoraPDNVault contract.
-    library = await ethers.getContractFactory("HomoraAdapterLib");
-    adapterLib = await library.deploy();
-    library = await ethers.getContractFactory("VaultLib", {
-      libraries: {
-        HomoraAdapterLib: adapterLib.address,
-      },
-    });
-    vaultLib = await library.deploy();
-    strategyFactory = await ethers.getContractFactory("HomoraPDNVault", {
-      libraries: {
-        VaultLib: vaultLib.address,
-      },
-    });
-    strategyContract = await upgrades.deployProxy(
-      strategyFactory,
-      [
-        managerContract.address,
-        homoraAdapter.address,
-        wallets[0].address,
-        wallets[0].address,
-        USDC_TOKEN_ADDRESS,
-        WAVAX_TOKEN_ADDRESS,
-        HOMORA_BANK_ADDRESS,
-        TJ_SPELLV3_WAVAX_USDC_ADDRESS,
-        JOE_TOKEN_ADDRESS,
-        WAVAX_USDC_POOL_ID,
-      ],
-      { unsafeAllow: ["delegatecall"], kind: "uups" }
-    );
-    await strategyContract.connect(mainWallet).deployed(txOptions);
+    ({ managerContract, strategyContract, homoraAdapter, vaultLib } =
+      await deployHomoraPDNVault(
+        mainWallet,
+        {
+          wormholeTokenBridgeAddr: AVAX_MAINNET_TOKEN_BRIDGE_ADDR,
+          controllerAddr: wallets[0].address,
+          tokenA: USDC_TOKEN_ADDRESS,
+          tokenB: WAVAX_TOKEN_ADDRESS,
+          homoraBankAddr: homoraBank.address,
+          spellAddr: TJ_SPELLV3_WAVAX_USDC_ADDRESS,
+          rewardTokenAddr: JOE_TOKEN_ADDRESS,
+          poolId: WAVAX_USDC_POOL_ID,
+        },
+        txOptions
+      ));
 
     // Set up Homora adapter contract.
     await homoraAdapter.setCaller(strategyContract.address, true);
@@ -553,7 +473,6 @@ describe("HomoraPDNVault Initialization", function () {
     await homoraAdapter.setTarget(WAVAX.address, true);
     await homoraAdapter.setTarget(JOE.address, true);
 
-    console.log("Homora PDN contract deployed at: ", strategyContract.address);
     await strategyContract.connect(mainWallet).initializeConfig(
       3, // _leverageLevel
       9231, // _targetDebtRatio
@@ -573,7 +492,18 @@ describe("HomoraPDNVault Initialization", function () {
     );
     console.log("Homora PDN contract initialized");
 
-    await whitelistContractAndAddCredit(homoraAdapter.address);
+    await whitelistContractAndAddCredit(
+      mainWallet,
+      homoraBank,
+      homoraAdapter.address,
+      {
+        tokenA: USDC_TOKEN_ADDRESS,
+        amtA: 1e11,
+        tokenB: WAVAX_TOKEN_ADDRESS,
+        amtB: ethers.BigNumber.from("1000000000000000000000"),
+      },
+      txOptions
+    );
     await initialize();
 
     // Add strategy into Aperture manager.
