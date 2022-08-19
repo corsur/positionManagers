@@ -86,7 +86,7 @@ contract HomoraPDNVault is
     // positions[chainId][positionId] stores share information about the position identified by (chainId, positionId).
     mapping(uint16 => mapping(uint128 => Position)) public positions;
     // Position id of the PDN vault in HomoraBank. Zero for new position.
-    uint256 public homoraBankPosId;
+    uint256 public homoraPosId;
     VaultState public vaultState;
 
     // --- event ---
@@ -150,7 +150,7 @@ contract HomoraPDNVault is
         pairInfo.rewardToken = _rewardToken;
 
         pid = _pid;
-        homoraBankPosId = VaultLib._NO_ID;
+        homoraPosId = VaultLib._NO_ID;
         pairInfo.lpToken = IHomoraSpell(_spell).pairs(
             pairInfo.stableToken,
             pairInfo.assetToken
@@ -422,9 +422,9 @@ contract HomoraPDNVault is
         uint256 equityBefore = getEquityETHValue();
 
         // Add liquidity with the current balance
-        homoraBankPosId = VaultLib.deposit(
+        homoraPosId = VaultLib.deposit(
             contractInfo,
-            homoraBankPosId,
+            homoraPosId,
             pairInfo,
             leverageLevel,
             pid,
@@ -520,7 +520,7 @@ contract HomoraPDNVault is
         // Actual withdraw actions
         uint256[3] memory withdrawAmounts = VaultLib.withdraw(
             contractInfo,
-            homoraBankPosId,
+            homoraPosId,
             pairInfo,
             VaultLib.SOME_LARGE_NUMBER.mulDiv(
                 withdrawShareAmount,
@@ -617,16 +617,14 @@ contract HomoraPDNVault is
     function reinvestInternal(uint256 minReinvestETH) internal {
         // Position nonexistent
         if (
-            homoraBankPosId == VaultLib._NO_ID ||
+            homoraPosId == VaultLib._NO_ID ||
             vaultState.totalShareAmount == 0
         ) {
             return;
         }
-        // Position already exists
-        uint256 equityBefore = getEquityETHValue();
 
         // 1. Claim rewards and collect harvest fee
-        VaultLib.harvest(contractInfo, homoraBankPosId, pairInfo);
+        VaultLib.harvest(contractInfo, homoraPosId, pairInfo);
 
         VaultLib.swapRewardCollectFee(
             contractInfo.router,
@@ -649,17 +647,23 @@ contract HomoraPDNVault is
             address(this)
         );
 
-        if (
-            getTokenETHValue(pairInfo.stableToken, stableBalance) <
-            minReinvestETH
-        ) {
+        uint256 rewardETHValue = getTokenETHValue(pairInfo.stableToken, stableBalance);
+
+//        // Not worth the gas
+//        if (rewardETHValue < 50e15) {
+//            return;
+//        }
+
+        if (rewardETHValue < minReinvestETH) {
             revert Insufficient_Liquidity_Mint();
         }
+
+        uint256 equityBefore = getEquityETHValue();
 
         // 3. Add liquidity with the current balance
         VaultLib.deposit(
             contractInfo,
-            homoraBankPosId,
+            homoraPosId,
             pairInfo,
             leverageLevel,
             pid,
@@ -683,7 +687,7 @@ contract HomoraPDNVault is
     }
 
     /// @dev Internal rebalance function
-    /// @param slippage: Slippage on the swap between stable token and asset token, multiplied by 1e4, 0.1% => 10
+    /// @param slippage: Slippage in the swap, multiplied by 1e4, 0.1% => 10
     function rebalanceInternal(uint256 slippage) internal {
         // Check if the PDN position need rebalance
         if (isDeltaNeutral() && isDebtRatioHealthy()) {
@@ -696,34 +700,34 @@ contract HomoraPDNVault is
         // Position info in Homora Bank
         VaultPosition memory pos = VaultLib.getPositionInfo(
             contractInfo.bank,
-            homoraBankPosId,
+            homoraPosId,
             pairInfo
         );
-
-        RebalanceHelper memory helper;
-        helper.leverageLevel = leverageLevel;
-        helper.slippage = slippage;
-        helper.stableBorrowFactor = stableBorrowFactor;
-        helper.assetBorrowFactor = assetBorrowFactor;
 
         // Actual rebalance actions
         if (pos.debtAmtB > pos.amtB) {
             // 1. short: amtB < debtAmtB, R > Rt, swap A to B
             VaultLib.rebalanceShort(
                 contractInfo,
-                homoraBankPosId,
+                homoraPosId,
                 pos,
                 pairInfo,
-                helper
+                leverageLevel,
+                slippage,
+                stableBorrowFactor,
+                assetBorrowFactor
             );
         } else {
             // 2. long: amtB > debtAmtB, R < Rt, swap B to A
             VaultLib.rebalanceLong(
                 contractInfo,
-                homoraBankPosId,
+                homoraPosId,
                 pos,
                 pairInfo,
-                helper,
+                leverageLevel,
+                slippage,
+                stableBorrowFactor,
+                assetBorrowFactor,
                 pid
             );
         }
@@ -744,7 +748,7 @@ contract HomoraPDNVault is
         return
             VaultLib.isDeltaNeutral(
                 contractInfo.bank,
-                homoraBankPosId,
+                homoraPosId,
                 pairInfo,
                 deltaThreshold
             );
@@ -754,7 +758,7 @@ contract HomoraPDNVault is
         return
             VaultLib.isDebtRatioHealthy(
                 contractInfo.bank,
-                homoraBankPosId,
+                homoraPosId,
                 minDebtRatio,
                 maxDebtRatio
             );
@@ -782,11 +786,11 @@ contract HomoraPDNVault is
                 );
     }
 
-    /// @dev Net equity value of the PDN position
+    /// @dev Total value of the PDN position
     function getCollateralETHValue() public view returns (uint256) {
         return VaultLib.getCollateralETHValue(
                 contractInfo.bank,
-                homoraBankPosId,
+                homoraPosId,
                 collateralFactor
             );
     }
@@ -796,7 +800,7 @@ contract HomoraPDNVault is
         return getCollateralETHValue()
             - VaultLib.getBorrowETHValue(
                 contractInfo,
-                homoraBankPosId,
+                homoraPosId,
                 pairInfo,
                 stableBorrowFactor,
                 assetBorrowFactor
@@ -813,25 +817,5 @@ contract HomoraPDNVault is
         return
             positions[position_info.chainId][position_info.positionId]
                 .shareAmount;
-    }
-
-    /// @notice Evalute the current collateral's amount in terms of 2 tokens. Stable token first
-    /// @param collAmount: Amount of LP token
-    function convertCollateralToTokens(uint256 collAmount)
-        public
-        view
-        returns (uint256, uint256)
-    {
-        return VaultLib.convertCollateralToTokens(pairInfo, collAmount);
-    }
-
-    /// @dev Query the current debt amount for both tokens. Stable first
-    function getDebtAmounts() public view returns (uint256, uint256) {
-        return
-            VaultLib.getDebtAmounts(
-                contractInfo.bank,
-                homoraBankPosId,
-                pairInfo
-            );
     }
 }

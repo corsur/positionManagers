@@ -27,7 +27,7 @@ const JOEABI = [
 const {
   HOMORA_BANK_ADDRESS,
   TJ_SPELLV3_WAVAX_USDC_ADDRESS,
-  MC_JOEV3_WAVAX_USDC_ADDRESS,
+  LP_WAVAX_USDC_ADDRESS,
   WAVAX_TOKEN_ADDRESS,
   USDC_TOKEN_ADDRESS,
   JOE_TOKEN_ADDRESS,
@@ -202,18 +202,18 @@ async function swapWAVAX(contract, swapAmt) {
 // testing function for rebalance()
 async function testRebalance(managerContract, strategyContract, vaultLib) {
   await deposit(managerContract, strategyContract);
-  const homoraPosId = (await strategyContract.homoraBankPosId()).toNumber();
+  const homoraPosId = (await strategyContract.homoraPosId()).toNumber();
   // check collateral
   let collSize = await vaultLib.getCollateralSize(
     homoraBank.address,
     homoraPosId,
     txOptions
   );
-  let [usdcHold, wavaxHold] = await strategyContract.convertCollateralToTokens(collSize, txOptions);
+  let [usdcHold, wavaxHold] = await vaultLib.convertCollateralToTokens(collSize, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
   console.log("collateral: usdc: %d, wavax: %d", usdcHold, wavaxHold);
 
   // check debt
-  let [usdcDebt, wavaxDebt] = await strategyContract.getDebtAmounts();
+  let [usdcDebt, wavaxDebt] = await vaultLib.getDebtAmounts(homoraBank.address, homoraPosId, USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS);
   console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
 
   // check if position state is healthy (no need to rebalance)
@@ -321,7 +321,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
 async function testReinvest(managerContract, strategyContract, vaultLib) {
   await deposit(managerContract);
 
-  const homoraPosId = (await strategyContract.homoraBankPosId()).toNumber();
+  const homoraPosId = (await strategyContract.homoraPosId()).toNumber();
 
   let collateralBefore = await vaultLib.getCollateralSize(
     homoraBank.address,
@@ -414,16 +414,17 @@ async function deposit(managerContract) {
 async function testDepositAndWithdraw(
   managerContract,
   strategyContract,
-  homoraAdapter
+  homoraAdapter,
+  vaultLib
 ) {
   await deposit(managerContract, strategyContract);
 
   // Check whether it initiates a position in HomoraBank.
-  var homoraBankPosId = (await strategyContract.homoraBankPosId()).toNumber();
-  expect(homoraBankPosId).not.to.equal(0);
+  var homoraPosId = (await strategyContract.homoraPosId()).toNumber();
+  expect(homoraPosId).not.to.equal(0);
 
   // Check whether the adapter contract is the owner of the HomoraBank position.
-  var res = await homoraBank.getPositionInfo(homoraBankPosId);
+  var res = await homoraBank.getPositionInfo(homoraPosId);
   expect(res.owner).to.equal(homoraAdapter.address);
 
   // Colletral size of each wallet.
@@ -438,9 +439,9 @@ async function testDepositAndWithdraw(
   var collSize1 = shareAmount1.mul(totalCollateralSize).div(totalShareAmount);
 
   [usdcAmount0, wavaxAmount0] =
-    await strategyContract.convertCollateralToTokens(collSize0);
+    await vaultLib.convertCollateralToTokens(collSize0, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
   [usdcAmount1, wavaxAmount1] =
-    await strategyContract.convertCollateralToTokens(collSize1);
+    await vaultLib.convertCollateralToTokens(collSize1, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
 
   var totalAmount0InUsdc = 2 * usdcAmount0;
   var totalAmount1InUsdc = 2 * usdcAmount1;
@@ -599,7 +600,8 @@ describe("HomoraPDNVault Initialization", function () {
     await testDepositAndWithdraw(
       managerContract,
       strategyContract,
-      homoraAdapter
+      homoraAdapter,
+        vaultLib
     );
   });
 

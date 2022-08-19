@@ -1,0 +1,1482 @@
+{
+  "manifestVersion": "3.2",
+  "proxies": [
+    {
+      "address": "0xffF51f6Ed26718f9f958c87274f8EC8Ab9eaAbD0",
+      "txHash": "0x7fd885ea045c0a945af1c426505610a5170b62d6ec58a3580780503e932ef1d7",
+      "kind": "uups"
+    },
+    {
+      "address": "0xc6f56dEc58da1cbC4703b9F8B065eCb65b384fe6",
+      "txHash": "0xd57e80dfc0361d1c5111e1a9f1ebd2aba7509b0db03e9d2b5b86ccdc4c2c306c",
+      "kind": "uups"
+    },
+    {
+      "address": "0x162A433068F51e18b7d13932F27e66a3f99E6890",
+      "txHash": "0xc0540e8c3228bb3487ccd0ac3fdd7d16bc7378d941de4ad302867e801a402106",
+      "kind": "uups"
+    },
+    {
+      "address": "0x04C89607413713Ec9775E14b954286519d836FEf",
+      "txHash": "0x98677c36baa1a4e7f005a3d10b8fb49cc0eea609f92ae35da5baca59806ac565",
+      "kind": "uups"
+    }
+  ],
+  "impls": {
+    "e65fc79f5eeb91246ffae369f6d48077f1fa2f59cd41d105b2ef42f1c41c238d": {
+      "address": "0x754A4FB8d0dE4f2915233f3F06DB7F55e2604f34",
+      "txHash": "0x2c415a2b0088d51196900170f4ddd7598935248e1a15f578d4b54f4c1d5ce005",
+      "layout": {
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:67"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\ERC1967\\ERC1967UpgradeUpgradeable.sol:211"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\UUPSUpgradeable.sol:107"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\ReentrancyGuardUpgradeable.sol:74"
+          },
+          {
+            "label": "crossChainContext",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_struct(CrossChainContext)8310_storage",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:30"
+          },
+          {
+            "label": "curveRouterContext",
+            "offset": 0,
+            "slot": "257",
+            "type": "t_struct(CurveRouterContext)9757_storage",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:31"
+          },
+          {
+            "label": "isTokenWhitelistedForStrategy",
+            "offset": 0,
+            "slot": "258",
+            "type": "t_mapping(t_uint16,t_mapping(t_uint64,t_mapping(t_address,t_bool)))",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:34"
+          },
+          {
+            "label": "nextPositionId",
+            "offset": 0,
+            "slot": "259",
+            "type": "t_uint128",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:38"
+          },
+          {
+            "label": "positionIdToInfo",
+            "offset": 0,
+            "slot": "260",
+            "type": "t_mapping(t_uint128,t_struct(StoredPositionInfo)7168_storage)",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:39"
+          },
+          {
+            "label": "nextStrategyId",
+            "offset": 0,
+            "slot": "261",
+            "type": "t_uint64",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:42"
+          },
+          {
+            "label": "strategyIdToMetadata",
+            "offset": 0,
+            "slot": "262",
+            "type": "t_mapping(t_uint64,t_struct(StrategyMetadata)7180_storage)",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:43"
+          },
+          {
+            "label": "allowedToDisburseAssets",
+            "offset": 0,
+            "slot": "263",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:46"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_struct(CurveSwapOperation)9748_storage)dyn_storage": {
+            "label": "struct CurveSwapOperation[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_int128": {
+            "label": "int128",
+            "numberOfBytes": "16"
+          },
+          "t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9748_storage)dyn_storage)": {
+            "label": "mapping(address => struct CurveSwapOperation[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9748_storage)dyn_storage))": {
+            "label": "mapping(address => mapping(address => struct CurveSwapOperation[]))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint128,t_struct(StoredPositionInfo)7168_storage)": {
+            "label": "mapping(uint128 => struct StoredPositionInfo)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint16,t_bytes32)": {
+            "label": "mapping(uint16 => bytes32)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint16,t_mapping(t_uint64,t_mapping(t_address,t_bool)))": {
+            "label": "mapping(uint16 => mapping(uint64 => mapping(address => bool)))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint64,t_mapping(t_address,t_bool))": {
+            "label": "mapping(uint64 => mapping(address => bool))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint64,t_struct(StrategyMetadata)7180_storage)": {
+            "label": "mapping(uint64 => struct StrategyMetadata)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(CrossChainContext)8310_storage": {
+            "label": "struct CrossChainContext",
+            "members": [
+              {
+                "label": "wormholeContext",
+                "type": "t_struct(WormholeContext)8280_storage",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "inferredWormholeContext",
+                "type": "t_struct(InferredWormholeContext)8287_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "feeContext",
+                "type": "t_struct(CrossChainFeeContext)8292_storage",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "chainIdToApertureManager",
+                "type": "t_mapping(t_uint16,t_bytes32)",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "processedInstructions",
+                "type": "t_mapping(t_bytes32,t_bool)",
+                "offset": 0,
+                "slot": "5"
+              }
+            ],
+            "numberOfBytes": "192"
+          },
+          "t_struct(CrossChainFeeContext)8292_storage": {
+            "label": "struct CrossChainFeeContext",
+            "members": [
+              {
+                "label": "feeBps",
+                "type": "t_uint32",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "feeSink",
+                "type": "t_address",
+                "offset": 4,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(CurveRouterContext)9757_storage": {
+            "label": "struct CurveRouterContext",
+            "members": [
+              {
+                "label": "routes",
+                "type": "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9748_storage)dyn_storage))",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(CurveSwapOperation)9748_storage": {
+            "label": "struct CurveSwapOperation",
+            "members": [
+              {
+                "label": "pool",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "from_index",
+                "type": "t_int128",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "to_index",
+                "type": "t_int128",
+                "offset": 16,
+                "slot": "1"
+              },
+              {
+                "label": "underlying",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(InferredWormholeContext)8287_storage": {
+            "label": "struct InferredWormholeContext",
+            "members": [
+              {
+                "label": "coreBridge",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "weth",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "thisChainId",
+                "type": "t_uint16",
+                "offset": 20,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(StoredPositionInfo)7168_storage": {
+            "label": "struct StoredPositionInfo",
+            "members": [
+              {
+                "label": "ownerAddr",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "strategyChainId",
+                "type": "t_uint16",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "strategyId",
+                "type": "t_uint64",
+                "offset": 22,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(StrategyMetadata)7180_storage": {
+            "label": "struct StrategyMetadata",
+            "members": [
+              {
+                "label": "name",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "version",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "strategyManager",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(WormholeContext)8280_storage": {
+            "label": "struct WormholeContext",
+            "members": [
+              {
+                "label": "tokenBridge",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "consistencyLevel",
+                "type": "t_uint8",
+                "offset": 20,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint16": {
+            "label": "uint16",
+            "numberOfBytes": "2"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "4ec6e549dc0374445638954004076e61cb15f38f80b4df10c085a552457eb7c8": {
+      "address": "0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07",
+      "txHash": "0xb9e0e3933e0e9f85fd3c166a0c8e5756aebb1295c4d21cd8a4e13a5d9f3385dd",
+      "layout": {
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:67"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\ERC1967\\ERC1967UpgradeUpgradeable.sol:211"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\UUPSUpgradeable.sol:107"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\ReentrancyGuardUpgradeable.sol:74"
+          },
+          {
+            "label": "crossChainContext",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_struct(CrossChainContext)8310_storage",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:30"
+          },
+          {
+            "label": "curveRouterContext",
+            "offset": 0,
+            "slot": "257",
+            "type": "t_struct(CurveRouterContext)9757_storage",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:31"
+          },
+          {
+            "label": "isTokenWhitelistedForStrategy",
+            "offset": 0,
+            "slot": "258",
+            "type": "t_mapping(t_uint16,t_mapping(t_uint64,t_mapping(t_address,t_bool)))",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:34"
+          },
+          {
+            "label": "nextPositionId",
+            "offset": 0,
+            "slot": "259",
+            "type": "t_uint128",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:38"
+          },
+          {
+            "label": "positionIdToInfo",
+            "offset": 0,
+            "slot": "260",
+            "type": "t_mapping(t_uint128,t_struct(StoredPositionInfo)7168_storage)",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:39"
+          },
+          {
+            "label": "nextStrategyId",
+            "offset": 0,
+            "slot": "261",
+            "type": "t_uint64",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:42"
+          },
+          {
+            "label": "strategyIdToMetadata",
+            "offset": 0,
+            "slot": "262",
+            "type": "t_mapping(t_uint64,t_struct(StrategyMetadata)7180_storage)",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:43"
+          },
+          {
+            "label": "allowedToDisburseAssets",
+            "offset": 0,
+            "slot": "263",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "ApertureManager",
+            "src": "contracts\\ApertureManager.sol:46"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_struct(CurveSwapOperation)9748_storage)dyn_storage": {
+            "label": "struct CurveSwapOperation[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_int128": {
+            "label": "int128",
+            "numberOfBytes": "16"
+          },
+          "t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9748_storage)dyn_storage)": {
+            "label": "mapping(address => struct CurveSwapOperation[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9748_storage)dyn_storage))": {
+            "label": "mapping(address => mapping(address => struct CurveSwapOperation[]))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_bool)": {
+            "label": "mapping(bytes32 => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint128,t_struct(StoredPositionInfo)7168_storage)": {
+            "label": "mapping(uint128 => struct StoredPositionInfo)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint16,t_bytes32)": {
+            "label": "mapping(uint16 => bytes32)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint16,t_mapping(t_uint64,t_mapping(t_address,t_bool)))": {
+            "label": "mapping(uint16 => mapping(uint64 => mapping(address => bool)))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint64,t_mapping(t_address,t_bool))": {
+            "label": "mapping(uint64 => mapping(address => bool))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint64,t_struct(StrategyMetadata)7180_storage)": {
+            "label": "mapping(uint64 => struct StrategyMetadata)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(CrossChainContext)8310_storage": {
+            "label": "struct CrossChainContext",
+            "members": [
+              {
+                "label": "wormholeContext",
+                "type": "t_struct(WormholeContext)8280_storage",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "inferredWormholeContext",
+                "type": "t_struct(InferredWormholeContext)8287_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "feeContext",
+                "type": "t_struct(CrossChainFeeContext)8292_storage",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "chainIdToApertureManager",
+                "type": "t_mapping(t_uint16,t_bytes32)",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "processedInstructions",
+                "type": "t_mapping(t_bytes32,t_bool)",
+                "offset": 0,
+                "slot": "5"
+              }
+            ],
+            "numberOfBytes": "192"
+          },
+          "t_struct(CrossChainFeeContext)8292_storage": {
+            "label": "struct CrossChainFeeContext",
+            "members": [
+              {
+                "label": "feeBps",
+                "type": "t_uint32",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "feeSink",
+                "type": "t_address",
+                "offset": 4,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(CurveRouterContext)9757_storage": {
+            "label": "struct CurveRouterContext",
+            "members": [
+              {
+                "label": "routes",
+                "type": "t_mapping(t_address,t_mapping(t_address,t_array(t_struct(CurveSwapOperation)9748_storage)dyn_storage))",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(CurveSwapOperation)9748_storage": {
+            "label": "struct CurveSwapOperation",
+            "members": [
+              {
+                "label": "pool",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "from_index",
+                "type": "t_int128",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "to_index",
+                "type": "t_int128",
+                "offset": 16,
+                "slot": "1"
+              },
+              {
+                "label": "underlying",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(InferredWormholeContext)8287_storage": {
+            "label": "struct InferredWormholeContext",
+            "members": [
+              {
+                "label": "coreBridge",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "weth",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "thisChainId",
+                "type": "t_uint16",
+                "offset": 20,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(StoredPositionInfo)7168_storage": {
+            "label": "struct StoredPositionInfo",
+            "members": [
+              {
+                "label": "ownerAddr",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "strategyChainId",
+                "type": "t_uint16",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "strategyId",
+                "type": "t_uint64",
+                "offset": 22,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(StrategyMetadata)7180_storage": {
+            "label": "struct StrategyMetadata",
+            "members": [
+              {
+                "label": "name",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "version",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "strategyManager",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(WormholeContext)8280_storage": {
+            "label": "struct WormholeContext",
+            "members": [
+              {
+                "label": "tokenBridge",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "consistencyLevel",
+                "type": "t_uint8",
+                "offset": 20,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint16": {
+            "label": "uint16",
+            "numberOfBytes": "2"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "866675b90dc9043fbb47237a258132e6d70d6a04d8d93f9410d80efa14e1268e": {
+      "address": "0x5b35875EB39eA144F47BD0c1ef147b3b7612d3ca",
+      "txHash": "0x7b4ba4f70e09d8ff99dbddb0162e832aafb175fe205469e71824cf338cbaeb0d",
+      "layout": {
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:67"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\ERC1967\\ERC1967UpgradeUpgradeable.sol:211"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\UUPSUpgradeable.sol:107"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "cAddrMap",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_mapping(t_enum(Market)5441,t_mapping(t_address,t_address))",
+            "contract": "LendingOptimizer",
+            "src": "contracts\\LendingOptimizer.sol:33"
+          },
+          {
+            "label": "currentMarket",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_mapping(t_address,t_enum(Market)5441)",
+            "contract": "LendingOptimizer",
+            "src": "contracts\\LendingOptimizer.sol:34"
+          },
+          {
+            "label": "userShare",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "LendingOptimizer",
+            "src": "contracts\\LendingOptimizer.sol:35"
+          },
+          {
+            "label": "totalShare",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "LendingOptimizer",
+            "src": "contracts\\LendingOptimizer.sol:36"
+          },
+          {
+            "label": "AAVE_V3_POOL",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_address",
+            "contract": "LendingOptimizer",
+            "src": "contracts\\LendingOptimizer.sol:38"
+          },
+          {
+            "label": "AVAX",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_array(t_address)5_storage",
+            "contract": "LendingOptimizer",
+            "src": "contracts\\LendingOptimizer.sol:39"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)5_storage": {
+            "label": "address[5]",
+            "numberOfBytes": "160"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_enum(Market)5441": {
+            "label": "enum LendingOptimizer.Market",
+            "members": [
+              "NONE",
+              "AAVE",
+              "BENQI",
+              "IRONBANK",
+              "TRADERJOE"
+            ],
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_address)": {
+            "label": "mapping(address => address)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_enum(Market)5441)": {
+            "label": "mapping(address => enum LendingOptimizer.Market)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_enum(Market)5441,t_mapping(t_address,t_address))": {
+            "label": "mapping(enum LendingOptimizer.Market => mapping(address => address))",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "f4605731c59aef8d9177af8aa819aa05729dbad432577857188f79f608aa5fb9": {
+      "address": "0xdbC43Ba45381e02825b14322cDdd15eC4B3164E6",
+      "txHash": "0x5b7763196eeaedbcb40d76240a9e07df07112f7001832c8d2a90ca5f813732de",
+      "layout": {
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\Initializable.sol:67"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\ERC1967\\ERC1967UpgradeUpgradeable.sol:211"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\proxy\\utils\\UUPSUpgradeable.sol:107"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\utils\\ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\access\\OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin\\contracts-upgradeable\\security\\ReentrancyGuardUpgradeable.sol:74"
+          },
+          {
+            "label": "WAVAX",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_address",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:56"
+          },
+          {
+            "label": "apertureManager",
+            "offset": 0,
+            "slot": "252",
+            "type": "t_address",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:59"
+          },
+          {
+            "label": "feeCollector",
+            "offset": 0,
+            "slot": "253",
+            "type": "t_address",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:60"
+          },
+          {
+            "label": "isController",
+            "offset": 0,
+            "slot": "254",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:61"
+          },
+          {
+            "label": "contractInfo",
+            "offset": 0,
+            "slot": "255",
+            "type": "t_struct(ContractInfo)10391_storage",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:64"
+          },
+          {
+            "label": "pairInfo",
+            "offset": 0,
+            "slot": "260",
+            "type": "t_struct(PairInfo)10380_storage",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:70"
+          },
+          {
+            "label": "leverageLevel",
+            "offset": 0,
+            "slot": "264",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:71"
+          },
+          {
+            "label": "pid",
+            "offset": 0,
+            "slot": "265",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:72"
+          },
+          {
+            "label": "collateralFactor",
+            "offset": 0,
+            "slot": "266",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:74"
+          },
+          {
+            "label": "stableBorrowFactor",
+            "offset": 0,
+            "slot": "267",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:75"
+          },
+          {
+            "label": "assetBorrowFactor",
+            "offset": 0,
+            "slot": "268",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:76"
+          },
+          {
+            "label": "targetDebtRatio",
+            "offset": 0,
+            "slot": "269",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:77"
+          },
+          {
+            "label": "minDebtRatio",
+            "offset": 0,
+            "slot": "270",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:78"
+          },
+          {
+            "label": "maxDebtRatio",
+            "offset": 0,
+            "slot": "271",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:79"
+          },
+          {
+            "label": "deltaThreshold",
+            "offset": 0,
+            "slot": "272",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:80"
+          },
+          {
+            "label": "vaultLimits",
+            "offset": 0,
+            "slot": "273",
+            "type": "t_struct(ApertureVaultLimits)3706_storage",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:82"
+          },
+          {
+            "label": "feeConfig",
+            "offset": 0,
+            "slot": "276",
+            "type": "t_struct(ApertureFeeConfig)3699_storage",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:83"
+          },
+          {
+            "label": "positions",
+            "offset": 0,
+            "slot": "279",
+            "type": "t_mapping(t_uint16,t_mapping(t_uint128,t_struct(Position)10394_storage))",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:87"
+          },
+          {
+            "label": "homoraPosId",
+            "offset": 0,
+            "slot": "280",
+            "type": "t_uint256",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:89"
+          },
+          {
+            "label": "vaultState",
+            "offset": 0,
+            "slot": "281",
+            "type": "t_struct(VaultState)10399_storage",
+            "contract": "HomoraPDNVault",
+            "src": "contracts\\HomoraPDNVault.sol:90"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint128,t_struct(Position)10394_storage)": {
+            "label": "mapping(uint128 => struct Position)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint16,t_mapping(t_uint128,t_struct(Position)10394_storage))": {
+            "label": "mapping(uint16 => mapping(uint128 => struct Position))",
+            "numberOfBytes": "32"
+          },
+          "t_struct(ApertureFeeConfig)3699_storage": {
+            "label": "struct HomoraPDNVault.ApertureFeeConfig",
+            "members": [
+              {
+                "label": "withdrawFee",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "harvestFee",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "managementFee",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(ApertureVaultLimits)3706_storage": {
+            "label": "struct HomoraPDNVault.ApertureVaultLimits",
+            "members": [
+              {
+                "label": "maxCapacity",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "maxOpenPerTx",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "maxWithdrawPerTx",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(ContractInfo)10391_storage": {
+            "label": "struct ContractInfo",
+            "members": [
+              {
+                "label": "adapter",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "bank",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "oracle",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "router",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "spell",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "4"
+              }
+            ],
+            "numberOfBytes": "160"
+          },
+          "t_struct(PairInfo)10380_storage": {
+            "label": "struct PairInfo",
+            "members": [
+              {
+                "label": "stableToken",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "assetToken",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "lpToken",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "rewardToken",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_struct(Position)10394_storage": {
+            "label": "struct Position",
+            "members": [
+              {
+                "label": "shareAmount",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(VaultState)10399_storage": {
+            "label": "struct VaultState",
+            "members": [
+              {
+                "label": "totalShareAmount",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "lastCollectionTimestamp",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint16": {
+            "label": "uint16",
+            "numberOfBytes": "2"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    }
+  }
+}
