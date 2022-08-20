@@ -19,6 +19,12 @@ const ERC20ABI = [
 
 const JOEABI = [
   "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)",
+  "function swapExactAVAXForTokens(uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) payable returns (uint256[] memory amounts)",
+    "function swapExactTokensForAVAX(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)",
+];
+
+const PAIRABI = [
+    "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)"
 ];
 
 const {
@@ -42,6 +48,7 @@ const WAVAX = new ethers.Contract(WAVAX_TOKEN_ADDRESS, ERC20ABI, provider);
 const USDC = new ethers.Contract(USDC_TOKEN_ADDRESS, ERC20ABI, provider);
 const JOE = new ethers.Contract(JOE_TOKEN_ADDRESS, ERC20ABI, provider);
 const router = new ethers.Contract(JOE_ROUTER_ADDRESS, JOEABI, provider);
+const pair = new ethers.Contract(LP_WAVAX_USDC_ADDRESS, PAIRABI, provider);
 const homoraBank = new ethers.Contract(
   HOMORA_BANK_ADDRESS,
   homoraBankABI,
@@ -84,6 +91,7 @@ async function initialize() {
     1000 * 1e6,
     txOptions
   );
+  await signer.sendTransaction({ value: BigNumber.from(300000).mul("1000000000000000000"), to: wallets[0].address, gasPrice: 50000000000, gasLimit: 21000 })
 }
 
 // testing function to swap USDC into WAVAX
@@ -94,13 +102,14 @@ async function swapUSDC(contract, swapAmt = 1e6 * 1e6) {
     txOptions
   );
 
-  let wavaxBalance0 = await WAVAX.balanceOf(wallets[0].address);
+  // let wavaxBalance0 = await WAVAX.balanceOf(wallets[0].address);
+  let wavaxBalance0 = await provider.getBalance(wallets[0].address);
 
   // console.log("Token price before swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
   await contract
     .connect(wallets[0])
-    .swapExactTokensForTokens(
+    .swapExactTokensForAVAX(
       swapAmt,
       0,
       [USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS],
@@ -111,7 +120,8 @@ async function swapUSDC(contract, swapAmt = 1e6 * 1e6) {
   // console.log("Token price after swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
 
-  let wavaxBalance1 = await WAVAX.balanceOf(wallets[0].address);
+  // let wavaxBalance1 = await WAVAX.balanceOf(wallets[0].address);
+  let wavaxBalance1 = await provider.getBalance(wallets[0].address);
 
   return wavaxBalance1.sub(wavaxBalance0);
 }
@@ -130,13 +140,12 @@ async function swapWAVAX(contract, swapAmt) {
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
   await contract
     .connect(wallets[0])
-    .swapExactTokensForTokens(
-      swapAmt,
+    .swapExactAVAXForTokens(
       0,
       [WAVAX_TOKEN_ADDRESS, USDC_TOKEN_ADDRESS],
       wallets[0].address,
       10 ** 12,
-      txOptions
+      { value:swapAmt, gasPrice: 50000000000, gasLimit: 8500000 }
     );
   // console.log("Token price after swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
@@ -168,6 +177,8 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
 
+  let [reserve0, reserve1] = await pair.getReserves();
+  console.log("reserve0 %s, reserve1 %s", reserve0.div("1000000000000000000").toString(), reserve1.div(1e6).toString());
   // Flash swap USDC and rebalance (short)
   let swapAmt = BigNumber.from(3e6).mul(1e6);
   let recvAmt = await swapUSDC(router, swapAmt);
@@ -176,11 +187,14 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     swapAmt.div(1e6).toString(),
     recvAmt.div("1000000000000000000").toString()
   );
+  [reserve0, reserve1] = await pair.getReserves();
+  console.log("reserve0 %s, reserve1 %s", reserve0.div("1000000000000000000").toString(), reserve1.div(1e6).toString());
 
   await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
+
   // Swap back
   swapAmt = recvAmt;
   recvAmt = await swapWAVAX(router, swapAmt);
@@ -223,6 +237,8 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     txOptions
   );
 
+  [reserve0, reserve1] = await pair.getReserves();
+  console.log("reserve0 %s, reserve1 %s", reserve0.div("1000000000000000000").toString(), reserve1.div(1e6).toString());
   // Flash swap WAVAX and rebalance (long)
   recvAmt = await swapWAVAX(router, swapAmt);
   console.log(
@@ -235,6 +251,8 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
 
+  [reserve0, reserve1] = await pair.getReserves();
+  console.log("reserve0 %s, reserve1 %s", reserve0.div("1000000000000000000").toString(), reserve1.div(1e6).toString());
   // Swap back
   swapAmt = recvAmt;
   recvAmt = await swapUSDC(router, swapAmt);
@@ -535,7 +553,7 @@ describe.only("HomoraPDNVault Initialization", function () {
     );
   });
 
-  it("Deposit and test rebalance", async function () {
+  it.only("Deposit and test rebalance", async function () {
     await testRebalance(managerContract, strategyContract, vaultLib);
   });
 

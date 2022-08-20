@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.0 <0.9.0;
-
+import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
@@ -683,6 +683,9 @@ library VaultLib {
         uint256 amtARepay,
         uint256 amtBRepay
     ) internal {
+        console.log("collWithdrawAmt", collWithdrawAmt);
+        console.log("amtARepay", amtARepay);
+        console.log("amtBRepay", amtBRepay);
         IHomoraAdapter(contractInfo.adapter).homoraExecute(
             contractInfo,
             homoraPosId,
@@ -747,13 +750,7 @@ library VaultLib {
             lpToken,
             stableToken
         );
-        (
-            vars.collWithdrawAmt,
-            vars.amtARepay,
-            vars.amtBRepay,
-            vars.Sa,
-            vars.Sb
-        ) = rebalanceMathShort(pos, vars);
+        vars = rebalanceMathShort(pos, vars);
     }
 
     /// @dev Rebalance Homora Bank's farming position assuming delta is short
@@ -782,12 +779,29 @@ library VaultLib {
             leverageLevel
         );
 
+        console.log("collWithdrawAmt", vars.collWithdrawAmt);
+        console.log("amtAWithdraw", vars.amtAWithdraw);
+        console.log("amtBWithdraw", vars.amtBWithdraw);
+        console.log("amtARepay", vars.amtARepay);
+        console.log("amtBRepay", vars.amtBRepay);
+        console.log("amtAIn", vars.amtAWithdraw - vars.amtARepay);
+        console.log("amtBOut", vars.amtBRepay - vars.amtBWithdraw);
+        console.log("reserveABefore", vars.reserveABefore);
+        console.log("reserveBBefore", vars.reserveBBefore);
+        IHomoraAvaxRouter _router = IHomoraAvaxRouter(contractInfo.router);
+        address[] memory path = new address[](2);
+        (path[0], path[1]) = (pairInfo.stableToken, pairInfo.assetToken);
+        uint256[] memory amountsOut = _router.getAmountsOut(vars.amtAWithdraw - vars.amtARepay, path);
+        uint256[] memory amountsIn = _router.getAmountsIn(vars.amtBRepay - vars.amtBWithdraw, path);
+        console.log("amtAIn - getAmountsIn", vars.amtAWithdraw - vars.amtARepay - amountsIn[0]);
+        console.log("getAmountsOut - amtBOut", amountsOut[1] - (vars.amtBRepay - vars.amtBWithdraw));
+
         removeLiquidity(
             contractInfo,
             homoraPosId,
             pairInfo,
             vars.collWithdrawAmt,
-            vars.amtARepay,
+            vars.amtARepay - 1,
             vars.amtBRepay
         );
 
@@ -825,12 +839,7 @@ library VaultLib {
         );
         vars.amtAReward = IERC20(stableToken).balanceOf(address(this));
 
-        (
-            vars.amtABorrow,
-            vars.amtBBorrow,
-            vars.Sa,
-            vars.Sb
-        ) = rebalanceMathLong(pos, vars);
+        vars = rebalanceMathLong(pos, vars);
     }
 
     /// @dev Rebalance Homora Bank's farming position assuming delta is long
@@ -904,13 +913,7 @@ library VaultLib {
     )
         internal
         pure
-        returns (
-            uint256,
-            uint256,
-            uint256,
-            uint256,
-            uint256
-        )
+        returns (ShortHelper memory)
     {
         // Ka << 1, multiply by someLargeNumber 1e18
         vars.Ka = SOME_LARGE_NUMBER.mulDiv(
@@ -961,13 +964,7 @@ library VaultLib {
         );
         vars.amtBRepay = vars.amtBWithdraw + vars.Sb;
 
-        return (
-            vars.collWithdrawAmt,
-            vars.amtARepay,
-            vars.amtBRepay,
-            vars.Sa,
-            vars.Sb
-        );
+        return vars;
     }
 
     /// @dev Calculate the amount of each token to borrow by Homora to reach DN
@@ -977,12 +974,7 @@ library VaultLib {
     function rebalanceMathLong(VaultPosition memory pos, LongHelper memory vars)
         internal
         pure
-        returns (
-            uint256,
-            uint256,
-            uint256,
-            uint256
-        )
+        returns (LongHelper memory)
     {
         vars.Sb = vars.reserveBBefore.mulDiv(
             pos.amtB - pos.debtAmtB,
@@ -1049,7 +1041,7 @@ library VaultLib {
                 );
         }
 
-        return (vars.amtABorrow, vars.amtBBorrow, vars.Sa, vars.Sb);
+        return vars;
     }
 
     /// @notice Swap fromToken into toToken

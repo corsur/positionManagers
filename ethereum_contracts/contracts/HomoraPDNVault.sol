@@ -1,6 +1,7 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
+import "hardhat/console.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
@@ -648,6 +649,11 @@ contract HomoraPDNVault is
         );
 
         uint256 rewardETHValue = getTokenETHValue(pairInfo.stableToken, stableBalance);
+
+        // Not worth the gas
+        if (rewardETHValue < 50e15) {
+            return;
+        }
 
         if (rewardETHValue < minReinvestETH) {
             revert Insufficient_Liquidity_Mint();
