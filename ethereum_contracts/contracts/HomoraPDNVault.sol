@@ -649,11 +649,6 @@ contract HomoraPDNVault is
 
         uint256 rewardETHValue = getTokenETHValue(pairInfo.stableToken, stableBalance);
 
-//        // Not worth the gas
-//        if (rewardETHValue < 50e15) {
-//            return;
-//        }
-
         if (rewardETHValue < minReinvestETH) {
             revert Insufficient_Liquidity_Mint();
         }

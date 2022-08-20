@@ -963,8 +963,8 @@ library VaultLib {
 
         return (
             vars.collWithdrawAmt,
-            vars.amtARepay - 3,
-            vars.amtBRepay - 3,
+            vars.amtARepay,
+            vars.amtBRepay,
             vars.Sa,
             vars.Sb
         );
