@@ -683,9 +683,6 @@ library VaultLib {
         uint256 amtARepay,
         uint256 amtBRepay
     ) internal {
-        console.log("collWithdrawAmt", collWithdrawAmt);
-        console.log("amtARepay", amtARepay);
-        console.log("amtBRepay", amtBRepay);
         IHomoraAdapter(contractInfo.adapter).homoraExecute(
             contractInfo,
             homoraPosId,
@@ -788,20 +785,17 @@ library VaultLib {
         console.log("amtBOut", vars.amtBRepay - vars.amtBWithdraw);
         console.log("reserveABefore", vars.reserveABefore);
         console.log("reserveBBefore", vars.reserveBBefore);
-        IHomoraAvaxRouter _router = IHomoraAvaxRouter(contractInfo.router);
-        address[] memory path = new address[](2);
-        (path[0], path[1]) = (pairInfo.stableToken, pairInfo.assetToken);
-        uint256[] memory amountsOut = _router.getAmountsOut(vars.amtAWithdraw - vars.amtARepay, path);
-        uint256[] memory amountsIn = _router.getAmountsIn(vars.amtBRepay - vars.amtBWithdraw, path);
-        console.log("amtAIn - getAmountsIn", vars.amtAWithdraw - vars.amtARepay - amountsIn[0]);
-        console.log("getAmountsOut - amtBOut", amountsOut[1] - (vars.amtBRepay - vars.amtBWithdraw));
+        uint256 amountOut = getAmountOut(vars.Sa, vars.reserveAAfter, vars.reserveBAfter);
+        uint256 amountIn = getAmountIn(vars.Sb, vars.reserveAAfter, vars.reserveBAfter);
+        console.log("amtAIn - getAmountsIn", vars.Sa - amountIn);
+        console.log("getAmountsOut - amtBOut", amountOut - vars.Sb);
 
         removeLiquidity(
             contractInfo,
             homoraPosId,
             pairInfo,
             vars.collWithdrawAmt,
-            vars.amtARepay - 1,
+            vars.amtARepay,
             vars.amtBRepay
         );
 
@@ -824,6 +818,33 @@ library VaultLib {
         ) {
             revert Slippage_Too_Large();
         }
+    }
+
+    // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
+    function getAmountOut(
+        uint256 amountIn,
+        uint256 reserveIn,
+        uint256 reserveOut
+    ) internal pure returns (uint256 amountOut) {
+        require(amountIn > 0, "JoeLibrary: INSUFFICIENT_INPUT_AMOUNT");
+        require(reserveIn > 0 && reserveOut > 0, "JoeLibrary: INSUFFICIENT_LIQUIDITY");
+        uint256 amountInWithFee = amountIn * 997;
+        uint256 numerator = amountInWithFee * reserveOut;
+        uint256 denominator = reserveIn * 1000 + amountInWithFee;
+        amountOut = numerator / denominator;
+    }
+
+    // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
+    function getAmountIn(
+        uint256 amountOut,
+        uint256 reserveIn,
+        uint256 reserveOut
+    ) internal pure returns (uint256 amountIn) {
+        require(amountOut > 0, "JoeLibrary: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(reserveIn > 0 && reserveOut > 0, "JoeLibrary: INSUFFICIENT_LIQUIDITY");
+        uint256 numerator = reserveIn * amountOut * 1000;
+        uint256 denominator = (reserveOut - amountOut) * 997;
+        amountIn = numerator / denominator + 1;
     }
 
     function populateLongHelper(
