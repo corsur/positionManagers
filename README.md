@@ -12,6 +12,7 @@ This monorepository contains the source code for the core smart contracts implem
         |-- contracts/anchor_earn_proxy // A wrapper of Anchor Earn.
         |-- contracts/terra_manager // Aperture manager on Terra which handles all Terra strategies and cross-chain communications with Aperture managers on other chains.
     |-- ethereum_contracts // EVM contracts with Hardhat.
+    |-- solana_contracts // Solana contracts with Anchor framework.
     |-- scripts // Controller and data collection scripts.
 
 ## Development
@@ -102,10 +103,10 @@ Aperture will deploy a Manager contract on each supported chain, whose responsib
 - Communicate with Aperture Manager contracts on other chains to facilitate position creation / close and fund transfers.
 - Manage investment positions on their respective chains.
 
-For example, the Terra Manager is responsible for:
+For example, the Ethereum Manager is responsible for:
 
-- Communicating with Managers on Ethereum / BSC / Solana and other supported chains.
-- Managing Terra investment positions opened by users across all supported chains.
+- Communicating with Managers on Terra / BSC / Solana and other supported chains.
+- Managing Ethereum investment positions opened by users across all supported chains.
 
 ![alt text](https://drive.google.com/uc?export=download&id=17fAC9-q1ip1SVJ4_lum1SfdTizVRgv4X)
 
@@ -153,28 +154,3 @@ There are two types of position manager schemes. Lite position manager and full 
 - Full position manager is slightly more involved. Instead of keeping track of balance directly, it delegates the actual logic to a contract associated with a particular position. This helps to maintain the bookkeeping for more complicated strategies.
 
 ![alt text](https://drive.google.com/uc?export=download&id=1B-65Ym_sDulaozvrCyJN_mf9ROQh6vu6)
-
-### Terra Only Design
-
-Initially, Aperture will launch on Terra first without the aforementioned cross-chain ability. Interoperability will be added incrementally based on the initial launch. For the initial version, Aperture will be having the following modules:
-
-- Terra manager
-
-  - Entry point for users to interact with any investment strategies. Users will pass in the investment type and investment action to the manager. Terra manager will take care of locating individual position managers and delegate the business logic to the position manager to handle.
-
-  - If users wish to update existing investment positions, a position id can be passed in for Terra manager to operate on.
-
-- Delta-neutral position manager
-  - Is a full position manager
-  - Handles bookkeeping and delegate requests to specific delta-neutral contract.
-  - See Aperture's [GitBook](https://docs.aperture.finance/docs/aperture-invest+/delta-neutral-strategy-terra) for an overview; there are pages that go into detail about position opening, etc.
-- Delta-neutral contract
-  - Contains actual logic to carry out the delta-neutral strategy.
-- Anchor Earn proxy
-  - Is a lite position manager
-  - Contract that contains business logic specific to Anchor Earn.
-  - This simple strategy put deposited funds in Anchor Earn. This is intended to be offered to non-Terra users (for example, Avax/Polygon/Ethereum/BSC/Solana users can use this strategy to achieve cross-chain Anchor Earn investment).
-
-To put the above modules together, we have the following localized setup:
-
-![alt text](https://drive.google.com/uc?export=download&id=1xLw3hhRL8YeupAcmjJgn09pLIeRcff2p)
