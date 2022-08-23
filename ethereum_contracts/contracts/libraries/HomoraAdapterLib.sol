@@ -17,19 +17,6 @@ library HomoraAdapterLib {
     bytes4 private constant ERC20_TRANSFER_SIG =
         bytes4(keccak256("transfer(address,uint256)"));
 
-    function adapterApproveHomoraBank(
-        IHomoraAdapter self,
-        address homoraBank,
-        address tokenAddr,
-        uint256 amount
-    ) public {
-        self.doWork(
-            tokenAddr,
-            0,
-            abi.encodeWithSelector(ERC20_APPROVE_SIG, homoraBank, amount)
-        );
-    }
-
     /// @dev fund adapter contract and approve HomoraBank to use the fund.
     /// @param tokenAddr the token to transfer and approve.
     /// @param amount the amount to transfer and approve.
@@ -40,7 +27,11 @@ library HomoraAdapterLib {
         uint256 amount
     ) external {
         IERC20(tokenAddr).safeTransfer(address(self), amount);
-        adapterApproveHomoraBank(self, homoraBank, tokenAddr, amount);
+        self.doWork(
+            tokenAddr,
+            0,
+            abi.encodeWithSelector(ERC20_APPROVE_SIG, homoraBank, amount)
+        );
     }
 
     function pullTokenFromAdapter(
@@ -96,7 +87,7 @@ library HomoraAdapterLib {
         bytes memory spellBytes,
         PairInfo storage pairInfo,
         uint256 value
-    ) internal returns (bytes memory) {
+    ) external returns (bytes memory) {
         bytes memory homoraExecuteBytes = abi.encodeWithSelector(
             HOMORA_EXECUTE_SIG,
             posId,
@@ -106,7 +97,7 @@ library HomoraAdapterLib {
 
         bytes memory returndata = self.doWork{value: value}(
             contractInfo.bank,
-            msg.value,
+            value,
             homoraExecuteBytes
         );
         pullAllAssets(

@@ -647,11 +647,13 @@ contract HomoraPDNVault is
         uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
             address(this)
         );
+        console.log("stableBalance", stableBalance);
 
         uint256 rewardETHValue = getTokenETHValue(pairInfo.stableToken, stableBalance);
 
         // Not worth the gas
         if (rewardETHValue < 50e15) {
+//            IERC20(pairInfo.stableToken).safeTransfer(contractInfo.oracle, stableBalance);
             return;
         }
 
@@ -670,6 +672,11 @@ contract HomoraPDNVault is
             pid,
             0
         );
+
+        stableBalance = IERC20(pairInfo.stableToken).balanceOf(
+            address(this)
+        );
+        console.log("stableBalance", stableBalance);
 
         uint256 equityAfter = getEquityETHValue();
 

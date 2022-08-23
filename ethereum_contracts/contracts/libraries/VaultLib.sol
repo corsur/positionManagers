@@ -59,8 +59,6 @@ struct ShortHelper {
     uint256 amtBWithdraw; // token B removed from LP
     uint256 reserveABefore; // A's pool reserve before LP removal
     uint256 reserveBBefore; // B's pool reserve before LP removal
-    uint256 reserveAAfter; // A's pool reserve after LP removal
-    uint256 reserveBAfter; // B's pool reserve after LP removal
 }
 
 struct LongHelper {
@@ -105,7 +103,7 @@ library VaultLib {
     uint256 public constant FEE_RATE = 30; // feeRate = 0.3%
     uint256 public constant UNITY = 10000;
     uint256 public constant UNITY_MINUS_FEE = 9970;
-    uint256 public constant SOME_LARGE_NUMBER = 10**18;
+    uint256 public constant SOME_LARGE_NUMBER = 2**112;
     uint256 public constant MAX_UINT = 2**256 - 1;
 
     error Slippage_Too_Large();
@@ -308,7 +306,11 @@ library VaultLib {
 
     ///********* Oracle related functions *********///
 
-    function support(address oracle, address token) external view returns (bool) {
+    function support(address oracle, address token)
+        external
+        view
+        returns (bool)
+    {
         return IHomoraOracle(oracle).support(token);
     }
 
@@ -776,28 +778,50 @@ library VaultLib {
             leverageLevel
         );
 
+//        console.log("reserveABefore", vars.reserveABefore);
+//        console.log("reserveBBefore", vars.reserveBBefore);
+//        console.log("collateralSize", pos.collateralSize);
+//        console.log("amtA", pos.amtA);
+//        console.log("amtB", pos.amtB);
+//        console.log("debtAmtA", pos.debtAmtA);
+//        console.log("debtAmtB", pos.debtAmtB);
+//        console.log("collWithdrawAmt", vars.collWithdrawAmt);
+//        console.log("amtAWithdraw", vars.amtAWithdraw);
+//        console.log("amtBWithdraw", vars.amtBWithdraw);
+//        console.log("amtARepay", vars.amtARepay);
+//        console.log("amtBRepay", vars.amtBRepay);
+//        console.log("amtAIn", vars.amtAWithdraw - vars.amtARepay);
+//        console.log("amtBOut", vars.amtBRepay - vars.amtBWithdraw);
+//        uint256 amountOut = getAmountOut(
+//            vars.amtAWithdraw - vars.amtARepay,
+//            vars.reserveABefore - vars.amtAWithdraw,
+//            vars.reserveBBefore - vars.amtBWithdraw
+//        );
+//        uint256 amountIn = getAmountIn(
+//            vars.amtBRepay - vars.amtBWithdraw,
+//            vars.reserveABefore - vars.amtAWithdraw,
+//            vars.reserveBBefore - vars.amtBWithdraw
+//        );
+//        console.log("getAmountsIn", amountIn);
+//        console.log("getAmountsOut", amountOut);
+//        console.log(
+//            "amtAIn - getAmountsIn",
+//            vars.amtAWithdraw - vars.amtARepay - amountIn
+//        );
+//        console.log(
+//            "getAmountsOut - amtBOut",
+//            amountOut - (vars.amtBRepay - vars.amtBWithdraw)
+//        );
+//        uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
+//            address(this)
+//        );
+//        console.log("stableBalance", stableBalance);
+
         console.log("collWithdrawAmt", vars.collWithdrawAmt);
         console.log("amtAWithdraw", vars.amtAWithdraw);
         console.log("amtBWithdraw", vars.amtBWithdraw);
         console.log("amtARepay", vars.amtARepay);
         console.log("amtBRepay", vars.amtBRepay);
-        console.log("amtAIn", vars.amtAWithdraw - vars.amtARepay);
-        console.log("amtBOut", vars.amtBRepay - vars.amtBWithdraw);
-        console.log("reserveABefore", vars.reserveABefore);
-        console.log("reserveBBefore", vars.reserveBBefore);
-        uint256 amountOut = getAmountOut(vars.Sa, vars.reserveAAfter, vars.reserveBAfter);
-        uint256 amountIn = getAmountIn(vars.Sb, vars.reserveAAfter, vars.reserveBAfter);
-        console.log("amtAIn - getAmountsIn", vars.Sa - amountIn);
-        console.log("getAmountsOut - amtBOut", amountOut - vars.Sb);
-
-        removeLiquidity(
-            contractInfo,
-            homoraPosId,
-            pairInfo,
-            vars.collWithdrawAmt,
-            vars.amtARepay,
-            vars.amtBRepay
-        );
 
         // Homora's Spell swaps token A to token B
         uint256 valueBeforeSwap = getTokenETHValue(
@@ -818,6 +842,21 @@ library VaultLib {
         ) {
             revert Slippage_Too_Large();
         }
+
+        removeLiquidity(
+            contractInfo,
+            homoraPosId,
+            pairInfo,
+            vars.collWithdrawAmt,
+            vars.amtARepay,
+            vars.amtBRepay
+        );
+
+        console.log("collWithdrawAmt", vars.collWithdrawAmt);
+        console.log("amtAWithdraw", vars.amtAWithdraw);
+        console.log("amtBWithdraw", vars.amtBWithdraw);
+        console.log("amtARepay", vars.amtARepay);
+        console.log("amtBRepay", vars.amtBRepay);
     }
 
     // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
@@ -827,7 +866,10 @@ library VaultLib {
         uint256 reserveOut
     ) internal pure returns (uint256 amountOut) {
         require(amountIn > 0, "JoeLibrary: INSUFFICIENT_INPUT_AMOUNT");
-        require(reserveIn > 0 && reserveOut > 0, "JoeLibrary: INSUFFICIENT_LIQUIDITY");
+        require(
+            reserveIn > 0 && reserveOut > 0,
+            "JoeLibrary: INSUFFICIENT_LIQUIDITY"
+        );
         uint256 amountInWithFee = amountIn * 997;
         uint256 numerator = amountInWithFee * reserveOut;
         uint256 denominator = reserveIn * 1000 + amountInWithFee;
@@ -841,7 +883,10 @@ library VaultLib {
         uint256 reserveOut
     ) internal pure returns (uint256 amountIn) {
         require(amountOut > 0, "JoeLibrary: INSUFFICIENT_OUTPUT_AMOUNT");
-        require(reserveIn > 0 && reserveOut > 0, "JoeLibrary: INSUFFICIENT_LIQUIDITY");
+        require(
+            reserveIn > 0 && reserveOut > 0,
+            "JoeLibrary: INSUFFICIENT_LIQUIDITY"
+        );
         uint256 numerator = reserveIn * amountOut * 1000;
         uint256 denominator = (reserveOut - amountOut) * 997;
         amountIn = numerator / denominator + 1;
@@ -931,11 +976,7 @@ library VaultLib {
     function rebalanceMathShort(
         VaultPosition memory pos,
         ShortHelper memory vars
-    )
-        internal
-        pure
-        returns (ShortHelper memory)
-    {
+    ) internal view returns (ShortHelper memory) {
         // Ka << 1, multiply by someLargeNumber 1e18
         vars.Ka = SOME_LARGE_NUMBER.mulDiv(
             UNITY * (pos.debtAmtB - pos.amtB),
@@ -943,27 +984,30 @@ library VaultLib {
             UP
         );
         vars.collWithdrawAmt =
+            vars.L *
             pos.collateralSize.mulDiv(
-                vars.L *
-                    (pos.debtAmtA *
-                        SOME_LARGE_NUMBER +
-                        vars.Ka *
-                        vars.reserveABefore),
-                2 * (SOME_LARGE_NUMBER + vars.Ka) * pos.amtA,
+                pos.debtAmtA *
+                    SOME_LARGE_NUMBER +
+                    vars.Ka *
+                    vars.reserveABefore,
+                2 * (SOME_LARGE_NUMBER + vars.Ka - 1) * pos.amtA,
                 UP // round up to withdraw enough LP to repay A/B
             ) -
             pos.collateralSize.mulDiv(vars.L - 2, 2, DOWN);
         require(vars.collWithdrawAmt > 0, "Must withdraw >0");
 
         vars.amtAWithdraw = pos.amtA.mulDiv(
-            vars.collWithdrawAmt - 1, // round down repay amounts
+            vars.collWithdrawAmt - 2, // round down repay amounts
             pos.collateralSize,
             DOWN
         );
-        vars.reserveAAfter = vars.reserveABefore - vars.amtAWithdraw;
-        vars.Sa = vars.reserveAAfter.mulDiv(vars.Ka, SOME_LARGE_NUMBER, UP);
+        vars.Sa = vars.Ka.mulDiv(
+            vars.reserveABefore - vars.amtAWithdraw,
+            SOME_LARGE_NUMBER,
+            UP
+        );
         if (vars.amtAWithdraw > vars.Sa) {
-            vars.amtARepay = vars.amtAWithdraw - vars.Sa;
+            vars.amtARepay = vars.amtAWithdraw - vars.Sa - 1;
         } else {
             vars.amtARepay = 0;
             vars.collWithdrawAmt = pos.collateralSize.mulDiv(
@@ -973,17 +1017,17 @@ library VaultLib {
             );
         }
         vars.amtBWithdraw = pos.amtB.mulDiv(
-            vars.collWithdrawAmt - 1,
+            vars.collWithdrawAmt - 2,
             pos.collateralSize,
             DOWN
         );
-        vars.reserveBAfter = vars.reserveBBefore - vars.amtBWithdraw - 1;
-        vars.Sb = vars.reserveBAfter.mulDiv(
-            pos.debtAmtB - pos.amtB,
-            vars.reserveBBefore - pos.amtB,
-            DOWN
-        );
-        vars.amtBRepay = vars.amtBWithdraw + vars.Sb;
+        vars.amtBRepay =
+            (vars.amtBWithdraw *
+                (vars.reserveBBefore - pos.debtAmtB) +
+                vars.reserveBBefore *
+                (pos.debtAmtB - pos.amtB)) /
+            (vars.reserveBBefore - pos.amtB);
+        vars.Sb = vars.amtBRepay - vars.amtBWithdraw;
 
         return vars;
     }
