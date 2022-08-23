@@ -106,7 +106,7 @@ library HomoraAdapterLib {
 
         bytes memory returndata = self.doWork{value: value}(
             contractInfo.bank,
-            msg.value,
+            value,
             homoraExecuteBytes
         );
         pullAllAssets(
