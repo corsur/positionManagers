@@ -3,6 +3,7 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -23,6 +24,7 @@ contract HomoraPDNVault is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
+    PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     IStrategyManager
 {
@@ -131,8 +133,12 @@ contract HomoraPDNVault is
         address _rewardToken,
         uint256 _pid
     ) public initializer {
+        // TODO(Gao): See if we can only keep one init here. Based on OZ's code
+        // https://ethereum.stackexchange.com/questions/122462/difference-between-init-and-init-unchained
+        // One init may also invoke the initializer of parents.
         __Ownable_init();
         __UUPSUpgradeable_init();
+        __Pausable_init();
 
         apertureManager = _apertureManager;
         setFeeCollector(_feeCollector);
@@ -161,6 +167,16 @@ contract HomoraPDNVault is
 
     // Only owner of this logic contract can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    /// @dev Pause the contract. Revert if already paused.
+    function pause() external onlyOwner {
+        PausableUpgradeable._pause();
+    }
+
+    ///@dev Unpause the contract. Revert if already unpaused.
+    function unpause() external onlyOwner {
+        PausableUpgradeable._unpause();
+    }
 
     /// @dev Set config for delta neutral valut.
     /// @param _leverageLevel: Target leverage
@@ -282,7 +298,7 @@ contract HomoraPDNVault is
         PositionInfo memory position_info,
         AssetInfo[] calldata assets,
         bytes calldata data
-    ) external onlyApertureManager nonReentrant {
+    ) external onlyApertureManager nonReentrant whenNotPaused {
         increasePositionInternal(position_info, assets, data);
     }
 
@@ -294,7 +310,7 @@ contract HomoraPDNVault is
         PositionInfo memory position_info,
         AssetInfo[] calldata assets,
         bytes calldata data
-    ) external onlyApertureManager nonReentrant {
+    ) external onlyApertureManager nonReentrant whenNotPaused {
         increasePositionInternal(position_info, assets, data);
     }
 
@@ -336,7 +352,7 @@ contract HomoraPDNVault is
         PositionInfo memory position_info,
         Recipient calldata recipient,
         bytes calldata data
-    ) external onlyApertureManager nonReentrant {
+    ) external onlyApertureManager nonReentrant whenNotPaused {
         (
             uint256 shareAmount,
             uint256 amtAMin,
@@ -360,7 +376,7 @@ contract HomoraPDNVault is
         PositionInfo memory position_info,
         Recipient calldata recipient,
         bytes calldata data
-    ) external onlyApertureManager nonReentrant {
+    ) external onlyApertureManager nonReentrant whenNotPaused {
         (
             uint256 amtAMin,
             uint256 amtBMin,

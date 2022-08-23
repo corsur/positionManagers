@@ -156,11 +156,20 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     homoraPosId,
     txOptions
   );
-  let [usdcHold, wavaxHold] = await vaultLib.convertCollateralToTokens(collSize, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
+  let [usdcHold, wavaxHold] = await vaultLib.convertCollateralToTokens(
+    collSize,
+    LP_WAVAX_USDC_ADDRESS,
+    USDC_TOKEN_ADDRESS
+  );
   console.log("collateral: usdc: %d, wavax: %d", usdcHold, wavaxHold);
 
   // check debt
-  let [usdcDebt, wavaxDebt] = await vaultLib.getDebtAmounts(homoraBank.address, homoraPosId, USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS);
+  let [usdcDebt, wavaxDebt] = await vaultLib.getDebtAmounts(
+    homoraBank.address,
+    homoraPosId,
+    USDC_TOKEN_ADDRESS,
+    WAVAX_TOKEN_ADDRESS
+  );
   console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
 
   // check if position state is healthy (no need to rebalance)
@@ -385,10 +394,16 @@ async function testDepositAndWithdraw(
   var collSize0 = shareAmount0.mul(totalCollateralSize).div(totalShareAmount);
   var collSize1 = shareAmount1.mul(totalCollateralSize).div(totalShareAmount);
 
-  [usdcAmount0, wavaxAmount0] =
-    await vaultLib.convertCollateralToTokens(collSize0, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
-  [usdcAmount1, wavaxAmount1] =
-    await vaultLib.convertCollateralToTokens(collSize1, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
+  [usdcAmount0, wavaxAmount0] = await vaultLib.convertCollateralToTokens(
+    collSize0,
+    LP_WAVAX_USDC_ADDRESS,
+    USDC_TOKEN_ADDRESS
+  );
+  [usdcAmount1, wavaxAmount1] = await vaultLib.convertCollateralToTokens(
+    collSize1,
+    LP_WAVAX_USDC_ADDRESS,
+    USDC_TOKEN_ADDRESS
+  );
 
   var totalAmount0InUsdc = 2 * usdcAmount0;
   var totalAmount1InUsdc = 2 * usdcAmount1;
@@ -531,7 +546,7 @@ describe.only("HomoraPDNVault Initialization", function () {
       managerContract,
       strategyContract,
       homoraAdapter,
-        vaultLib
+      vaultLib
     );
   });
 
@@ -547,5 +562,56 @@ describe.only("HomoraPDNVault Initialization", function () {
     await expect(
       strategyContract.connect(wallets[0]).setConfig(0, 0, 0, 0, txOptions)
     ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Should fail if request pause using unauthorized addr", async function () {
+    // Pause Homora strategy contract.
+    await expect(
+      strategyContract.connect(wallets[0]).pause()
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Should fail if request unpause using unauthorized addr", async function () {
+    // Pause Homora strategy contract using admin contract.
+    await strategyContract.connect(mainWallet).pause();
+
+    // Unpause using unauthorized contract.
+    await expect(
+      strategyContract.connect(wallets[0]).pause()
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("Should fail create position if contract is paused", async function () {
+    // Pause Homora strategy contract using admin contract.
+    await strategyContract.connect(mainWallet).pause();
+
+    // Approve to spend.
+    await USDC.connect(wallets[0]).approve(
+      managerContract.address,
+      usdcDepositAmount0
+    );
+
+    // Craft open position data.
+    let openPositionBytesArray = ethers.utils.arrayify(
+      ethers.utils.defaultAbiCoder.encode(
+        ["uint256", "uint256"],
+        [
+          minEquityReceived0, // uint256 minEquityETH
+          0, // uint256 minReinvestETH
+        ]
+      )
+    );
+
+    // Deposit 1000 USDC to vault from wallet 0.
+    await expect(
+      managerContract
+        .connect(wallets[0])
+        .createPosition(
+          /*strategyChainId=*/ AVAX_CHAIN_ID,
+          /*strategyId=*/ 0,
+          [[USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
+          openPositionBytesArray,
+          txOptions
+        )
+    ).to.be.revertedWith("Pausable: paused");
   });
 });
