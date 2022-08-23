@@ -1,26 +1,37 @@
 const { ethers } = require("hardhat");
 
 async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
-  const curveRouterLib = await ethers.getContractFactory(
+  const curveRouterLibFactory = await ethers.getContractFactory(
     "CurveRouterLib",
     signer
   );
-  const curveRouterLibAddress = (await curveRouterLib.deploy()).address;
+  // The `deploy()` only broadcasts tx out. We still need to wait for its
+  // inclusion by miners/validators first.
+  const curveRouterLib = await curveRouterLibFactory.deploy();
+  // Wait for tx to be included in the block.
+  await curveRouterLib.deployed();
+  console.log(`Deployed curve router at ${curveRouterLib.address}`);
 
-  const crossChainLib = await ethers.getContractFactory("CrossChainLib", {
-    libraries: {
-      CurveRouterLib: curveRouterLibAddress,
-    },
-    signer: signer,
-  });
-  const crossChainLibAddress = (await crossChainLib.deploy()).address;
+  const crossChainLibFactory = await ethers.getContractFactory(
+    "CrossChainLib",
+    {
+      libraries: {
+        CurveRouterLib: curveRouterLib.address,
+      },
+      signer: signer,
+    }
+  );
+  const crossChainLib = await crossChainLibFactory.deploy();
+  // Wait for tx to be included in the block.
+  await crossChainLib.deployed();
+  console.log(`Deployed cross-chain lib at ${crossChainLib.address}`);
 
   const apertureManagerContractFactory = await ethers.getContractFactory(
     "ApertureManager",
     {
       libraries: {
-        CrossChainLib: crossChainLibAddress,
-        CurveRouterLib: curveRouterLibAddress,
+        CurveRouterLib: curveRouterLib.address,
+        CrossChainLib: crossChainLib.address,
       },
       signer: signer,
     }
@@ -29,8 +40,8 @@ async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
   const apertureManagerProxy = await upgrades.deployProxy(
     apertureManagerContractFactory,
     [
-      [wormholeTokenBridgeAddr, /*consistencyLevel=*/ 1],
-      [/*feeBps=*/ 100, /*feeSink=*/ wormholeTokenBridgeAddr],
+      [wormholeTokenBridgeAddr, /*consistencyLevel=*/ 15],
+      [/*feeBps=*/ 100, /*feeSink=*/ signer.address],
     ],
     { unsafeAllow: ["delegatecall"], kind: "uups" }
   );
