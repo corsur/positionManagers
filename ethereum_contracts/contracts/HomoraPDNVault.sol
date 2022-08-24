@@ -70,7 +70,7 @@ contract HomoraPDNVault is
     // .router: TraderJoe's router address
     // .spell: Homora's Spell contract address
     PairInfo public pairInfo; // token 0 address, token 1 address, ERC-20 LP token address
-    uint256 public leverageLevel; // target leverage
+    uint256 public leverageLevel; // target leverage * 10000
     uint256 public pid; // pool id
 
     uint256 public collateralFactor; // LP collateral factor on Homora
@@ -232,7 +232,7 @@ contract HomoraPDNVault is
     }
 
     /// @dev Set config for pseudo delta-neutral valut.
-    /// @param _leverageLevel: Target leverage
+    /// @param _leverageLevel: Target leverage * 10000
     /// @param _targetDebtRatio: Target debt ratio * 10000
     /// @param _debtRatioWidth: Deviation of debt ratio * 10000
     /// @param _deltaThreshold: Delta deviation threshold in percentage * 10000
@@ -242,7 +242,7 @@ contract HomoraPDNVault is
         uint256 _debtRatioWidth,
         uint256 _deltaThreshold
     ) public onlyOwner {
-        require(_leverageLevel >= 2);
+        require(_leverageLevel >= 20000);
         leverageLevel = _leverageLevel;
         collateralFactor = VaultLib.getCollateralFactor(
             contractInfo.oracle,

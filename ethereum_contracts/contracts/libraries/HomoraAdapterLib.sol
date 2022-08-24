@@ -58,25 +58,15 @@ library HomoraAdapterLib {
 
     function pullAllAssets(
         IHomoraAdapter self,
-        address tokenA,
-        address tokenB,
-        address rewardToken
+        address[] memory tokens
     ) public {
-        pullTokenFromAdapter(
-            self,
-            tokenA,
-            IERC20(tokenA).balanceOf(address(self))
-        );
-        pullTokenFromAdapter(
-            self,
-            tokenB,
-            IERC20(tokenB).balanceOf(address(self))
-        );
-        pullTokenFromAdapter(
-            self,
-            rewardToken,
-            IERC20(rewardToken).balanceOf(address(self))
-        );
+        for (uint256 i = 0; i < tokens.length; i++) {
+            pullTokenFromAdapter(
+                self,
+                tokens[i],
+                IERC20(tokens[i]).balanceOf(address(self))
+            );
+        }
         pullETHFromAdapter(self, address(self).balance);
     }
 
@@ -100,12 +90,12 @@ library HomoraAdapterLib {
             value,
             homoraExecuteBytes
         );
-        pullAllAssets(
-            self,
-            pairInfo.stableToken,
-            pairInfo.assetToken,
-            pairInfo.rewardToken
-        );
+        address[] memory tokens = new address[](4);
+        tokens[0] = pairInfo.stableToken;
+        tokens[1] = pairInfo.assetToken;
+        tokens[2] = pairInfo.lpToken;
+        tokens[3] = pairInfo.rewardToken;
+        pullAllAssets(self, tokens);
         return returndata;
     }
 }

@@ -6,6 +6,7 @@
   "function MAX_UINT() view returns (uint256)",
   "function REMOVE_LIQUIDITY_SIG() view returns (bytes4)",
   "function SOME_LARGE_NUMBER() view returns (uint256)",
+  "function TWINS() view returns (uint256)",
   "function UNITY() view returns (uint256)",
   "function UNITY_MINUS_FEE() view returns (uint256)",
   "function UP() view returns (Math.Rounding)",

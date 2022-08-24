@@ -162,6 +162,13 @@ async function swapWAVAX(contract, swapAmt) {
 
 // testing function for rebalance()
 async function testRebalance(managerContract, strategyContract, vaultLib) {
+  await strategyContract.connect(mainWallet).setConfig(
+    25000, // _leverageLevel
+    8400, // _targetDebtRatio
+    200, // _debtRatioWidth
+    423, // _dnThreshold
+    txOptions
+  );
   await deposit(managerContract, strategyContract);
   const homoraPosId = (await strategyContract.homoraPosId()).toNumber();
   // check collateral
@@ -230,13 +237,13 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
 
   // Decrease leverage to trigger rebalance
   await strategyContract.connect(mainWallet).setConfig(
-    2, // _leverageLevel
-    7154, // _targetDebtRatio
-    350, // _debtRatioWidth
-    490, // _dnThreshold
+    23000, // _leverageLevel
+    7967, // _targetDebtRatio
+    200, // _debtRatioWidth
+    363, // _dnThreshold
     txOptions
   );
-  console.log("Leverage changed to 2");
+  console.log("Leverage changed to 2.3");
   await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
@@ -306,7 +313,7 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
 
   // Increase leverage to trigger rebalance
   await strategyContract.connect(mainWallet).setConfig(
-    3, // _leverageLevel
+    30000, // _leverageLevel
     9231, // _targetDebtRatio
     100, // _debtRatioWidth
     300, // _dnThreshold
@@ -535,10 +542,11 @@ describe.only("HomoraPDNVault Initialization", function () {
     await homoraAdapter.setTarget(homoraBank.address, true);
     await homoraAdapter.setTarget(USDC.address, true);
     await homoraAdapter.setTarget(WAVAX.address, true);
+    await homoraAdapter.setTarget(pair.address, true);
     await homoraAdapter.setTarget(JOE.address, true);
 
     await strategyContract.connect(mainWallet).initializeConfig(
-      3, // _leverageLevel
+      30000, // _leverageLevel
       9231, // _targetDebtRatio
       100, // _debtRatioWidth
       300, // _deltaThreshold

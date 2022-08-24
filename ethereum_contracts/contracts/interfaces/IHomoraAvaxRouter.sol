@@ -5,6 +5,16 @@ interface IHomoraAvaxRouter {
     function factory() external pure returns (address);
     function WAVAX() external pure returns (address);
 
+    function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        uint256 deadline
+    ) external returns (uint256 amountA, uint256 amountB);
+
     function swapExactTokensForTokens(
         uint256 amountIn,
         uint256 amountOutMin,
