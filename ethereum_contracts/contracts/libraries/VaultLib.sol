@@ -325,6 +325,16 @@ library VaultLib {
         return liqIncentive != 0;
     }
 
+    /// @dev Return the value of the given input as ETH per unit, multiplied by 2**112.
+    /// @param token The ERC-20 token to check the value.
+    function getETHPx(address oracle, address token)
+        external
+        view
+        returns (uint256)
+    {
+        return IHomoraOracle(oracle).source().getETHPx(token);
+    }
+
     /// @dev Query the collateral factor of the LP token on Homora, 0.84 => 8400
     function getCollateralFactor(address oracle, address lpToken)
         external
@@ -352,26 +362,25 @@ library VaultLib {
         address token,
         uint256 amount
     ) internal view returns (uint256) {
-        return
-            IHomoraOracle(contractInfo.oracle).asETHBorrow(
-                token,
-                amount,
-                contractInfo.adapter
-            );
+        return getETHPx(contractInfo.oracle, token).mulDiv(amount, SOME_LARGE_NUMBER);
+//            IHomoraOracle(contractInfo.oracle).asETHBorrow(
+//                token,
+//                amount,
+//                contractInfo.adapter
+//            );
     }
 
     /// @dev Return the value of the given token as ETH, *not* weighted by the borrow factor. Assume token is supported by the oracle
     function getTokenETHValue(
-        ContractInfo storage contractInfo,
+        address oracle,
         address token,
-        uint256 amount,
-        uint256 borrowFactor
+        uint256 amount
     ) public view returns (uint256) {
-        return
-            asETHBorrow(contractInfo, token, amount).mulDiv(
-                UNITY,
-                borrowFactor
-            );
+        return getETHPx(oracle, token).mulDiv(amount, SOME_LARGE_NUMBER);
+//            asETHBorrow(contractInfo, token, amount).mulDiv(
+//                UNITY,
+//                borrowFactor
+//            );
     }
 
     ///********* Vault related functions *********///
@@ -872,7 +881,10 @@ library VaultLib {
                 "collWithdrawAmt",
                 IERC20(pairInfo.lpToken).balanceOf(address(this))
             );
-            IERC20(pairInfo.lpToken).approve(contractInfo.router, vars.collWithdrawAmt);
+            IERC20(pairInfo.lpToken).approve(
+                contractInfo.router,
+                vars.collWithdrawAmt
+            );
             (pos.amtA, pos.amtB) = IHomoraAvaxRouter(contractInfo.router)
                 .removeLiquidity(
                     pairInfo.stableToken,

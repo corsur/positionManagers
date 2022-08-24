@@ -56,10 +56,9 @@ library HomoraAdapterLib {
         self.doWork(address(this), amount, "");
     }
 
-    function pullAllAssets(
-        IHomoraAdapter self,
-        address[] memory tokens
-    ) public {
+    function pullAllAssets(IHomoraAdapter self, address[] memory tokens)
+        public
+    {
         for (uint256 i = 0; i < tokens.length; i++) {
             pullTokenFromAdapter(
                 self,

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0 <0.9.0;
 
+import 'IBaseOracle.sol';
+
 interface IHomoraOracle {
+    function source() external view returns (IBaseOracle);
+
     function tokenFactors(address token)
     external view
     returns (
