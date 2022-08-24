@@ -1,7 +1,5 @@
 const { ethers } = require("hardhat");
-const {
-  AVAX_MAINNET_TOKEN_BRIDGE_ADDR,
-} = require("../constants");
+const { AVAX_MAINNET_TOKEN_BRIDGE_ADDR } = require("../constants");
 const { deployApertureManager } = require("../utils/deploy");
 
 // Read private variables from .env file.
@@ -17,6 +15,7 @@ async function main() {
   console.log(`Avax balance: ${balance}`);
 
   const apertureManager = await deployApertureManager(
+    ethers,
     wallet,
     AVAX_MAINNET_TOKEN_BRIDGE_ADDR
   );

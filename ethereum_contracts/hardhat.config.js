@@ -6,6 +6,8 @@ require("hardhat-abi-exporter");
 require("hardhat-contract-sizer");
 require("solidity-coverage");
 
+require("./tasks/mainnet_deploy_homora_pdn");
+
 const {
   ETH_PRV_KEY_1,
   INFURA_RINKERBY_URL,

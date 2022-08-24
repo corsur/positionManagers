@@ -146,7 +146,7 @@ describe("Aperture manager tests on Ethereum Mainnet Fork", function () {
 
     // This is an FTX wallet with ETH/USDC/BUSD balances.
     signer = await ethers.getImpersonatedSigner("0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2");
-    apertureManager = await deployApertureManager(signer, ETH_MAINNET_TOKEN_BRIDGE_ADDR);
+    apertureManager = await deployApertureManager(ethers, signer, ETH_MAINNET_TOKEN_BRIDGE_ADDR);
 
     // Register Aperture Terra manager.
     await apertureManager.updateApertureManager(

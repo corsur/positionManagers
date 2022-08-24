@@ -1,6 +1,4 @@
-const { ethers } = require("hardhat");
-
-async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
+async function deployApertureManager(ethers, signer, wormholeTokenBridgeAddr) {
   const curveRouterLibFactory = await ethers.getContractFactory(
     "CurveRouterLib",
     signer
@@ -50,16 +48,21 @@ async function deployApertureManager(signer, wormholeTokenBridgeAddr) {
   return apertureManagerProxy;
 }
 
-async function deployHomoraAdapter(signer) {
+async function deployHomoraAdapter(ethers, signer) {
   const homoraAdapterFactory = await ethers.getContractFactory(
     "HomoraAdapter",
     signer
   );
 
-  return await homoraAdapterFactory.connect(signer).deploy();
+  // Issue request to deploy.
+  const homoraAdapter = await homoraAdapterFactory.connect(signer).deploy();
+  // Wait for deployment to be included.
+  await homoraAdapter.deployed();
+
+  return homoraAdapter;
 }
 
-async function deployHomoraPDNVault(signer, vaultConfig, txOptions) {
+async function deployHomoraPDNVault(ethers, signer, vaultConfig, txOptions) {
   const {
     wormholeTokenBridgeAddr,
     controllerAddr,
@@ -72,13 +75,14 @@ async function deployHomoraPDNVault(signer, vaultConfig, txOptions) {
   } = vaultConfig;
   // Aperture manager contract.
   const managerContract = await deployApertureManager(
+    ethers,
     signer,
     wormholeTokenBridgeAddr
   );
   console.log("Aperture manager deployed at: ", managerContract.address);
 
   // Deploy Homora adapter contract.
-  const homoraAdapter = await deployHomoraAdapter(signer);
+  const homoraAdapter = await deployHomoraAdapter(ethers, signer);
 
   // HomoraPDNVault contract.
   var library = await ethers.getContractFactory("HomoraAdapterLib");
