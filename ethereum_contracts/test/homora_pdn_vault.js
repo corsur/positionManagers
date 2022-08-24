@@ -20,11 +20,11 @@ const ERC20ABI = [
 const JOEABI = [
   "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)",
   "function swapExactAVAXForTokens(uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) payable returns (uint256[] memory amounts)",
-    "function swapExactTokensForAVAX(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)",
+  "function swapExactTokensForAVAX(uint256 amountIn, uint256 amountOutMin, address[] calldata path, address to, uint256 deadline) returns (uint256[] memory amounts)",
 ];
 
 const PAIRABI = [
-    "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)"
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
 ];
 
 const {
@@ -91,7 +91,12 @@ async function initialize() {
     1000 * 1e6,
     txOptions
   );
-  await signer.sendTransaction({ value: BigNumber.from(300000).mul("1000000000000000000"), to: wallets[0].address, gasPrice: 50000000000, gasLimit: 21000 })
+  await signer.sendTransaction({
+    value: BigNumber.from(300000).mul("1000000000000000000"),
+    to: wallets[0].address,
+    gasPrice: 50000000000,
+    gasLimit: 21000,
+  });
 }
 
 // testing function to swap USDC into WAVAX
@@ -145,7 +150,7 @@ async function swapWAVAX(contract, swapAmt) {
       [WAVAX_TOKEN_ADDRESS, USDC_TOKEN_ADDRESS],
       wallets[0].address,
       10 ** 12,
-      { value:swapAmt, gasPrice: 50000000000, gasLimit: 8500000 }
+      { value: swapAmt, gasPrice: 50000000000, gasLimit: 8500000 }
     );
   // console.log("Token price after swap");
   // await contract.connect(wallets[0]).queryTokenPrice(txOptions);
@@ -165,20 +170,34 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     homoraPosId,
     txOptions
   );
-  let [usdcHold, wavaxHold] = await vaultLib.convertCollateralToTokens(collSize, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
+  let [usdcHold, wavaxHold] = await vaultLib.convertCollateralToTokens(
+    collSize,
+    LP_WAVAX_USDC_ADDRESS,
+    USDC_TOKEN_ADDRESS
+  );
   console.log("collateral: usdc: %d, wavax: %d", usdcHold, wavaxHold);
 
   // check debt
-  let [usdcDebt, wavaxDebt] = await vaultLib.getDebtAmounts(homoraBank.address, homoraPosId, USDC_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS);
+  let [usdcDebt, wavaxDebt] = await vaultLib.getDebtAmounts(
+    homoraBank.address,
+    homoraPosId,
+    USDC_TOKEN_ADDRESS,
+    WAVAX_TOKEN_ADDRESS
+  );
   console.log("current debt: usdc: %d, wavax: %d", usdcDebt, wavaxDebt);
 
   // check if position state is healthy (no need to rebalance)
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
+  console.log("Reverted with HomoraPDNVault_PositionIsHealthy.");
 
   let [reserve0, reserve1] = await pair.getReserves();
-  console.log("reserve0 %s, reserve1 %s", reserve0.div("1000000000000000000").toString(), reserve1.div(1e6).toString());
+  console.log(
+    "reserve0 %s, reserve1 %s",
+    reserve0.div("1000000000000000000").toString(),
+    reserve1.div(1e6).toString()
+  );
   // Flash swap USDC and rebalance (short)
   let swapAmt = BigNumber.from(3e6).mul(1e6);
   let recvAmt = await swapUSDC(router, swapAmt);
@@ -188,12 +207,17 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
     recvAmt.div("1000000000000000000").toString()
   );
   [reserve0, reserve1] = await pair.getReserves();
-  console.log("reserve0 %s, reserve1 %s", reserve0.div("1000000000000000000").toString(), reserve1.div(1e6).toString());
+  console.log(
+    "reserve0 %s, reserve1 %s",
+    reserve0.div("1000000000000000000").toString(),
+    reserve1.div(1e6).toString()
+  );
 
   await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
+  console.log("Reverted with Slippage_Too_Large.");
 
   // Swap back
   swapAmt = recvAmt;
@@ -217,15 +241,18 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("Slippage_Too_Large");
+  console.log("Reverted with Slippage_Too_Large.");
 
   await mine(1000, { interval: 2 });
   // Increase slippage and rebalance again
-  await strategyContract.connect(wallets[0]).rebalance(100, 0, txOptions);
+  await strategyContract.connect(wallets[0]).rebalance(200, 0, txOptions);
+  console.log("Rebalance succeeded.");
 
   // expect to be in delta-neutral after rebalance
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
+  console.log("Reverted with HomoraPDNVault_PositionIsHealthy.");
 
   // Impersonate WAVAX holder.
   signer = await getImpersonatedSigner(
@@ -238,22 +265,12 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   );
 
   [reserve0, reserve1] = await pair.getReserves();
-  console.log("reserve0 %s, reserve1 %s", reserve0.div("1000000000000000000").toString(), reserve1.div(1e6).toString());
-  // Flash swap WAVAX and rebalance (long)
-  recvAmt = await swapWAVAX(router, swapAmt);
   console.log(
-    "Swap %s AVAX to %s USDC",
-    swapAmt.div("1000000000000000000").toString(),
-    recvAmt.div(1e6).toString()
+    "reserve0 %s, reserve1 %s",
+    reserve0.div("1000000000000000000").toString(),
+    reserve1.div(1e6).toString()
   );
-  await mine(1000, { interval: 2 });
-  await expect(
-    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
-  ).to.be.revertedWith("Slippage_Too_Large");
-
-  [reserve0, reserve1] = await pair.getReserves();
-  console.log("reserve0 %s, reserve1 %s", reserve0.div("1000000000000000000").toString(), reserve1.div(1e6).toString());
-  // Swap back
+  // Flash swap USDC and rebalance (short)
   swapAmt = recvAmt;
   recvAmt = await swapUSDC(router, swapAmt);
   console.log(
@@ -264,7 +281,28 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
+  ).to.be.revertedWith("Slippage_Too_Large");
+  console.log("Reverted with Slippage_Too_Large.");
+
+  [reserve0, reserve1] = await pair.getReserves();
+  console.log(
+    "reserve0 %s, reserve1 %s",
+    reserve0.div("1000000000000000000").toString(),
+    reserve1.div(1e6).toString()
+  );
+  // Swap back
+  swapAmt = recvAmt;
+  recvAmt = await swapWAVAX(router, swapAmt);
+  console.log(
+    "Swap %s AVAX to %s USDC",
+    swapAmt.div("1000000000000000000").toString(),
+    recvAmt.div(1e6).toString()
+  );
+  await mine(1000, { interval: 2 });
+  await expect(
+    strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
+  console.log("Reverted with HomoraPDNVault_PositionIsHealthy.");
 
   // Increase leverage to trigger rebalance
   await strategyContract.connect(mainWallet).setConfig(
@@ -276,11 +314,13 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   );
   console.log("Leverage changed to 3");
   await strategyContract.connect(wallets[0]).rebalance(100, 0, txOptions);
+  console.log("Rebalance succeeded.");
 
   // expect to be in delta-neutral after rebalance
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
   ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
+  console.log("Reverted with HomoraPDNVault_PositionIsHealthy.");
 }
 
 async function testReinvest(managerContract, strategyContract, vaultLib) {
@@ -403,10 +443,16 @@ async function testDepositAndWithdraw(
   var collSize0 = shareAmount0.mul(totalCollateralSize).div(totalShareAmount);
   var collSize1 = shareAmount1.mul(totalCollateralSize).div(totalShareAmount);
 
-  [usdcAmount0, wavaxAmount0] =
-    await vaultLib.convertCollateralToTokens(collSize0, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
-  [usdcAmount1, wavaxAmount1] =
-    await vaultLib.convertCollateralToTokens(collSize1, LP_WAVAX_USDC_ADDRESS, USDC_TOKEN_ADDRESS);
+  [usdcAmount0, wavaxAmount0] = await vaultLib.convertCollateralToTokens(
+    collSize0,
+    LP_WAVAX_USDC_ADDRESS,
+    USDC_TOKEN_ADDRESS
+  );
+  [usdcAmount1, wavaxAmount1] = await vaultLib.convertCollateralToTokens(
+    collSize1,
+    LP_WAVAX_USDC_ADDRESS,
+    USDC_TOKEN_ADDRESS
+  );
 
   var totalAmount0InUsdc = 2 * usdcAmount0;
   var totalAmount1InUsdc = 2 * usdcAmount1;
@@ -549,7 +595,7 @@ describe.only("HomoraPDNVault Initialization", function () {
       managerContract,
       strategyContract,
       homoraAdapter,
-        vaultLib
+      vaultLib
     );
   });
 
@@ -565,5 +611,56 @@ describe.only("HomoraPDNVault Initialization", function () {
     await expect(
       strategyContract.connect(wallets[0]).setConfig(0, 0, 0, 0, txOptions)
     ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Should fail if request pause using unauthorized addr", async function () {
+    // Pause Homora strategy contract.
+    await expect(
+      strategyContract.connect(wallets[0]).pause()
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Should fail if request unpause using unauthorized addr", async function () {
+    // Pause Homora strategy contract using admin contract.
+    await strategyContract.connect(mainWallet).pause();
+
+    // Unpause using unauthorized contract.
+    await expect(
+      strategyContract.connect(wallets[0]).pause()
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+  it("Should fail create position if contract is paused", async function () {
+    // Pause Homora strategy contract using admin contract.
+    await strategyContract.connect(mainWallet).pause();
+
+    // Approve to spend.
+    await USDC.connect(wallets[0]).approve(
+      managerContract.address,
+      usdcDepositAmount0
+    );
+
+    // Craft open position data.
+    let openPositionBytesArray = ethers.utils.arrayify(
+      ethers.utils.defaultAbiCoder.encode(
+        ["uint256", "uint256"],
+        [
+          minEquityReceived0, // uint256 minEquityETH
+          0, // uint256 minReinvestETH
+        ]
+      )
+    );
+
+    // Deposit 1000 USDC to vault from wallet 0.
+    await expect(
+      managerContract
+        .connect(wallets[0])
+        .createPosition(
+          /*strategyChainId=*/ AVAX_CHAIN_ID,
+          /*strategyId=*/ 0,
+          [[USDC_TOKEN_ADDRESS, usdcDepositAmount0]],
+          openPositionBytesArray,
+          txOptions
+        )
+    ).to.be.revertedWith("Pausable: paused");
   });
 });

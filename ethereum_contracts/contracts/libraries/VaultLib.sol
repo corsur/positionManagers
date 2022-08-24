@@ -43,11 +43,11 @@ struct VaultPosition {
     uint256 collateralSize; // amount of collateral/LP
     uint256 amtA; // amount of token A in the LP
     uint256 amtB; // amount of token B in the LP
-    uint256 debtAmtA; // amount of token A borrowed
-    uint256 debtAmtB; // amount of token B borrowed
+    uint256 debtA; // amount of token A borrowed
+    uint256 debtB; // amount of token B borrowed
 }
 
-struct ShortHelper {
+struct RemoveHelper {
     uint256 L; // leverage
     uint256 Ka; // Sa = Ka * reserveAAfter
     uint256 Sa; // token A swap amount
@@ -57,22 +57,22 @@ struct ShortHelper {
     uint256 amtBRepay; // token B repay amount, amtBRepay = amtBWithdraw + Sb
     uint256 amtAWithdraw; // token A removed from LP
     uint256 amtBWithdraw; // token B removed from LP
-    uint256 reserveABefore; // A's pool reserve before LP removal
-    uint256 reserveBBefore; // B's pool reserve before LP removal
+    uint256 reserveA; // A's pool reserve before LP removal
+    uint256 reserveB; // B's pool reserve before LP removal
 }
 
-struct LongHelper {
+struct AddHelper {
     uint256 L; // leverage
     uint256 Sa; // token A receive amount
     uint256 Sb; // token B swap amount
-    uint256 reserveABefore; // A's pool reserve before swapping
-    uint256 reserveBBefore; // B's pool reserve before swapping
+    uint256 reserveA; // A's pool reserve before swapping
+    uint256 reserveB; // B's pool reserve before swapping
     uint256 amtABorrow; // token A borrow amount
     uint256 amtBBorrow; // token B borrow amount
     uint256 amtAAfter; // amount of token A in the LP after rebalance
     uint256 amtBAfter; // amount of token B in the LP after rebalance
     uint256 debtAAfter; // amount of debt in token A after rebalance
-    uint256 amtAReward; // amount of rewards swapped to token A
+    uint256 amtASupply; // amount of rewards swapped to token A
 }
 
 /// @custom:oz-upgrades-unsafe-allow external-library-linking
@@ -230,7 +230,7 @@ library VaultLib {
             pairInfo.lpToken,
             pairInfo.stableToken
         );
-        (pos.debtAmtA, pos.debtAmtB) = getDebtAmounts(
+        (pos.debtA, pos.debtB) = getDebtAmounts(
             homoraBank,
             homoraPosId,
             pairInfo.stableToken,
@@ -422,7 +422,7 @@ library VaultLib {
             homoraPosId,
             pairInfo
         );
-        return getOffset(pos.amtB, pos.debtAmtB) < deltaThreshold;
+        return getOffset(pos.amtB, pos.debtB) < deltaThreshold;
     }
 
     function isDebtRatioHealthy(
@@ -738,21 +738,29 @@ library VaultLib {
         );
     }
 
-    function populateShortHelper(
+    function populateRemoveHelper(
         VaultPosition memory pos,
         address lpToken,
         address stableToken,
         uint256 leverageLevel
-    ) internal view returns (ShortHelper memory vars) {
+    ) internal view returns (RemoveHelper memory vars) {
         vars.L = leverageLevel;
-        (vars.reserveABefore, vars.reserveBBefore) = getReserves(
+        (vars.reserveA, vars.reserveB) = getReserves(
             lpToken,
             stableToken
         );
-        vars = rebalanceMathShort(pos, vars);
+        if (pos.amtB < pos.debtB) {
+            console.log("rebalance short remove");
+            // Short: amtB < debtAmtB, swap A to B
+            vars = rebalanceMathShortRemove(pos, vars);
+        } else {
+            console.log("rebalance long remove");
+            // Long: amtB > debtAmtB, swap B to A
+            vars = rebalanceMathLongRemove(pos, vars);
+        }
     }
 
-    /// @dev Rebalance Homora Bank's farming position assuming delta is short
+    /// @dev Rebalance Homora Bank's farming position by removing liquidity and repaying debt
     /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraPosId: Position id of the PDN vault in HomoraBank
     /// @param pos: Farming position in Homora Bank
@@ -761,7 +769,7 @@ library VaultLib {
     /// @param slippage: Slippage in the swap, multiplied by 1e4, 0.1% => 10
     /// @param stableBorrowFactor: stable token borrow factor on Homora
     /// @param assetBorrowFactor: asset token borrow factor on Homora
-    function rebalanceShort(
+    function rebalanceRemove(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         VaultPosition memory pos,
@@ -771,59 +779,15 @@ library VaultLib {
         uint256 stableBorrowFactor,
         uint256 assetBorrowFactor
     ) external {
-        ShortHelper memory vars = populateShortHelper(
+        console.log("debt ratio", getDebtRatio(contractInfo.bank, homoraPosId));
+        RemoveHelper memory vars = populateRemoveHelper(
             pos,
             pairInfo.lpToken,
             pairInfo.stableToken,
             leverageLevel
         );
 
-//        console.log("reserveABefore", vars.reserveABefore);
-//        console.log("reserveBBefore", vars.reserveBBefore);
-//        console.log("collateralSize", pos.collateralSize);
-//        console.log("amtA", pos.amtA);
-//        console.log("amtB", pos.amtB);
-//        console.log("debtAmtA", pos.debtAmtA);
-//        console.log("debtAmtB", pos.debtAmtB);
-//        console.log("collWithdrawAmt", vars.collWithdrawAmt);
-//        console.log("amtAWithdraw", vars.amtAWithdraw);
-//        console.log("amtBWithdraw", vars.amtBWithdraw);
-//        console.log("amtARepay", vars.amtARepay);
-//        console.log("amtBRepay", vars.amtBRepay);
-//        console.log("amtAIn", vars.amtAWithdraw - vars.amtARepay);
-//        console.log("amtBOut", vars.amtBRepay - vars.amtBWithdraw);
-//        uint256 amountOut = getAmountOut(
-//            vars.amtAWithdraw - vars.amtARepay,
-//            vars.reserveABefore - vars.amtAWithdraw,
-//            vars.reserveBBefore - vars.amtBWithdraw
-//        );
-//        uint256 amountIn = getAmountIn(
-//            vars.amtBRepay - vars.amtBWithdraw,
-//            vars.reserveABefore - vars.amtAWithdraw,
-//            vars.reserveBBefore - vars.amtBWithdraw
-//        );
-//        console.log("getAmountsIn", amountIn);
-//        console.log("getAmountsOut", amountOut);
-//        console.log(
-//            "amtAIn - getAmountsIn",
-//            vars.amtAWithdraw - vars.amtARepay - amountIn
-//        );
-//        console.log(
-//            "getAmountsOut - amtBOut",
-//            amountOut - (vars.amtBRepay - vars.amtBWithdraw)
-//        );
-//        uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
-//            address(this)
-//        );
-//        console.log("stableBalance", stableBalance);
-
-        console.log("collWithdrawAmt", vars.collWithdrawAmt);
-        console.log("amtAWithdraw", vars.amtAWithdraw);
-        console.log("amtBWithdraw", vars.amtBWithdraw);
-        console.log("amtARepay", vars.amtARepay);
-        console.log("amtBRepay", vars.amtBRepay);
-
-        // Homora's Spell swaps token A to token B
+        // Short: amtB < debtAmtB, swap A to B
         uint256 valueBeforeSwap = getTokenETHValue(
             contractInfo,
             pairInfo.stableToken,
@@ -836,27 +800,70 @@ library VaultLib {
             vars.Sb,
             assetBorrowFactor
         );
+        // Long: amtB > debtAmtB, swap B to A
+        if (pos.amtB > pos.debtB) {
+            (valueBeforeSwap, valueAfterSwap) = (
+                valueAfterSwap,
+                valueBeforeSwap
+            );
+        }
+
         if (
             valueBeforeSwap > valueAfterSwap &&
             getOffset(valueAfterSwap, valueBeforeSwap) > slippage
         ) {
+            console.log("price", vars.Sa * 1e14 / vars.Sb);
+            console.log("getOffset", getOffset(valueAfterSwap, valueBeforeSwap));
             revert Slippage_Too_Large();
         }
 
-        removeLiquidity(
-            contractInfo,
-            homoraPosId,
-            pairInfo,
-            vars.collWithdrawAmt,
-            vars.amtARepay,
-            vars.amtBRepay
-        );
-
+        console.log("reserveABefore", vars.reserveA);
+        console.log("reserveBBefore", vars.reserveB);
+        console.log("collateralSize", pos.collateralSize);
+        console.log("amtA", pos.amtA);
+        console.log("amtB", pos.amtB);
+        console.log("debtAmtA", pos.debtA);
+        console.log("debtAmtB", pos.debtB);
         console.log("collWithdrawAmt", vars.collWithdrawAmt);
         console.log("amtAWithdraw", vars.amtAWithdraw);
         console.log("amtBWithdraw", vars.amtBWithdraw);
         console.log("amtARepay", vars.amtARepay);
         console.log("amtBRepay", vars.amtBRepay);
+        console.log("amtAIn", vars.amtAWithdraw - vars.amtARepay);
+        console.log("amtBOut", vars.amtBRepay - vars.amtBWithdraw);
+        uint256 amountOut = getAmountOut(
+            vars.amtAWithdraw - vars.amtARepay,
+            vars.reserveA - vars.amtAWithdraw,
+            vars.reserveB - vars.amtBWithdraw
+        );
+        uint256 amountIn = getAmountIn(
+            vars.amtBRepay - vars.amtBWithdraw,
+            vars.reserveA - vars.amtAWithdraw,
+            vars.reserveB - vars.amtBWithdraw
+        );
+        console.log("getAmountsIn", amountIn);
+        console.log("getAmountsOut", amountOut);
+        console.log(
+            "amtAIn - getAmountsIn",
+            vars.amtAWithdraw - vars.amtARepay - amountIn
+        );
+        console.log(
+            "getAmountsOut - amtBOut",
+            amountOut - (vars.amtBRepay - vars.amtBWithdraw)
+        );
+        uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
+            address(this)
+        );
+        console.log("stableBalance", stableBalance);
+
+        removeLiquidity(
+            contractInfo,
+            homoraPosId,
+            pairInfo,
+            vars.collWithdrawAmt,// * 101 / 100,
+            vars.amtARepay,
+            vars.amtBRepay
+        );
     }
 
     // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
@@ -892,23 +899,29 @@ library VaultLib {
         amountIn = numerator / denominator + 1;
     }
 
-    function populateLongHelper(
+    function populateAddHelper(
         VaultPosition memory pos,
         address lpToken,
         address stableToken,
         uint256 leverageLevel
-    ) internal view returns (LongHelper memory vars) {
+    ) internal view returns (AddHelper memory vars) {
         vars.L = leverageLevel;
-        (vars.reserveABefore, vars.reserveBBefore) = getReserves(
+        (vars.reserveA, vars.reserveB) = getReserves(
             lpToken,
             stableToken
         );
-        vars.amtAReward = IERC20(stableToken).balanceOf(address(this));
+        vars.amtASupply = IERC20(stableToken).balanceOf(address(this));
 
-        vars = rebalanceMathLong(pos, vars);
+        if (pos.amtB < pos.debtB) {
+            // Short: amtB < debtAmtB, swap A to B
+            vars = rebalanceMathShortAdd(pos, vars);
+        } else {
+            // Long: amtB > debtAmtB, swap B to A
+            vars = rebalanceMathLongAdd(pos, vars);
+        }
     }
 
-    /// @dev Rebalance Homora Bank's farming position assuming delta is long
+    /// @dev Rebalance Homora Bank's farming position by borrowing tokens and adding liquidity
     /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraPosId: Position id of the PDN vault in HomoraBank
     /// @param pos: Farming position in Homora Bank
@@ -918,7 +931,7 @@ library VaultLib {
     /// @param stableBorrowFactor: stable token borrow factor on Homora
     /// @param assetBorrowFactor: asset token borrow factor on Homora
     /// @param pid: Pool id
-    function rebalanceLong(
+    function rebalanceAdd(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         VaultPosition memory pos,
@@ -929,26 +942,16 @@ library VaultLib {
         uint256 assetBorrowFactor,
         uint256 pid
     ) external {
-        LongHelper memory vars = populateLongHelper(
+        console.log("rebalanceAdd");
+
+        AddHelper memory vars = populateAddHelper(
             pos,
             pairInfo.lpToken,
             pairInfo.stableToken,
             leverageLevel
         );
 
-        addLiquidity(
-            contractInfo,
-            homoraPosId,
-            pairInfo,
-            vars.amtAReward,
-            0,
-            vars.amtABorrow,
-            vars.amtBBorrow,
-            pid,
-            0
-        );
-
-        // Homora's Spell swaps token B to token A
+        // Long: amtB > debtAmtB, swap B to A
         uint256 valueBeforeSwap = getTokenETHValue(
             contractInfo,
             pairInfo.assetToken,
@@ -961,35 +964,55 @@ library VaultLib {
             vars.Sa,
             stableBorrowFactor
         );
+        // Short: amtB < debtAmtB, swap A to B
+        if (pos.amtB < pos.debtB) {
+            (valueBeforeSwap, valueAfterSwap) = (
+                valueAfterSwap,
+                valueBeforeSwap
+            );
+        }
+
         if (
             valueBeforeSwap > valueAfterSwap &&
             getOffset(valueAfterSwap, valueBeforeSwap) > slippage
         ) {
             revert Slippage_Too_Large();
         }
+
+        addLiquidity(
+            contractInfo,
+            homoraPosId,
+            pairInfo,
+            vars.amtASupply,
+            0,
+            vars.amtABorrow,
+            vars.amtBBorrow,
+            pid,
+            0
+        );
     }
 
-    /// @dev Calculate the amount of collateral to withdraw and the amount of each token to repay by Homora to reach DN
+    /// @dev Calculate the amount of collateral to withdraw and debt to repay when delta is short
     /// @dev Assume `pos.debtAmtB > pos.amtB`. Check before calling
     /// @param pos: Farming position in Homora Bank
     /// @param vars: Helper struct
-    function rebalanceMathShort(
+    function rebalanceMathShortRemove(
         VaultPosition memory pos,
-        ShortHelper memory vars
-    ) internal view returns (ShortHelper memory) {
+        RemoveHelper memory vars
+    ) internal pure returns (RemoveHelper memory) {
         // Ka << 1, multiply by someLargeNumber 1e18
         vars.Ka = SOME_LARGE_NUMBER.mulDiv(
-            UNITY * (pos.debtAmtB - pos.amtB),
-            UNITY_MINUS_FEE * (vars.reserveBBefore - pos.debtAmtB),
+            UNITY * (pos.debtB - pos.amtB),
+            UNITY_MINUS_FEE * (vars.reserveB - pos.debtB),
             UP
         );
         vars.collWithdrawAmt =
             vars.L *
             pos.collateralSize.mulDiv(
-                pos.debtAmtA *
+                pos.debtA *
                     SOME_LARGE_NUMBER +
                     vars.Ka *
-                    vars.reserveABefore,
+                    vars.reserveA,
                 2 * (SOME_LARGE_NUMBER + vars.Ka - 1) * pos.amtA,
                 UP // round up to withdraw enough LP to repay A/B
             ) -
@@ -1002,16 +1025,16 @@ library VaultLib {
             DOWN
         );
         vars.Sa = vars.Ka.mulDiv(
-            vars.reserveABefore - vars.amtAWithdraw,
+            vars.reserveA - vars.amtAWithdraw,
             SOME_LARGE_NUMBER,
             UP
         );
         if (vars.amtAWithdraw > vars.Sa) {
-            vars.amtARepay = vars.amtAWithdraw - vars.Sa - 1;
+            vars.amtARepay = vars.amtAWithdraw - vars.Sa;
         } else {
             vars.amtARepay = 0;
             vars.collWithdrawAmt = pos.collateralSize.mulDiv(
-                vars.Ka * vars.reserveABefore,
+                vars.Ka * vars.reserveA,
                 (SOME_LARGE_NUMBER + vars.Ka) * pos.amtA,
                 UP
             );
@@ -1023,63 +1046,132 @@ library VaultLib {
         );
         vars.amtBRepay =
             (vars.amtBWithdraw *
-                (vars.reserveBBefore - pos.debtAmtB) +
-                vars.reserveBBefore *
-                (pos.debtAmtB - pos.amtB)) /
-            (vars.reserveBBefore - pos.amtB);
+                (vars.reserveB - pos.debtB) +
+                vars.reserveB *
+                (pos.debtB - pos.amtB)) /
+            (vars.reserveB - pos.amtB);
         vars.Sb = vars.amtBRepay - vars.amtBWithdraw;
-
         return vars;
     }
 
-    /// @dev Calculate the amount of each token to borrow by Homora to reach DN
+    /// @dev Calculate the amount of collateral to withdraw and debt to repay when delta is long
     /// @dev Assume `pos.debtAmtB < pos.amtB`. Check before calling
     /// @param pos: Farming position in Homora Bank
     /// @param vars: Helper struct
-    function rebalanceMathLong(VaultPosition memory pos, LongHelper memory vars)
-        internal
-        pure
-        returns (LongHelper memory)
-    {
-        vars.Sb = vars.reserveBBefore.mulDiv(
-            pos.amtB - pos.debtAmtB,
-            vars.reserveBBefore - pos.amtB,
-            UP
-        );
-        vars.Sa = vars.reserveABefore.mulDiv(
-            UNITY_MINUS_FEE * (pos.amtB - pos.debtAmtB),
+    function rebalanceMathLongRemove(
+        VaultPosition memory pos,
+        RemoveHelper memory vars
+    ) internal view returns (RemoveHelper memory) {
+        console.log("reserveABefore", vars.reserveA);
+        console.log("reserveBBefore", vars.reserveB);
+        console.log("collateralSize", pos.collateralSize);
+        console.log("amtA", pos.amtA);
+        console.log("amtB", pos.amtB);
+        console.log("debtAmtA", pos.debtA);
+        console.log("debtAmtB", pos.debtB);
+        // Ka << 1, multiply by someLargeNumber 1e18
+        vars.Ka = SOME_LARGE_NUMBER.mulDiv(
+            UNITY_MINUS_FEE * (pos.amtB - pos.debtB),
             UNITY *
-                vars.reserveBBefore -
+                vars.reserveB -
                 FEE_RATE *
                 pos.amtB -
                 UNITY_MINUS_FEE *
-                pos.debtAmtB,
+                pos.debtB,
+            DOWN
+        );
+        console.log("vars.Ka", vars.Ka);
+        console.log("A", pos.debtA *
+                    SOME_LARGE_NUMBER);
+        console.log("B", vars.Ka *
+                    vars.reserveA);
+        vars.collWithdrawAmt =
+            vars.L *
+            pos.collateralSize.mulDiv(
+                pos.debtA *
+                    SOME_LARGE_NUMBER -
+                    vars.Ka *
+                    vars.reserveA,
+                2 * (SOME_LARGE_NUMBER - vars.Ka - 1) * pos.amtA,
+                UP // round up to withdraw enough LP to repay A/B
+            ) -
+            pos.collateralSize.mulDiv(vars.L - 2, 2, DOWN);
+        console.log("vars.collWithdrawAmt", vars.collWithdrawAmt);
+        require(vars.collWithdrawAmt > 0, "Must withdraw >0");
+
+        vars.amtBWithdraw = pos.amtB.mulDiv(
+            vars.collWithdrawAmt - 2,
+            pos.collateralSize,
+            DOWN
+        );
+        vars.Sb = (pos.amtB - pos.debtB).mulDiv(
+            vars.reserveB - vars.amtBWithdraw,
+            vars.reserveB - pos.amtB,
+            UP
+        );
+        vars.amtBRepay = vars.amtBWithdraw - vars.Sb;
+        vars.amtAWithdraw = pos.amtA.mulDiv(
+            vars.collWithdrawAmt - 2, // round down repay amounts
+            pos.collateralSize,
+            DOWN
+        );
+        vars.amtARepay =
+            ((SOME_LARGE_NUMBER - vars.Ka - 1) *
+                vars.amtAWithdraw +
+                vars.Ka *
+                vars.reserveA) /
+            SOME_LARGE_NUMBER;
+        vars.Sa = vars.amtARepay - vars.amtAWithdraw;
+        return vars;
+    }
+
+    /// @dev Calculate the amount of each token to borrow from Homora to reach DN when delta is long
+    /// @dev Assume `pos.debtAmtB < pos.amtB`. Check before calling
+    /// @param pos: Farming position in Homora Bank
+    /// @param vars: Helper struct
+    function rebalanceMathLongAdd(
+        VaultPosition memory pos,
+        AddHelper memory vars
+    ) internal pure returns (AddHelper memory) {
+        vars.Sb = vars.reserveB.mulDiv(
+            pos.amtB - pos.debtB,
+            vars.reserveB - pos.amtB,
+            UP
+        );
+        vars.Sa = vars.reserveA.mulDiv(
+            UNITY_MINUS_FEE * (pos.amtB - pos.debtB),
+            UNITY *
+                vars.reserveB -
+                FEE_RATE *
+                pos.amtB -
+                UNITY_MINUS_FEE *
+                pos.debtB,
             UP
         );
         vars.amtAAfter = vars.L.mulDiv(
             pos.amtA.mulDiv(
-                vars.reserveABefore - vars.Sa,
-                vars.reserveABefore,
+                vars.reserveA - vars.Sa,
+                vars.reserveA,
                 UP
             ) -
-                pos.debtAmtA +
+                pos.debtA +
                 vars.Sa +
-                vars.amtAReward,
+                vars.amtASupply,
             2,
             UP
         ); // n_af
 
         vars.debtAAfter = vars.amtAAfter.mulDiv(vars.L - 2, vars.L, UP);
 
-        if (vars.debtAAfter > pos.debtAmtA) {
-            vars.amtABorrow = vars.debtAAfter - pos.debtAmtA;
+        if (vars.debtAAfter > pos.debtA) {
+            vars.amtABorrow = vars.debtAAfter - pos.debtA;
             // `temp` is necessary to avoid "Stack too deep".
             uint256 temp = pos
                 .amtB
-                .mulDiv(vars.reserveABefore, vars.reserveABefore - vars.Sa, UP)
-                .mulDiv(vars.reserveBBefore + vars.Sb, vars.reserveBBefore, UP);
+                .mulDiv(vars.reserveA, vars.reserveA - vars.Sa, UP)
+                .mulDiv(vars.reserveB + vars.Sb, vars.reserveB, UP);
             vars.amtBAfter = temp.mulDiv(vars.amtAAfter, pos.amtA, UP);
-            vars.amtBBorrow = vars.amtBAfter - pos.debtAmtB;
+            vars.amtBBorrow = vars.amtBAfter - pos.debtB;
         } else {
             vars.amtABorrow = 0;
             vars.amtBBorrow =
@@ -1087,25 +1179,67 @@ library VaultLib {
                     .Sb
                     .mulDiv(
                         (UNITY + UNITY_MINUS_FEE) *
-                            vars.reserveBBefore -
+                            vars.reserveB -
                             pos.amtB -
                             UNITY_MINUS_FEE *
-                            pos.debtAmtB,
-                        UNITY * (vars.reserveBBefore - pos.amtB),
+                            pos.debtB,
+                        UNITY * (vars.reserveB - pos.amtB),
                         UP
                     )
                     .mulDiv(
-                        vars.reserveABefore + vars.amtAReward,
-                        vars.reserveABefore,
+                        vars.reserveA + vars.amtASupply,
+                        vars.reserveA,
                         UP
                     ) +
-                vars.amtAReward.mulDiv(
-                    vars.reserveBBefore,
-                    vars.reserveABefore,
+                vars.amtASupply.mulDiv(
+                    vars.reserveB,
+                    vars.reserveA,
                     UP
                 );
         }
+        return vars;
+    }
 
+    /// @dev Calculate the amount of each token to borrow from Homora to reach DN when delta is short
+    /// @dev Assume `pos.debtAmtB > pos.amtB`. Check before calling
+    /// @param pos: Farming position in Homora Bank
+    /// @param vars: Helper struct
+    function rebalanceMathShortAdd(
+        VaultPosition memory pos,
+        AddHelper memory vars
+    ) internal pure returns (AddHelper memory) {
+        vars.Sb = vars.reserveB.mulDiv(
+            pos.debtB - pos.amtB,
+            vars.reserveB - pos.amtB,
+            UP
+        );
+        vars.Sa = vars.reserveA.mulDiv(
+            UNITY * (pos.debtB - pos.amtB),
+            UNITY_MINUS_FEE * (vars.reserveB - pos.debtB),
+            UP
+        );
+        vars.amtAAfter = vars.L.mulDiv(
+            pos.amtA.mulDiv(
+                vars.reserveA + vars.Sa,
+                vars.reserveA,
+                UP
+            ) -
+                pos.debtA -
+                vars.Sa +
+                vars.amtASupply,
+            2,
+            UP
+        ); // n_af
+
+        vars.debtAAfter = vars.amtAAfter.mulDiv(vars.L - 2, vars.L, UP);
+        vars.amtABorrow = vars.debtAAfter - pos.debtA;
+        // `temp` is necessary to avoid "Stack too deep".
+        uint256 temp = pos
+            .amtB
+            .mulDiv(vars.reserveA, vars.reserveA + vars.Sa, UP)
+            .mulDiv(vars.reserveB - vars.Sb, vars.reserveB, UP);
+        vars.amtBAfter = temp.mulDiv(vars.amtAAfter, pos.amtA, UP);
+        vars.amtBBorrow = vars.amtBAfter - pos.debtB;
         return vars;
     }
 

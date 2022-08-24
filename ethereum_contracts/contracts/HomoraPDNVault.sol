@@ -1,9 +1,9 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -24,6 +24,7 @@ contract HomoraPDNVault is
     Initializable,
     UUPSUpgradeable,
     OwnableUpgradeable,
+    PausableUpgradeable,
     ReentrancyGuardUpgradeable,
     IStrategyManager
 {
@@ -134,6 +135,7 @@ contract HomoraPDNVault is
     ) public initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
+        __Pausable_init();
 
         apertureManager = _apertureManager;
         setFeeCollector(_feeCollector);
@@ -162,6 +164,16 @@ contract HomoraPDNVault is
 
     // Only owner of this logic contract can upgrade.
     function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    /// @dev Pause the contract. Revert if already paused.
+    function pause() external onlyOwner {
+        PausableUpgradeable._pause();
+    }
+
+    ///@dev Unpause the contract. Revert if already unpaused.
+    function unpause() external onlyOwner {
+        PausableUpgradeable._unpause();
+    }
 
     /// @dev Set config for delta neutral valut.
     /// @param _leverageLevel: Target leverage
@@ -283,7 +295,7 @@ contract HomoraPDNVault is
         PositionInfo memory position_info,
         AssetInfo[] calldata assets,
         bytes calldata data
-    ) external onlyApertureManager nonReentrant {
+    ) external onlyApertureManager nonReentrant whenNotPaused {
         increasePositionInternal(position_info, assets, data);
     }
 
@@ -295,7 +307,7 @@ contract HomoraPDNVault is
         PositionInfo memory position_info,
         AssetInfo[] calldata assets,
         bytes calldata data
-    ) external onlyApertureManager nonReentrant {
+    ) external onlyApertureManager nonReentrant whenNotPaused {
         increasePositionInternal(position_info, assets, data);
     }
 
@@ -337,7 +349,7 @@ contract HomoraPDNVault is
         PositionInfo memory position_info,
         Recipient calldata recipient,
         bytes calldata data
-    ) external onlyApertureManager nonReentrant {
+    ) external onlyApertureManager nonReentrant whenNotPaused {
         (
             uint256 shareAmount,
             uint256 amtAMin,
@@ -361,12 +373,11 @@ contract HomoraPDNVault is
         PositionInfo memory position_info,
         Recipient calldata recipient,
         bytes calldata data
-    ) external onlyApertureManager nonReentrant {
-        (
-            uint256 amtAMin,
-            uint256 amtBMin,
-            uint256 minReinvestETH
-        ) = abi.decode(data, (uint256, uint256, uint256));
+    ) external onlyApertureManager nonReentrant whenNotPaused {
+        (uint256 amtAMin, uint256 amtBMin, uint256 minReinvestETH) = abi.decode(
+            data,
+            (uint256, uint256, uint256)
+        );
         withdrawInternal(
             position_info,
             recipient,
@@ -536,12 +547,20 @@ contract HomoraPDNVault is
         vaultState.totalShareAmount -= withdrawShareAmount;
 
         // Transfer fund to the recipient (possibly initiate cross-chain transfer).
-        IERC20(pairInfo.stableToken).transfer(apertureManager, withdrawAmounts[0]);
-        IERC20(pairInfo.assetToken).transfer(apertureManager, withdrawAmounts[1]);
+        IERC20(pairInfo.stableToken).transfer(
+            apertureManager,
+            withdrawAmounts[0]
+        );
+        IERC20(pairInfo.assetToken).transfer(
+            apertureManager,
+            withdrawAmounts[1]
+        );
         AssetInfo[] memory assetInfos = new AssetInfo[](2);
         assetInfos[0] = AssetInfo(pairInfo.stableToken, withdrawAmounts[0]);
         assetInfos[1] = AssetInfo(pairInfo.assetToken, withdrawAmounts[1]);
-        IApertureManager(apertureManager).disburseAssets{value: withdrawAmounts[2]}(assetInfos, recipient);
+        IApertureManager(apertureManager).disburseAssets{
+            value: withdrawAmounts[2]
+        }(assetInfos, recipient);
 
         // Collect withdrawal fee
         IERC20(pairInfo.stableToken).transfer(
@@ -618,8 +637,7 @@ contract HomoraPDNVault is
     function reinvestInternal(uint256 minReinvestETH) internal {
         // Position nonexistent
         if (
-            homoraPosId == VaultLib._NO_ID ||
-            vaultState.totalShareAmount == 0
+            homoraPosId == VaultLib._NO_ID || vaultState.totalShareAmount == 0
         ) {
             return;
         }
@@ -647,13 +665,15 @@ contract HomoraPDNVault is
         uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
             address(this)
         );
-        console.log("stableBalance", stableBalance);
 
-        uint256 rewardETHValue = getTokenETHValue(pairInfo.stableToken, stableBalance);
+        uint256 rewardETHValue = getTokenETHValue(
+            pairInfo.stableToken,
+            stableBalance
+        );
 
         // Not worth the gas
         if (rewardETHValue < 50e15) {
-//            IERC20(pairInfo.stableToken).safeTransfer(contractInfo.oracle, stableBalance);
+            //            IERC20(pairInfo.stableToken).safeTransfer(contractInfo.oracle, stableBalance);
             return;
         }
 
@@ -672,11 +692,6 @@ contract HomoraPDNVault is
             pid,
             0
         );
-
-        stableBalance = IERC20(pairInfo.stableToken).balanceOf(
-            address(this)
-        );
-        console.log("stableBalance", stableBalance);
 
         uint256 equityAfter = getEquityETHValue();
 
@@ -713,9 +728,8 @@ contract HomoraPDNVault is
         );
 
         // Actual rebalance actions
-        if (pos.debtAmtB > pos.amtB) {
-            // 1. short: amtB < debtAmtB, R > Rt, swap A to B
-            VaultLib.rebalanceShort(
+        if (getDebtRatio() >= targetDebtRatio) {
+            VaultLib.rebalanceRemove(
                 contractInfo,
                 homoraPosId,
                 pos,
@@ -726,8 +740,7 @@ contract HomoraPDNVault is
                 assetBorrowFactor
             );
         } else {
-            // 2. long: amtB > debtAmtB, R < Rt, swap B to A
-            VaultLib.rebalanceLong(
+            VaultLib.rebalanceAdd(
                 contractInfo,
                 homoraPosId,
                 pos,
@@ -772,6 +785,10 @@ contract HomoraPDNVault is
             );
     }
 
+    function getDebtRatio() public view returns (uint256) {
+        return VaultLib.getDebtRatio(contractInfo.bank, homoraPosId);
+    }
+
     /// @dev Return the value of the given token as ETH, *not* weighted by the borrow factor. Assume token is supported by the oracle
     function getTokenETHValue(address token, uint256 amount)
         internal
@@ -796,7 +813,8 @@ contract HomoraPDNVault is
 
     /// @dev Total value of the PDN position
     function getCollateralETHValue() public view returns (uint256) {
-        return VaultLib.getCollateralETHValue(
+        return
+            VaultLib.getCollateralETHValue(
                 contractInfo.bank,
                 homoraPosId,
                 collateralFactor
@@ -805,8 +823,9 @@ contract HomoraPDNVault is
 
     /// @dev Net equity value of the PDN position
     function getEquityETHValue() public view returns (uint256) {
-        return getCollateralETHValue()
-            - VaultLib.getBorrowETHValue(
+        return
+            getCollateralETHValue() -
+            VaultLib.getBorrowETHValue(
                 contractInfo,
                 homoraPosId,
                 pairInfo,
