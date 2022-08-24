@@ -817,8 +817,11 @@ library VaultLib {
             revert Slippage_Too_Large();
         }
 
+        console.log("totalSupply", IERC20(pairInfo.lpToken).totalSupply());
         console.log("reserveABefore", vars.reserveA);
+        console.log("balanceABefore", IERC20(pairInfo.stableToken).balanceOf(pairInfo.lpToken));
         console.log("reserveBBefore", vars.reserveB);
+        console.log("balanceABefore", IERC20(pairInfo.assetToken).balanceOf(pairInfo.lpToken));
         console.log("collateralSize", pos.collateralSize);
         console.log("amtA", pos.amtA);
         console.log("amtB", pos.amtB);
