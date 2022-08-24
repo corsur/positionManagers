@@ -257,16 +257,20 @@ library VaultLib {
 
     /// @dev Total position value, not weighted by the collateral factor
     function getCollateralETHValue(
-        address homoraBank,
+        ContractInfo storage contractInfo,
         uint256 homoraPosId,
-        uint256 collateralFactor
+        PairInfo storage pairInfo
     ) external view returns (uint256) {
+        uint256 collateralSize = getCollateralSize(
+            contractInfo.bank,
+            homoraPosId
+        );
         return
-            homoraPosId == _NO_ID
-                ? 0
-                : IHomoraBank(homoraBank)
-                    .getCollateralETHValue(homoraPosId)
-                    .mulDiv(UNITY, collateralFactor);
+            getTokenETHValue(
+                contractInfo.oracle,
+                pairInfo.lpToken,
+                collateralSize
+            );
     }
 
     /// @dev Total debt value, *not* weighted by the borrow factors
@@ -276,9 +280,7 @@ library VaultLib {
     function getBorrowETHValue(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
-        PairInfo storage pairInfo,
-        uint256 stableBorrowFactor,
-        uint256 assetBorrowFactor
+        PairInfo storage pairInfo
     ) external view returns (uint256) {
         (
             uint256 stableTokenDebtAmount,
@@ -293,16 +295,14 @@ library VaultLib {
             (homoraPosId == _NO_ID)
                 ? 0
                 : getTokenETHValue(
-                    contractInfo,
+                    contractInfo.oracle,
                     pairInfo.stableToken,
-                    stableTokenDebtAmount,
-                    stableBorrowFactor
+                    stableTokenDebtAmount
                 ) +
                     getTokenETHValue(
-                        contractInfo,
+                        contractInfo.oracle,
                         pairInfo.assetToken,
-                        assetTokenDebtAmount,
-                        assetBorrowFactor
+                        assetTokenDebtAmount
                     );
     }
 
@@ -328,7 +328,7 @@ library VaultLib {
     /// @dev Return the value of the given input as ETH per unit, multiplied by 2**112.
     /// @param token The ERC-20 token to check the value.
     function getETHPx(address oracle, address token)
-        external
+        public
         view
         returns (uint256)
     {
@@ -339,10 +339,10 @@ library VaultLib {
     function getCollateralFactor(address oracle, address lpToken)
         external
         view
-        returns (uint256 _collateralFactor)
+        returns (uint256 collateralFactor)
     {
-        (, _collateralFactor, ) = IHomoraOracle(oracle).tokenFactors(lpToken);
-        require(0 < _collateralFactor && _collateralFactor < UNITY);
+        (, collateralFactor, ) = IHomoraOracle(oracle).tokenFactors(lpToken);
+        require(0 < collateralFactor && collateralFactor < UNITY);
     }
 
     /// @dev Query the borrow factor of the debt token on Homora, 1.04 => 10400
@@ -350,37 +350,19 @@ library VaultLib {
     function getBorrowFactor(address oracle, address token)
         external
         view
-        returns (uint256 _borrowFactor)
+        returns (uint256 borrowFactor)
     {
-        (_borrowFactor, , ) = IHomoraOracle(oracle).tokenFactors(token);
-        require(_borrowFactor > UNITY);
+        (borrowFactor, , ) = IHomoraOracle(oracle).tokenFactors(token);
+        require(borrowFactor > UNITY);
     }
 
-    /// @dev Return the value of the given token as ETH, weighted by the borrow factor
-    function asETHBorrow(
-        ContractInfo storage contractInfo,
-        address token,
-        uint256 amount
-    ) internal view returns (uint256) {
-        return getETHPx(contractInfo.oracle, token).mulDiv(amount, SOME_LARGE_NUMBER);
-//            IHomoraOracle(contractInfo.oracle).asETHBorrow(
-//                token,
-//                amount,
-//                contractInfo.adapter
-//            );
-    }
-
-    /// @dev Return the value of the given token as ETH, *not* weighted by the borrow factor. Assume token is supported by the oracle
+    /// @dev Return the value of the given token as ETH, assuming `token` is supported by the oracle
     function getTokenETHValue(
         address oracle,
         address token,
         uint256 amount
     ) public view returns (uint256) {
         return getETHPx(oracle, token).mulDiv(amount, SOME_LARGE_NUMBER);
-//            asETHBorrow(contractInfo, token, amount).mulDiv(
-//                UNITY,
-//                borrowFactor
-//            );
     }
 
     ///********* Vault related functions *********///
@@ -773,17 +755,13 @@ library VaultLib {
     /// @param pairInfo: Addresses in the pair
     /// @param leverageLevel: Target leverage * 10000
     /// @param slippage: Slippage in the swap, multiplied by 1e4, 0.1% => 10
-    /// @param stableBorrowFactor: stable token borrow factor on Homora
-    /// @param assetBorrowFactor: asset token borrow factor on Homora
     function rebalanceRemove(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         VaultPosition memory pos,
         PairInfo storage pairInfo,
         uint256 leverageLevel,
-        uint256 slippage,
-        uint256 stableBorrowFactor,
-        uint256 assetBorrowFactor
+        uint256 slippage
     ) external {
         console.log("debt ratio", getDebtRatio(contractInfo.bank, homoraPosId));
         RemoveHelper memory vars = populateRemoveHelper(
@@ -795,16 +773,14 @@ library VaultLib {
 
         // Short: amtB < debtAmtB, swap A to B
         uint256 valueBeforeSwap = getTokenETHValue(
-            contractInfo,
+            contractInfo.oracle,
             pairInfo.stableToken,
-            vars.Sa,
-            stableBorrowFactor
+            vars.Sa
         );
         uint256 valueAfterSwap = getTokenETHValue(
-            contractInfo,
+            contractInfo.oracle,
             pairInfo.assetToken,
-            vars.Sb,
-            assetBorrowFactor
+            vars.Sb
         );
         // Long: amtB > debtAmtB, swap B to A
         if (pos.amtB > pos.debtB) {
@@ -828,9 +804,15 @@ library VaultLib {
 
         console.log("totalSupply", IERC20(pairInfo.lpToken).totalSupply());
         console.log("reserveABefore", vars.reserveA);
-        console.log("balanceABefore", IERC20(pairInfo.stableToken).balanceOf(pairInfo.lpToken));
+        console.log(
+            "balanceABefore",
+            IERC20(pairInfo.stableToken).balanceOf(pairInfo.lpToken)
+        );
         console.log("reserveBBefore", vars.reserveB);
-        console.log("balanceABefore", IERC20(pairInfo.assetToken).balanceOf(pairInfo.lpToken));
+        console.log(
+            "balanceABefore",
+            IERC20(pairInfo.assetToken).balanceOf(pairInfo.lpToken)
+        );
         console.log("collateralSize", pos.collateralSize);
         console.log("amtA", pos.amtA);
         console.log("amtB", pos.amtB);
@@ -978,8 +960,6 @@ library VaultLib {
     /// @param pairInfo: Addresses in the pair
     /// @param leverageLevel: Target leverage * 10000
     /// @param slippage: Slippage in the swap, multiplied by 1e4, 0.1% => 10
-    /// @param stableBorrowFactor: stable token borrow factor on Homora
-    /// @param assetBorrowFactor: asset token borrow factor on Homora
     /// @param pid: Pool id
     function rebalanceAdd(
         ContractInfo storage contractInfo,
@@ -988,8 +968,6 @@ library VaultLib {
         PairInfo storage pairInfo,
         uint256 leverageLevel,
         uint256 slippage,
-        uint256 stableBorrowFactor,
-        uint256 assetBorrowFactor,
         uint256 pid
     ) external {
         console.log("rebalanceAdd");
@@ -1003,16 +981,14 @@ library VaultLib {
 
         // Long: amtB > debtAmtB, swap B to A
         uint256 valueBeforeSwap = getTokenETHValue(
-            contractInfo,
+            contractInfo.oracle,
             pairInfo.assetToken,
-            vars.Sb,
-            assetBorrowFactor
+            vars.Sb
         );
         uint256 valueAfterSwap = getTokenETHValue(
-            contractInfo,
+            contractInfo.oracle,
             pairInfo.stableToken,
-            vars.Sa,
-            stableBorrowFactor
+            vars.Sa
         );
         // Short: amtB < debtAmtB, swap A to B
         if (pos.amtB < pos.debtB) {

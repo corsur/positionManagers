@@ -73,9 +73,6 @@ contract HomoraPDNVault is
     uint256 public leverageLevel; // target leverage * 10000
     uint256 public pid; // pool id
 
-    uint256 public collateralFactor; // LP collateral factor on Homora
-    uint256 public stableBorrowFactor; // stable token borrow factor on Homora
-    uint256 public assetBorrowFactor; // asset token borrow factor on Homora
     uint256 public targetDebtRatio; // target debt ratio * 10000, 92% -> 9200
     uint256 public minDebtRatio; // minimum debt ratio * 10000
     uint256 public maxDebtRatio; // maximum debt ratio * 10000
@@ -244,15 +241,18 @@ contract HomoraPDNVault is
     ) public onlyOwner {
         require(_leverageLevel >= 20000);
         leverageLevel = _leverageLevel;
-        collateralFactor = VaultLib.getCollateralFactor(
+        // LP collateral factor on Homora
+        uint256 collateralFactor = VaultLib.getCollateralFactor(
             contractInfo.oracle,
             pairInfo.lpToken
         );
-        stableBorrowFactor = VaultLib.getBorrowFactor(
+        // stable token borrow factor on Homora
+        uint256 stableBorrowFactor = VaultLib.getBorrowFactor(
             contractInfo.oracle,
             pairInfo.stableToken
         );
-        assetBorrowFactor = VaultLib.getBorrowFactor(
+        // asset token borrow factor on Homora
+        uint256 assetBorrowFactor = VaultLib.getBorrowFactor(
             contractInfo.oracle,
             pairInfo.assetToken
         );
@@ -735,9 +735,7 @@ contract HomoraPDNVault is
                 pos,
                 pairInfo,
                 leverageLevel,
-                slippage,
-                stableBorrowFactor,
-                assetBorrowFactor
+                slippage
             );
         } else {
             VaultLib.rebalanceAdd(
@@ -747,8 +745,6 @@ contract HomoraPDNVault is
                 pairInfo,
                 leverageLevel,
                 slippage,
-                stableBorrowFactor,
-                assetBorrowFactor,
                 pid
             );
         }
@@ -795,43 +791,20 @@ contract HomoraPDNVault is
         view
         returns (uint256)
     {
-        return
-            token == pairInfo.stableToken
-                ? VaultLib.getTokenETHValue(
-                    contractInfo,
-                    pairInfo.stableToken,
-                    amount,
-                    stableBorrowFactor
-                )
-                : VaultLib.getTokenETHValue(
-                    contractInfo,
-                    pairInfo.assetToken,
-                    amount,
-                    assetBorrowFactor
-                );
+        return VaultLib.getTokenETHValue(contractInfo.oracle, token, amount);
     }
 
     /// @dev Total value of the PDN position
     function getCollateralETHValue() public view returns (uint256) {
         return
-            VaultLib.getCollateralETHValue(
-                contractInfo.bank,
-                homoraPosId,
-                collateralFactor
-            );
+            VaultLib.getCollateralETHValue(contractInfo, homoraPosId, pairInfo);
     }
 
     /// @dev Net equity value of the PDN position
     function getEquityETHValue() public view returns (uint256) {
         return
             getCollateralETHValue() -
-            VaultLib.getBorrowETHValue(
-                contractInfo,
-                homoraPosId,
-                pairInfo,
-                stableBorrowFactor,
-                assetBorrowFactor
-            );
+            VaultLib.getBorrowETHValue(contractInfo, homoraPosId, pairInfo);
     }
 
     /// @dev Query a user position's share
