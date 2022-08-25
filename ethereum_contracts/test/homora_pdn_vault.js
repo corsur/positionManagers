@@ -505,7 +505,7 @@ async function testDepositAndWithdraw(
     );
 }
 
-describe("HomoraPDNVault Initialization", function () {
+describe.only("HomoraPDNVault Initialization", function () {
   var managerContract = undefined;
   var homoraAdapter = undefined;
   var strategyContract = undefined;
@@ -555,6 +555,7 @@ describe("HomoraPDNVault Initialization", function () {
       9231, // _targetDebtRatio
       100, // _debtRatioWidth
       300, // _deltaThreshold
+      BigNumber.from(2500000).mul(20e9), // _reinvestThreshold,
       [
         20, // withdrawFee
         1500, // harvestFee

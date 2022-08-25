@@ -4,12 +4,15 @@ pragma solidity >=0.8.0 <0.9.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+
+import "../interfaces/IApertureCommon.sol";
 import "../interfaces/IHomoraBank.sol";
 import "../interfaces/IHomoraAdapter.sol";
 import "../interfaces/IHomoraOracle.sol";
 import "../interfaces/IJoeFactory.sol";
 import "../interfaces/IJoePair.sol";
 import "../interfaces/IJoeRouter01.sol";
+
 import "../libraries/HomoraAdapterLib.sol";
 
 // Addresses in the pair
@@ -521,6 +524,8 @@ library VaultLib {
     /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraPosId: Position id of the PDN vault in HomoraBank
     /// @param pairInfo: Addresses in the pair
+    /// @param stableDepositAmount: Amount of stable token supplied by user
+    /// @param assetDepositAmount: Amount of asset token supplied by user
     /// @param leverageLevel: Target leverage * 10000
     /// @param pid: Pool id
     /// @param value: native token sent
@@ -528,27 +533,22 @@ library VaultLib {
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         PairInfo storage pairInfo,
+        uint256 stableDepositAmount,
+        uint256 assetDepositAmount,
         uint256 leverageLevel,
         uint256 pid,
         uint256 value
     ) external returns (uint256) {
-        uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
-            address(this)
-        );
-        uint256 assetBalance = IERC20(pairInfo.assetToken).balanceOf(
-            address(this)
-        );
-
         // Skip if no balance available.
-        if (stableBalance + assetBalance == 0) {
+        if (stableDepositAmount + assetDepositAmount == 0) {
             return homoraPosId;
         }
 
-        (uint256 stableBorrow, uint256 assetBorrow) = deltaNeutralMath(
+        (uint256 stableBorrowAmount, uint256 assetBorrowAmount) = deltaNeutralMath(
             pairInfo,
             contractInfo.router,
-            stableBalance,
-            assetBalance,
+            stableDepositAmount,
+            assetDepositAmount,
             leverageLevel
         );
 
@@ -557,10 +557,10 @@ library VaultLib {
                 contractInfo,
                 homoraPosId,
                 pairInfo,
-                stableBalance,
-                assetBalance,
-                stableBorrow,
-                assetBorrow,
+                stableDepositAmount,
+                assetDepositAmount,
+                stableBorrowAmount,
+                assetBorrowAmount,
                 pid,
                 value
             );
@@ -715,6 +715,7 @@ library VaultLib {
     function collectWithdrawFee(
         mapping(uint16 => mapping(uint128 => Position)) storage positions,
         VaultState storage vaultState,
+        PositionInfo memory position_info,
         uint256 withdrawShareAmount,
         uint256 withdrawFee
     ) external returns (uint256 withdrawFeeShare) {
@@ -725,6 +726,9 @@ library VaultLib {
         );
         // Update total share amount in the vault.
         vaultState.totalShareAmount -= withdrawShareAmount - withdrawFeeShare;
+        // Update user position info
+        positions[position_info.chainId][position_info.positionId]
+            .shareAmount -= withdrawShareAmount;
         // Update fee collector's position state.
         positions[0][0].shareAmount += withdrawFeeShare;
     }
@@ -758,6 +762,7 @@ library VaultLib {
         uint256 equityAfter
     ) external {
         uint256 equityChange = equityAfter - equityBefore;
+        // Calculate shares minted for fee collector
         uint256 shareAmtMint = vaultState.totalShareAmount.mulDiv(
             harvestFee * equityChange,
             VaultLib.UNITY * equityAfter - harvestFee * equityChange

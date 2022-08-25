@@ -77,6 +77,7 @@ contract HomoraPDNVault is
     uint256 public minDebtRatio; // minimum debt ratio * 10000
     uint256 public maxDebtRatio; // maximum debt ratio * 10000
     uint256 public deltaThreshold; // delta deviation threshold in percentage * 10000
+    uint256 public reinvestThreshold; // estimated reinvest gas cost
 
     ApertureVaultLimits public vaultLimits;
     ApertureFeeConfig public feeConfig;
@@ -105,6 +106,7 @@ contract HomoraPDNVault is
     );
     event LogRebalance(uint256 equityBefore, uint256 equityAfter);
     event LogReinvest(uint256 equityBefore, uint256 equityAfter);
+    event SkipReinvest();
 
     // --- error ---
     error HomoraPDNVault_PositionIsHealthy();
@@ -180,6 +182,7 @@ contract HomoraPDNVault is
     /// @param _targetDebtRatio: Target debt ratio * 10000
     /// @param _debtRatioWidth: Deviation of debt ratio * 10000
     /// @param _deltaThreshold: Delta deviation threshold in percentage * 10000
+    /// @param _reinvestThreshold: Estimated gas cost to reinvest
     /// @param _feeConfig: Farming reward fee, withdrawal fee and management fee
     /// @param _vaultLimits: Max vault size, max amount per open and max amount per withdrawal
     function initializeConfig(
@@ -187,6 +190,7 @@ contract HomoraPDNVault is
         uint256 _targetDebtRatio,
         uint256 _debtRatioWidth,
         uint256 _deltaThreshold,
+        uint256 _reinvestThreshold,
         ApertureFeeConfig calldata _feeConfig,
         ApertureVaultLimits calldata _vaultLimits
     ) external onlyOwner {
@@ -196,6 +200,7 @@ contract HomoraPDNVault is
             _debtRatioWidth,
             _deltaThreshold
         );
+        setReinvestThreshold(_reinvestThreshold);
         setFees(_feeConfig);
         setVaultLimits(_vaultLimits);
     }
@@ -286,6 +291,11 @@ contract HomoraPDNVault is
             "Invalid delta threshold"
         );
         deltaThreshold = _deltaThreshold;
+    }
+
+    /// @param _reinvestThreshold: Estimated gas cost to reinvest
+    function setReinvestThreshold(uint256 _reinvestThreshold) public onlyOwner {
+        reinvestThreshold = _reinvestThreshold;
     }
 
     receive() external payable {}
@@ -393,14 +403,14 @@ contract HomoraPDNVault is
 
     /// @dev Internal deposit function
     /// @param position_info: Aperture position info
-    /// @param stableTokenDepositAmount: Amount of stable token supplied by user
-    /// @param assetTokenDepositAmount: Amount of asset token supplied by user
+    /// @param stableDepositAmount: Amount of stable token supplied by user
+    /// @param assetDepositAmount: Amount of asset token supplied by user
     /// @param minEquityETH: Minimum equity received after adding liquidity
     /// @param minReinvestETH: Minimum equity received after reinvesting
     function depositInternal(
         PositionInfo memory position_info,
-        uint256 stableTokenDepositAmount,
-        uint256 assetTokenDepositAmount,
+        uint256 stableDepositAmount,
+        uint256 assetDepositAmount,
         uint256 minEquityETH,
         uint256 minReinvestETH
     ) internal {
@@ -418,18 +428,18 @@ contract HomoraPDNVault is
         );
 
         // Transfer user's deposit tokens to current contract.
-        if (stableTokenDepositAmount > 0) {
+        if (stableDepositAmount > 0) {
             IERC20(pairInfo.stableToken).safeTransferFrom(
                 msg.sender,
                 address(this),
-                stableTokenDepositAmount
+                stableDepositAmount
             );
         }
-        if (assetTokenDepositAmount > 0) {
+        if (assetDepositAmount > 0) {
             IERC20(pairInfo.assetToken).safeTransferFrom(
                 msg.sender,
                 address(this),
-                assetTokenDepositAmount
+                assetDepositAmount
             );
         }
 
@@ -441,6 +451,8 @@ contract HomoraPDNVault is
             contractInfo,
             homoraPosId,
             pairInfo,
+            stableDepositAmount,
+            assetDepositAmount,
             leverageLevel,
             pid,
             msg.value
@@ -535,13 +547,11 @@ contract HomoraPDNVault is
         // Total share before withdrawal
         uint256 totalShareAmount = vaultState.totalShareAmount;
 
-        // Update user position info
-        positions[position_info.chainId][position_info.positionId]
-            .shareAmount -= withdrawShareAmount;
         // Collect withdrawal fees and update vault position state
         uint256 withdrawFeeShare = VaultLib.collectWithdrawFee(
             positions,
             vaultState,
+            position_info,
             withdrawShareAmount,
             feeConfig.withdrawFee
         );
@@ -639,6 +649,7 @@ contract HomoraPDNVault is
         if (
             homoraPosId == VaultLib._NO_ID || vaultState.totalShareAmount == 0
         ) {
+            emit SkipReinvest();
             return;
         }
 
@@ -670,17 +681,20 @@ contract HomoraPDNVault is
         }
 
         // Not worth the gas
-        if (rewardETHValue < 50e15) {
+        if (rewardETHValue < reinvestThreshold) {
+            emit SkipReinvest();
             return;
         }
 
         uint256 equityBefore = getEquityETHValue();
 
-        // 3. Add liquidity with the current balance
+        // Add liquidity with the current balance
         VaultLib.deposit(
             contractInfo,
             homoraPosId,
             pairInfo,
+            stableBalance,
+            0,
             leverageLevel,
             pid,
             0
@@ -688,7 +702,7 @@ contract HomoraPDNVault is
 
         uint256 equityAfter = getEquityETHValue();
 
-        // 4. Collect harvest fees
+        // Collect harvest fees
         VaultLib.collectHarvestFee(
             positions,
             vaultState,
