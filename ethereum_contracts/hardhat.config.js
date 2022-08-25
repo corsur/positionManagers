@@ -6,7 +6,10 @@ require("hardhat-abi-exporter");
 require("hardhat-contract-sizer");
 require("solidity-coverage");
 
+/* BEGIN -- Custom task imports -- */
 require("./tasks/mainnet_deploy_homora_pdn");
+require("./tasks/mainnet_deploy_homora_adapter");
+/* END -- Custom task imports -- */
 
 const {
   ETH_PRV_KEY_1,
