@@ -130,6 +130,9 @@ contract HomoraPDNVault is
         address _rewardToken,
         uint256 _pid
     ) public initializer {
+        // TODO(Gao): See if we can only keep one init here. Based on OZ's code
+        // https://ethereum.stackexchange.com/questions/122462/difference-between-init-and-init-unchained
+        // One init may also invoke the initializer of parents.
         __Ownable_init();
         __UUPSUpgradeable_init();
         __Pausable_init();

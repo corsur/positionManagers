@@ -503,7 +503,7 @@ async function testDepositAndWithdraw(
     );
 }
 
-describe.only("HomoraPDNVault Initialization", function () {
+describe("HomoraPDNVault Initialization", function () {
   var managerContract = undefined;
   var homoraAdapter = undefined;
   var strategyContract = undefined;
@@ -524,6 +524,7 @@ describe.only("HomoraPDNVault Initialization", function () {
 
     ({ managerContract, strategyContract, homoraAdapter, vaultLib } =
       await deployHomoraPDNVault(
+        ethers,
         mainWallet,
         {
           wormholeTokenBridgeAddr: AVAX_MAINNET_TOKEN_BRIDGE_ADDR,

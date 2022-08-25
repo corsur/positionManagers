@@ -56,6 +56,7 @@ async function main() {
 
   const { managerContract, strategyContract, homoraAdapter } =
     await deployHomoraPDNVault(
+      ethers,
       mainWallet,
       {
         wormholeTokenBridgeAddr: AVAX_MAINNET_TOKEN_BRIDGE_ADDR,

@@ -4,12 +4,15 @@ require("@openzeppelin/hardhat-upgrades");
 require("hardhat-gas-reporter");
 require("hardhat-abi-exporter");
 require("hardhat-contract-sizer");
-require('solidity-coverage')
+require("solidity-coverage");
+
+require("./tasks/mainnet_deploy_homora_pdn");
 
 const {
   ETH_PRV_KEY_1,
   INFURA_RINKERBY_URL,
   INFURA_ROPSTEN_URL,
+  AVAX_MAINNET_URL,
 } = require("./constants");
 
 // This is a sample Hardhat task. To learn how to create your own go to
@@ -55,6 +58,9 @@ module.exports = {
     rinkeby: {
       url: INFURA_RINKERBY_URL,
       accounts: [ETH_PRV_KEY_1],
+    },
+    avax_mainnet: {
+      url: AVAX_MAINNET_URL,
     },
   },
   paths: {
