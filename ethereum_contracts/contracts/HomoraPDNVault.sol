@@ -347,7 +347,7 @@ contract HomoraPDNVault is
 
     /// @dev Decrease an existing Aperture position
     /// @param position_info: Aperture position info
-    /// @param data: Encoded (uint256 shareAmount, uint256 amtAMin, uint256 amtBMin, uint256 minReinvestETH).
+    /// @param data: Encoded (uint256 shareAmount, uint256 amtAMin, uint256 amtBMin, uint256 minReinvestETH)
     function decreasePosition(
         PositionInfo memory position_info,
         Recipient calldata recipient,
@@ -371,7 +371,7 @@ contract HomoraPDNVault is
 
     /// @dev Close an existing Aperture position
     /// @param position_info: Aperture position info
-    /// @param data: Encoded (uint256 amtAMin, uint256 amtBMin, uint256 minReinvestETH).
+    /// @param data: Encoded (uint256 amtAMin, uint256 amtBMin, uint256 minReinvestETH)
     function closePosition(
         PositionInfo memory position_info,
         Recipient calldata recipient,
@@ -532,22 +532,30 @@ contract HomoraPDNVault is
         // Record original position equity before removing liquidity
         uint256 equityBefore = getEquityETHValue();
 
+        // Total share before withdrawal
+        uint256 totalShareAmount = vaultState.totalShareAmount;
+
+        // Update user position info
+        positions[position_info.chainId][position_info.positionId]
+            .shareAmount -= withdrawShareAmount;
+        // Collect withdrawal fees and update vault position state
+        uint256 withdrawFeeShare = VaultLib.collectWithdrawFee(
+            positions,
+            vaultState,
+            withdrawShareAmount,
+            feeConfig.withdrawFee
+        );
+
         // Actual withdraw actions
         uint256[3] memory withdrawAmounts = VaultLib.withdraw(
             contractInfo,
             homoraPosId,
             pairInfo,
             VaultLib.SOME_LARGE_NUMBER.mulDiv(
-                withdrawShareAmount,
-                vaultState.totalShareAmount
-            ),
-            feeConfig.withdrawFee
+                withdrawShareAmount - withdrawFeeShare, // take into account withdrawal fees
+                totalShareAmount
+            )
         );
-
-        // Update position info.
-        positions[position_info.chainId][position_info.positionId]
-            .shareAmount -= withdrawShareAmount;
-        vaultState.totalShareAmount -= withdrawShareAmount;
 
         // Transfer fund to the recipient (possibly initiate cross-chain transfer).
         IERC20(pairInfo.stableToken).transfer(
@@ -564,17 +572,6 @@ contract HomoraPDNVault is
         IApertureManager(apertureManager).disburseAssets{
             value: withdrawAmounts[2]
         }(assetInfos, recipient);
-
-        // Collect withdrawal fee
-        IERC20(pairInfo.stableToken).transfer(
-            feeCollector,
-            IERC20(pairInfo.stableToken).balanceOf(address(this))
-        );
-        IERC20(pairInfo.assetToken).transfer(
-            feeCollector,
-            IERC20(pairInfo.assetToken).balanceOf(address(this))
-        );
-        payable(feeCollector).transfer(address(this).balance);
 
         // Slippage control
         // WAVAX is refunded as native AVAX by Homora's Spell
@@ -645,15 +642,9 @@ contract HomoraPDNVault is
             return;
         }
 
-        // 1. Claim rewards and collect harvest fee
+        // 1. Claim and swap rewards
         VaultLib.harvest(contractInfo, homoraPosId, pairInfo);
-
-        VaultLib.swapRewardCollectFee(
-            contractInfo.router,
-            feeCollector,
-            pairInfo,
-            feeConfig.harvestFee
-        );
+        VaultLib.swapReward(contractInfo.router, pairInfo);
 
         // 2. Swap any AVAX leftover
         uint256 avaxBalance = address(this).balance;
@@ -696,6 +687,15 @@ contract HomoraPDNVault is
         );
 
         uint256 equityAfter = getEquityETHValue();
+
+        // 4. Collect harvest fees
+        VaultLib.collectHarvestFee(
+            positions,
+            vaultState,
+            feeConfig.harvestFee,
+            equityBefore,
+            equityAfter
+        );
 
         emit LogReinvest(equityBefore, equityAfter);
     }

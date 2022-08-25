@@ -345,7 +345,9 @@ async function testReinvest(managerContract, strategyContract, vaultLib) {
   let reinvested = false;
   let minReinvestETH = BigNumber.from(1).mul("1000000000000000000");
   try {
-    await strategyContract.connect(wallets[0]).reinvest(minReinvestETH, txOptions);
+    await strategyContract
+      .connect(wallets[0])
+      .reinvest(minReinvestETH, txOptions);
     reinvested = true;
   } catch (err) {
     await expect(

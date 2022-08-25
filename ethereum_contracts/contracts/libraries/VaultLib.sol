@@ -156,11 +156,10 @@ library VaultLib {
     ) internal view returns (uint256) {
         IJoePair pair = IJoePair(lpToken);
         address feeTo = IJoeFactory(pair.factory()).feeTo();
-        uint256 kLast = pair.kLast();
+        uint256 rootKLast = Math.sqrt(pair.kLast());
         if (feeTo != address(0)) {
-            if (kLast != 0) {
+            if (rootKLast > 0) {
                 uint256 rootK = Math.sqrt(reserve0 * reserve1);
-                uint256 rootKLast = Math.sqrt(kLast);
                 if (rootK > rootKLast) {
                     totalSupply = totalSupply.mulDiv(
                         6 * rootK,
@@ -205,6 +204,7 @@ library VaultLib {
                 lpToken,
                 stableToken
             );
+            // LP may be minted for fees.
             uint256 totalLPSupply = updateLiquidity(
                 lpToken,
                 reserve0,
@@ -571,13 +571,11 @@ library VaultLib {
     /// @param homoraPosId: Position id of the PDN vault in HomoraBank
     /// @param pairInfo: Addresses in the pair
     /// @param withdrawShareRatio: Ratio of user shares to withdraw multiplied by 1e18
-    /// @param withdrawFee: Withdrawal fee in percentage multiplied by 1e4
     function withdraw(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         PairInfo storage pairInfo,
-        uint256 withdrawShareRatio,
-        uint256 withdrawFee
+        uint256 withdrawShareRatio
     ) external returns (uint256[3] memory) {
         (uint256 stableDebtAmt, uint256 assetDebtAmt) = getDebtAmounts(
             contractInfo.bank,
@@ -603,17 +601,11 @@ library VaultLib {
         // Calculate token disbursement amount.
         return [
             // Stable token withdraw amount
-            IERC20(pairInfo.stableToken).balanceOf(address(this)).mulDiv(
-                UNITY - withdrawFee,
-                UNITY
-            ),
+            IERC20(pairInfo.stableToken).balanceOf(address(this)),
             // Asset token withdraw amount
-            IERC20(pairInfo.assetToken).balanceOf(address(this)).mulDiv(
-                UNITY - withdrawFee,
-                UNITY
-            ),
+            IERC20(pairInfo.assetToken).balanceOf(address(this)),
             // AVAX withdraw amount
-            address(this).balance.mulDiv(UNITY - withdrawFee, UNITY)
+            address(this).balance
         ];
     }
 
@@ -720,6 +712,23 @@ library VaultLib {
         );
     }
 
+    function collectWithdrawFee(
+        mapping(uint16 => mapping(uint128 => Position)) storage positions,
+        VaultState storage vaultState,
+        uint256 withdrawShareAmount,
+        uint256 withdrawFee
+    ) external returns (uint256 withdrawFeeShare) {
+        // Shares transferred to fee collector
+        withdrawFeeShare = withdrawShareAmount.mulDiv(
+            withdrawFee,
+            UNITY
+        );
+        // Update total share amount in the vault.
+        vaultState.totalShareAmount -= withdrawShareAmount - withdrawFeeShare;
+        // Update fee collector's position state.
+        positions[0][0].shareAmount += withdrawFeeShare;
+    }
+
     function collectManagementFee(
         mapping(uint16 => mapping(uint128 => Position)) storage positions,
         VaultState storage vaultState,
@@ -735,7 +744,25 @@ library VaultLib {
                 31536000
             );
         vaultState.lastCollectionTimestamp = block.timestamp;
-        // Update vault position state.
+        // Update total share amount in the vault.
+        vaultState.totalShareAmount += shareAmtMint;
+        // Update fee collector's position state.
+        positions[0][0].shareAmount += shareAmtMint;
+    }
+
+    function collectHarvestFee(
+        mapping(uint16 => mapping(uint128 => Position)) storage positions,
+        VaultState storage vaultState,
+        uint256 harvestFee,
+        uint256 equityBefore,
+        uint256 equityAfter
+    ) external {
+        uint256 equityChange = equityAfter - equityBefore;
+        uint256 shareAmtMint = vaultState.totalShareAmount.mulDiv(
+            harvestFee * equityChange,
+            VaultLib.UNITY * equityAfter - harvestFee * equityChange
+        );
+        // Update total share amount in the vault.
         vaultState.totalShareAmount += shareAmtMint;
         // Update fee collector's position state.
         positions[0][0].shareAmount += shareAmtMint;
@@ -1186,30 +1213,18 @@ library VaultLib {
         return amounts[1];
     }
 
-    /// @notice Swap reward tokens into stable tokens and collect harvest fee
-    function swapRewardCollectFee(
-        address router,
-        address feeCollector,
-        PairInfo storage pairInfo,
-        uint256 harvestFee
-    ) external {
+    /// @notice Swap reward tokens into stable tokens
+    function swapReward(address router, PairInfo storage pairInfo) external {
         uint256 rewardAmt = IERC20(pairInfo.rewardToken).balanceOf(
             address(this)
         );
         if (rewardAmt > 0) {
-            uint256 stableRecv = swap(
+            swap(
                 router,
                 rewardAmt,
                 pairInfo.rewardToken,
                 pairInfo.stableToken
             );
-            uint256 harvestFeeAmt = stableRecv.mulDiv(harvestFee, UNITY);
-            if (harvestFeeAmt > 0) {
-                IERC20(pairInfo.stableToken).safeTransfer(
-                    feeCollector,
-                    harvestFeeAmt
-                );
-            }
         }
     }
 }
