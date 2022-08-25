@@ -340,15 +340,16 @@ async function testReinvest(managerContract, strategyContract, vaultLib) {
     homoraPosId,
     txOptions
   );
-  console.log("Collateral Before reinvest: %d", collateralBefore);
+  console.log("Collateral before reinvest: %d", collateralBefore);
 
   let reinvested = false;
+  let minReinvestETH = BigNumber.from(1).mul("1000000000000000000");
   try {
-    await strategyContract.connect(wallets[0]).reinvest(0, txOptions);
+    await strategyContract.connect(wallets[0]).reinvest(minReinvestETH, txOptions);
     reinvested = true;
   } catch (err) {
     await expect(
-      strategyContract.connect(wallets[0]).reinvest(0, txOptions)
+      strategyContract.connect(wallets[0]).reinvest(minReinvestETH, txOptions)
     ).to.be.revertedWith("Insufficient_Liquidity_Mint");
     reinvested = false;
   }
@@ -359,12 +360,13 @@ async function testReinvest(managerContract, strategyContract, vaultLib) {
     txOptions
   );
 
+  console.log("reinvested", reinvested);
   console.log("Collateral before reinvest: %d", collateralBefore);
   console.log("Collateral after reinvest: %d", collateralAfter);
   if (reinvested) {
     expect(collateralAfter > collateralBefore).to.equal(true);
   } else {
-    expect(collateralAfter == collateralBefore).to.equal(true);
+    expect(collateralAfter.eq(collateralBefore)).to.equal(true);
   }
 }
 
@@ -607,7 +609,7 @@ describe.only("HomoraPDNVault Initialization", function () {
     );
   });
 
-  it.only("Deposit and test rebalance", async function () {
+  it("Deposit and test rebalance", async function () {
     await testRebalance(managerContract, strategyContract, vaultLib);
   });
 

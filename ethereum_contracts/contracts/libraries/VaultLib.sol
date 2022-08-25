@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
-import "../interfaces/IHomoraAvaxRouter.sol";
 import "../interfaces/IHomoraBank.sol";
 import "../interfaces/IHomoraAdapter.sol";
 import "../interfaces/IHomoraOracle.sol";
-import "../interfaces/IUniswapPair.sol";
+import "../interfaces/IJoeFactory.sol";
+import "../interfaces/IJoePair.sol";
+import "../interfaces/IJoeRouter01.sol";
 import "../libraries/HomoraAdapterLib.sol";
 
 // Addresses in the pair
@@ -139,12 +139,37 @@ library VaultLib {
         view
         returns (uint256 reserve0, uint256 reserve1)
     {
-        IUniswapPair pair = IUniswapPair(lpToken);
+        IJoePair pair = IJoePair(lpToken);
         if (pair.token0() == stableToken) {
             (reserve0, reserve1, ) = pair.getReserves();
         } else {
             (reserve1, reserve0, ) = pair.getReserves();
         }
+    }
+
+    // If fee is on, TraderJoe mints liquidity equivalent to 1/6th of the growth in sqrt(k), which changes `totalSupply`.
+    function updateLiquidity(
+        address lpToken,
+        uint256 reserve0,
+        uint256 reserve1,
+        uint256 totalSupply
+    ) internal view returns (uint256) {
+        IJoePair pair = IJoePair(lpToken);
+        address feeTo = IJoeFactory(pair.factory()).feeTo();
+        uint256 kLast = pair.kLast();
+        if (feeTo != address(0)) {
+            if (kLast != 0) {
+                uint256 rootK = Math.sqrt(reserve0 * reserve1);
+                uint256 rootKLast = Math.sqrt(kLast);
+                if (rootK > rootKLast) {
+                    totalSupply = totalSupply.mulDiv(
+                        6 * rootK,
+                        rootK * 5 + rootKLast
+                    );
+                }
+            }
+        }
+        return totalSupply;
     }
 
     ///********* Homora Bank related functions *********///
@@ -176,12 +201,17 @@ library VaultLib {
             amount0 = 0;
             amount1 = 0;
         } else {
-            uint256 totalLPSupply = IERC20(lpToken).totalSupply();
-            require(totalLPSupply > 0);
             (uint256 reserve0, uint256 reserve1) = getReserves(
                 lpToken,
                 stableToken
             );
+            uint256 totalLPSupply = updateLiquidity(
+                lpToken,
+                reserve0,
+                reserve1,
+                IERC20(lpToken).totalSupply()
+            );
+            require(totalLPSupply > 0);
             amount0 = reserve0.mulDiv(collAmount, totalLPSupply);
             amount1 = reserve1.mulDiv(collAmount, totalLPSupply);
         }
@@ -472,7 +502,7 @@ library VaultLib {
         );
         // Internally Homora's Spell swaps Ub token B to A. It will be reverted by TraderJoe if amtAOut == 0
         if (Ub > 0) {
-            if (IHomoraAvaxRouter(router).getAmountOut(Ub, Nb, Na) == 0) {
+            if (IJoeRouter01(router).getAmountOut(Ub, Nb, Na) == 0) {
                 // Let Homora swaps 1 token A to B.
                 debtAAmt += 1;
             }
@@ -738,11 +768,9 @@ library VaultLib {
         vars.L = leverageLevel;
         (vars.reserveA, vars.reserveB) = getReserves(lpToken, stableToken);
         if (pos.amtB < pos.debtB) {
-            console.log("rebalance short remove");
             // Short: amtB < debtAmtB, swap A to B
             vars = rebalanceMathShortRemove(pos, vars);
         } else {
-            console.log("rebalance long remove");
             // Long: amtB > debtAmtB, swap B to A
             vars = rebalanceMathLongRemove(pos, vars);
         }
@@ -763,7 +791,6 @@ library VaultLib {
         uint256 leverageLevel,
         uint256 slippage
     ) external {
-        console.log("debt ratio", getDebtRatio(contractInfo.bank, homoraPosId));
         RemoveHelper memory vars = populateRemoveHelper(
             pos,
             pairInfo.lpToken,
@@ -794,144 +821,17 @@ library VaultLib {
             valueBeforeSwap > valueAfterSwap &&
             getOffset(valueAfterSwap, valueBeforeSwap) > slippage
         ) {
-            console.log("price", (vars.Sa * 1e14) / vars.Sb);
-            console.log(
-                "getOffset",
-                getOffset(valueAfterSwap, valueBeforeSwap)
-            );
             revert Slippage_Too_Large();
         }
 
-        console.log("totalSupply", IERC20(pairInfo.lpToken).totalSupply());
-        console.log("reserveABefore", vars.reserveA);
-        console.log(
-            "balanceABefore",
-            IERC20(pairInfo.stableToken).balanceOf(pairInfo.lpToken)
+        removeLiquidity(
+            contractInfo,
+            homoraPosId,
+            pairInfo,
+            vars.collWithdrawAmt,
+            vars.amtARepay,
+            vars.amtBRepay
         );
-        console.log("reserveBBefore", vars.reserveB);
-        console.log(
-            "balanceABefore",
-            IERC20(pairInfo.assetToken).balanceOf(pairInfo.lpToken)
-        );
-        console.log("collateralSize", pos.collateralSize);
-        console.log("amtA", pos.amtA);
-        console.log("amtB", pos.amtB);
-        console.log("debtAmtA", pos.debtA);
-        console.log("debtAmtB", pos.debtB);
-        console.log("collWithdrawAmt", vars.collWithdrawAmt);
-        console.log("amtAWithdraw", vars.amtAWithdraw);
-        console.log("amtBWithdraw", vars.amtBWithdraw);
-        console.log("amtARepay", vars.amtARepay);
-        console.log("amtBRepay", vars.amtBRepay);
-        console.log("amtAIn", vars.amtAWithdraw - vars.amtARepay);
-        console.log("amtBOut", vars.amtBRepay - vars.amtBWithdraw);
-        console.log(
-            "getAmountsIn",
-            getAmountIn(
-                vars.amtBRepay - vars.amtBWithdraw,
-                vars.reserveA - vars.amtAWithdraw,
-                vars.reserveB - vars.amtBWithdraw
-            )
-        );
-        console.log(
-            "getAmountsOut",
-            getAmountOut(
-                vars.amtAWithdraw - vars.amtARepay,
-                vars.reserveA - vars.amtAWithdraw,
-                vars.reserveB - vars.amtBWithdraw
-            )
-        );
-        console.log(
-            "stableBalance",
-            IERC20(pairInfo.stableToken).balanceOf(address(this))
-        );
-
-        if (vars.L == 23000) {
-            IHomoraAdapter(contractInfo.adapter).homoraExecute(
-                contractInfo,
-                homoraPosId,
-                abi.encodeWithSelector(
-                    REMOVE_LIQUIDITY_SIG,
-                    pairInfo.stableToken,
-                    pairInfo.assetToken,
-                    [vars.collWithdrawAmt, vars.collWithdrawAmt, 0, 0, 0, 0, 0]
-                ),
-                pairInfo,
-                0
-            );
-            console.log(
-                "collWithdrawAmt",
-                IERC20(pairInfo.lpToken).balanceOf(address(this))
-            );
-            IERC20(pairInfo.lpToken).approve(
-                contractInfo.router,
-                vars.collWithdrawAmt
-            );
-            (pos.amtA, pos.amtB) = IHomoraAvaxRouter(contractInfo.router)
-                .removeLiquidity(
-                    pairInfo.stableToken,
-                    pairInfo.assetToken,
-                    vars.collWithdrawAmt,
-                    0,
-                    0,
-                    address(this),
-                    block.timestamp
-                );
-            console.log("amtA", pos.amtA);
-            console.log("amtB", pos.amtB);
-            address[] memory path = new address[](2);
-            (path[0], path[1]) = (pairInfo.stableToken, pairInfo.assetToken);
-            IHomoraAvaxRouter(contractInfo.router).swapTokensForExactTokens(
-                vars.amtBRepay - pos.amtB,
-                pos.amtA - vars.amtARepay,
-                path,
-                address(this),
-                block.timestamp
-            );
-            console.log("Finish swap");
-        } else {
-            removeLiquidity(
-                contractInfo,
-                homoraPosId,
-                pairInfo,
-                vars.collWithdrawAmt, // * 101 / 100,
-                vars.amtARepay,
-                vars.amtBRepay
-            );
-        }
-    }
-
-    // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
-    function getAmountOut(
-        uint256 amountIn,
-        uint256 reserveIn,
-        uint256 reserveOut
-    ) internal pure returns (uint256 amountOut) {
-        require(amountIn > 0, "JoeLibrary: INSUFFICIENT_INPUT_AMOUNT");
-        require(
-            reserveIn > 0 && reserveOut > 0,
-            "JoeLibrary: INSUFFICIENT_LIQUIDITY"
-        );
-        uint256 amountInWithFee = amountIn * 997;
-        uint256 numerator = amountInWithFee * reserveOut;
-        uint256 denominator = reserveIn * 1000 + amountInWithFee;
-        amountOut = numerator / denominator;
-    }
-
-    // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
-    function getAmountIn(
-        uint256 amountOut,
-        uint256 reserveIn,
-        uint256 reserveOut
-    ) internal pure returns (uint256 amountIn) {
-        require(amountOut > 0, "JoeLibrary: INSUFFICIENT_OUTPUT_AMOUNT");
-        require(
-            reserveIn > 0 && reserveOut > 0,
-            "JoeLibrary: INSUFFICIENT_LIQUIDITY"
-        );
-        uint256 numerator = reserveIn * amountOut * 1000;
-        uint256 denominator = (reserveOut - amountOut) * 997;
-        amountIn = numerator / denominator + 1;
     }
 
     function populateAddHelper(
@@ -970,8 +870,6 @@ library VaultLib {
         uint256 slippage,
         uint256 pid
     ) external {
-        console.log("rebalanceAdd");
-
         AddHelper memory vars = populateAddHelper(
             pos,
             pairInfo.lpToken,
@@ -1084,14 +982,7 @@ library VaultLib {
     function rebalanceMathLongRemove(
         VaultPosition memory pos,
         RemoveHelper memory vars
-    ) internal view returns (RemoveHelper memory) {
-        console.log("reserveABefore", vars.reserveA);
-        console.log("reserveBBefore", vars.reserveB);
-        console.log("collateralSize", pos.collateralSize);
-        console.log("amtA", pos.amtA);
-        console.log("amtB", pos.amtB);
-        console.log("debtAmtA", pos.debtA);
-        console.log("debtAmtB", pos.debtB);
+    ) internal pure returns (RemoveHelper memory) {
         // Ka << 1, multiply by someLargeNumber 1e18
         vars.Ka = SOME_LARGE_NUMBER.mulDiv(
             UNITY_MINUS_FEE * (pos.amtB - pos.debtB),
@@ -1103,9 +994,6 @@ library VaultLib {
                 pos.debtB,
             DOWN
         );
-        console.log("vars.Ka", vars.Ka);
-        console.log("A", pos.debtA * SOME_LARGE_NUMBER);
-        console.log("B", vars.Ka * vars.reserveA);
         vars.collWithdrawAmt =
             vars.L *
             pos.collateralSize.mulDiv(
@@ -1114,7 +1002,6 @@ library VaultLib {
                 UP // round up to withdraw enough LP to repay A/B
             ) -
             pos.collateralSize.mulDiv(vars.L - TWINS, TWINS, DOWN);
-        console.log("vars.collWithdrawAmt", vars.collWithdrawAmt);
         require(vars.collWithdrawAmt > 0, "Must withdraw >0");
 
         vars.amtBWithdraw = pos.amtB.mulDiv(
@@ -1258,7 +1145,7 @@ library VaultLib {
         address fromToken,
         address toToken
     ) internal returns (uint256) {
-        IHomoraAvaxRouter _router = IHomoraAvaxRouter(router);
+        IJoeRouter01 _router = IJoeRouter01(router);
         address[] memory path = new address[](2);
         (path[0], path[1]) = (fromToken, toToken);
         uint256[] memory amounts = _router.getAmountsOut(amount, path);
@@ -1282,7 +1169,7 @@ library VaultLib {
         uint256 amount,
         address toToken
     ) external returns (uint256) {
-        IHomoraAvaxRouter _router = IHomoraAvaxRouter(router);
+        IJoeRouter01 _router = IJoeRouter01(router);
         address fromToken = _router.WAVAX();
         address[] memory path = new address[](2);
         (path[0], path[1]) = (fromToken, toToken);

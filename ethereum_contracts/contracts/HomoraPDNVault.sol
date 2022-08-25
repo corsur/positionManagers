@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "./interfaces/IApertureCommon.sol";
-import "./interfaces/IHomoraAvaxRouter.sol";
+import "./interfaces/IJoeRouter01.sol";
 import "./interfaces/IHomoraBank.sol";
 import "./interfaces/IHomoraSpell.sol";
 
@@ -142,7 +142,7 @@ contract HomoraPDNVault is
         contractInfo.oracle = IHomoraBank(_homoraBank).oracle();
         contractInfo.spell = _spell;
         contractInfo.router = IHomoraSpell(_spell).router();
-        WAVAX = IHomoraAvaxRouter(contractInfo.router).WAVAX();
+        WAVAX = IJoeRouter01(contractInfo.router).WAVAX();
         require(VaultLib.support(contractInfo.oracle, _stableToken));
         require(VaultLib.support(contractInfo.oracle, _assetToken));
         pairInfo.stableToken = _stableToken;
@@ -671,14 +671,13 @@ contract HomoraPDNVault is
             stableBalance
         );
 
-        // Not worth the gas
-        if (rewardETHValue < 50e15) {
-            //            IERC20(pairInfo.stableToken).safeTransfer(contractInfo.oracle, stableBalance);
-            return;
-        }
-
         if (rewardETHValue < minReinvestETH) {
             revert Insufficient_Liquidity_Mint();
+        }
+
+        // Not worth the gas
+        if (rewardETHValue < 50e15) {
+            return;
         }
 
         uint256 equityBefore = getEquityETHValue();
