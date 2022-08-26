@@ -74,7 +74,6 @@ async function main() {
   // Set up Homora adapter contract.
   await homoraAdapter.setCaller(strategyContract.address, true);
   await homoraAdapter.setTarget(strategyContract.address, true);
-  await homoraAdapter.setTarget(HOMORA_BANK_ADDRESS, true);
   await homoraAdapter.setTarget(USDC_TOKEN_ADDRESS, true);
   await homoraAdapter.setTarget(WAVAX_TOKEN_ADDRESS, true);
   await homoraAdapter.setTarget(JOE_TOKEN_ADDRESS, true);
