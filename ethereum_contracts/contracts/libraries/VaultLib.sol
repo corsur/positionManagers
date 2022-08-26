@@ -12,6 +12,7 @@ import "../interfaces/IHomoraOracle.sol";
 import "../interfaces/IJoeFactory.sol";
 import "../interfaces/IJoePair.sol";
 import "../interfaces/IJoeRouter01.sol";
+import "../interfaces/IWAVAX.sol";
 
 import "../libraries/HomoraAdapterLib.sol";
 
@@ -258,7 +259,7 @@ library VaultLib {
         address homoraBank,
         uint256 homoraPosId,
         PairInfo storage pairInfo
-    ) public view returns (VaultPosition memory pos) {
+    ) internal view returns (VaultPosition memory pos) {
         pos.collateralSize = getCollateralSize(homoraBank, homoraPosId);
         (pos.amtA, pos.amtB) = convertCollateralToTokens(
             pos.collateralSize,
@@ -477,7 +478,7 @@ library VaultLib {
         uint256 Ua,
         uint256 Ub,
         uint256 L
-    ) internal view returns (uint256 debtAAmt, uint256 debtBAmt) {
+    ) internal view returns (uint256 debtA, uint256 debtB) {
         // Na: Stable token pool reserve
         // Nb: Asset token pool reserve
         (uint256 Na, uint256 Nb) = getReserves(
@@ -498,24 +499,26 @@ library VaultLib {
             (Ub.mulDiv(UNITY_MINUS_FEE * (Na + Ua), UNITY * Na) +
                 Ua.mulDiv(Nb, Na));
         uint256 squareRoot = Math.sqrt(b * b + 8 * c);
-        debtBAmt = (squareRoot - b) / 4;
-        debtAAmt = ((L - TWINS) * debtBAmt).mulDiv(
+        debtB = (squareRoot - b) / 4;
+        debtA = ((L - TWINS) * debtB).mulDiv(
             Na + Ua,
-            L * (Nb + Ub) + TWINS * debtBAmt
+            L * (Nb + Ub) + TWINS * debtB
         );
         // Internally Homora's Spell swaps Ub token B to A. It will be reverted by TraderJoe if amtAOut == 0
         if (Ub > 0) {
             if (IJoeRouter01(router).getAmountOut(Ub, Nb, Na) == 0) {
                 // Let Homora swaps 1 token A to B.
-                debtAAmt += 1;
+                debtA += 1;
             }
         } else {
+            // Alpha Homora's `optimalDeposit` rounding error can be as large as 4.
+            // https://blog.alphaventuredao.io/byot/
             if (Na > Nb) {
                 // 1 B swaps more than 1 A.
-                debtBAmt += 1;
+                debtB += 4;
             } else {
                 // 1 A swaps more than 1 B.
-                debtAAmt += 1;
+                debtA += 4;
             }
         }
     }
@@ -526,31 +529,34 @@ library VaultLib {
     /// @param pairInfo: Addresses in the pair
     /// @param stableDepositAmount: Amount of stable token supplied by user
     /// @param assetDepositAmount: Amount of asset token supplied by user
+    /// @param value: native token sent
     /// @param leverageLevel: Target leverage * 10000
     /// @param pid: Pool id
-    /// @param value: native token sent
     function deposit(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         PairInfo storage pairInfo,
         uint256 stableDepositAmount,
         uint256 assetDepositAmount,
+        uint256 value,
         uint256 leverageLevel,
-        uint256 pid,
-        uint256 value
+        uint256 pid
     ) external returns (uint256) {
         // Skip if no balance available.
         if (stableDepositAmount + assetDepositAmount == 0) {
             return homoraPosId;
         }
 
-        (uint256 stableBorrowAmount, uint256 assetBorrowAmount) = deltaNeutralMath(
-            pairInfo,
-            contractInfo.router,
-            stableDepositAmount,
-            assetDepositAmount,
-            leverageLevel
-        );
+        (
+            uint256 stableBorrowAmount,
+            uint256 assetBorrowAmount
+        ) = deltaNeutralMath(
+                pairInfo,
+                contractInfo.router,
+                stableDepositAmount,
+                assetDepositAmount,
+                leverageLevel
+            );
 
         return
             addLiquidity(
@@ -559,10 +565,10 @@ library VaultLib {
                 pairInfo,
                 stableDepositAmount,
                 assetDepositAmount,
+                value,
                 stableBorrowAmount,
                 assetBorrowAmount,
-                pid,
-                value
+                pid
             );
     }
 
@@ -570,42 +576,70 @@ library VaultLib {
     /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraPosId: Position id of the PDN vault in HomoraBank
     /// @param pairInfo: Addresses in the pair
-    /// @param withdrawShareRatio: Ratio of user shares to withdraw multiplied by 1e18
+    /// @param withdrawShareRatio: Ratio of user shares to withdraw multiplied by 2**112
+    /// @param minStableReceived: Minimum amount of stable token returned to user
+    /// @param minAssetReceived: Minimum amount of asset token returned to user
     function withdraw(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         PairInfo storage pairInfo,
-        uint256 withdrawShareRatio
+        uint256 withdrawShareRatio,
+        uint256 minStableReceived,
+        uint256 minAssetReceived
     ) external returns (uint256[3] memory) {
-        (uint256 stableDebtAmt, uint256 assetDebtAmt) = getDebtAmounts(
+        uint256[2] memory debtAmounts;
+        (debtAmounts[0], debtAmounts[1]) = getDebtAmounts(
             contractInfo.bank,
             homoraPosId,
             pairInfo.stableToken,
             pairInfo.assetToken
         );
 
+        // Record the initial balance before removing liquidity.
+        uint256[3] memory balanceBefore = [
+            IERC20(pairInfo.stableToken).balanceOf(address(this)),
+            IERC20(pairInfo.assetToken).balanceOf(address(this)),
+            address(this).balance
+        ];
+
+        // Calculate collSize to withdraw.
+        uint256 collWithdrawSize = getCollateralSize(
+            contractInfo.bank,
+            homoraPosId
+        ).mulDiv(withdrawShareRatio, SOME_LARGE_NUMBER);
+
         removeLiquidity(
             contractInfo,
             homoraPosId,
             pairInfo,
-            // Calculate collSize to withdraw.
-            getCollateralSize(contractInfo.bank, homoraPosId).mulDiv(
-                withdrawShareRatio,
-                SOME_LARGE_NUMBER
-            ),
+            collWithdrawSize,
             // Calculate debt to repay in two tokens.
-            stableDebtAmt.mulDiv(withdrawShareRatio, SOME_LARGE_NUMBER),
-            assetDebtAmt.mulDiv(withdrawShareRatio, SOME_LARGE_NUMBER)
+            debtAmounts[0].mulDiv(withdrawShareRatio, SOME_LARGE_NUMBER),
+            debtAmounts[1].mulDiv(withdrawShareRatio, SOME_LARGE_NUMBER),
+            minStableReceived,
+            minAssetReceived
         );
 
         // Calculate token disbursement amount.
         return [
             // Stable token withdraw amount
-            IERC20(pairInfo.stableToken).balanceOf(address(this)),
+            IERC20(pairInfo.stableToken).balanceOf(address(this)) -
+                balanceBefore[0].mulDiv(
+                    SOME_LARGE_NUMBER - withdrawShareRatio,
+                    SOME_LARGE_NUMBER
+                ),
             // Asset token withdraw amount
-            IERC20(pairInfo.assetToken).balanceOf(address(this)),
+            IERC20(pairInfo.assetToken).balanceOf(address(this)) -
+                balanceBefore[1].mulDiv(
+                    SOME_LARGE_NUMBER - withdrawShareRatio,
+                    SOME_LARGE_NUMBER
+                ),
             // AVAX withdraw amount
-            address(this).balance
+            address(this).balance -
+                balanceBefore[2].mulDiv(
+                    SOME_LARGE_NUMBER - withdrawShareRatio,
+                    SOME_LARGE_NUMBER
+                )
         ];
     }
 
@@ -615,20 +649,20 @@ library VaultLib {
     /// @param pairInfo: Addresses in the pair
     /// @param stableSupply: Amount of stable token supplied to Homora
     /// @param assetSupply: Amount of asset token supplied to Homora
+    /// @param value: native token sent
     /// @param stableBorrow: Amount of stable token borrowed from Homora
     /// @param assetBorrow: Amount of asset token borrowed from Homora
     /// @param pid: Pool id
-    /// @param value: native token sent
     function addLiquidity(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         PairInfo storage pairInfo,
         uint256 stableSupply,
         uint256 assetSupply,
+        uint256 value,
         uint256 stableBorrow,
         uint256 assetBorrow,
-        uint256 pid,
-        uint256 value
+        uint256 pid
     ) internal returns (uint256) {
         IHomoraAdapter adapter = IHomoraAdapter(contractInfo.adapter);
 
@@ -690,13 +724,17 @@ library VaultLib {
     /// @param collWithdrawAmt: Amount of collateral/LP to withdraw by Homora
     /// @param amtARepay: Amount of stable token repaid to Homora
     /// @param amtBRepay: Amount of asset token repaid to Homora
+    /// @param amtAMin: Minimum amount of stable token returned to user
+    /// @param amtBMin: Minimum amount of asset token returned to user
     function removeLiquidity(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
         PairInfo storage pairInfo,
         uint256 collWithdrawAmt,
         uint256 amtARepay,
-        uint256 amtBRepay
+        uint256 amtBRepay,
+        uint256 amtAMin,
+        uint256 amtBMin
     ) internal {
         IHomoraAdapter(contractInfo.adapter).homoraExecute(
             contractInfo,
@@ -705,7 +743,7 @@ library VaultLib {
                 REMOVE_LIQUIDITY_SIG,
                 pairInfo.stableToken,
                 pairInfo.assetToken,
-                [collWithdrawAmt, 0, amtARepay, amtBRepay, 0, 0, 0]
+                [collWithdrawAmt, 0, amtARepay, amtBRepay, 0, amtAMin, amtBMin]
             ),
             pairInfo,
             0
@@ -720,10 +758,7 @@ library VaultLib {
         uint256 withdrawFee
     ) external returns (uint256 withdrawFeeShare) {
         // Shares transferred to fee collector
-        withdrawFeeShare = withdrawShareAmount.mulDiv(
-            withdrawFee,
-            UNITY
-        );
+        withdrawFeeShare = withdrawShareAmount.mulDiv(withdrawFee, UNITY);
         // Update total share amount in the vault.
         vaultState.totalShareAmount -= withdrawShareAmount - withdrawFeeShare;
         // Update user position info
@@ -755,22 +790,14 @@ library VaultLib {
     }
 
     function collectHarvestFee(
-        mapping(uint16 => mapping(uint128 => Position)) storage positions,
-        VaultState storage vaultState,
-        uint256 harvestFee,
-        uint256 equityBefore,
-        uint256 equityAfter
+        address feeCollector,
+        uint256 balance,
+        uint256 harvestFee
     ) external {
-        uint256 equityChange = equityAfter - equityBefore;
-        // Calculate shares minted for fee collector
-        uint256 shareAmtMint = vaultState.totalShareAmount.mulDiv(
-            harvestFee * equityChange,
-            VaultLib.UNITY * equityAfter - harvestFee * equityChange
-        );
-        // Update total share amount in the vault.
-        vaultState.totalShareAmount += shareAmtMint;
-        // Update fee collector's position state.
-        positions[0][0].shareAmount += shareAmtMint;
+        uint256 harvestFeeAmt = balance.mulDiv(harvestFee, UNITY);
+        if (harvestFeeAmt > 0) {
+            payable(feeCollector).transfer(harvestFeeAmt);
+        }
     }
 
     /// @dev Harvest farming rewards
@@ -811,18 +838,23 @@ library VaultLib {
     /// @dev Rebalance Homora Bank's farming position by removing liquidity and repaying debt
     /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraPosId: Position id of the PDN vault in HomoraBank
-    /// @param pos: Farming position in Homora Bank
     /// @param pairInfo: Addresses in the pair
     /// @param leverageLevel: Target leverage * 10000
     /// @param slippage: Slippage in the swap, multiplied by 1e4, 0.1% => 10
     function rebalanceRemove(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
-        VaultPosition memory pos,
         PairInfo storage pairInfo,
         uint256 leverageLevel,
         uint256 slippage
     ) external {
+        // Position info in Homora Bank
+        VaultPosition memory pos = getPositionInfo(
+            contractInfo.bank,
+            homoraPosId,
+            pairInfo
+        );
+
         RemoveHelper memory vars = populateRemoveHelper(
             pos,
             pairInfo.lpToken,
@@ -862,7 +894,9 @@ library VaultLib {
             pairInfo,
             vars.collWithdrawAmt,
             vars.amtARepay,
-            vars.amtBRepay
+            vars.amtBRepay,
+            0,
+            0
         );
     }
 
@@ -888,7 +922,6 @@ library VaultLib {
     /// @dev Rebalance Homora Bank's farming position by borrowing tokens and adding liquidity
     /// @param contractInfo: Contract address info including adapter, bank and spell
     /// @param homoraPosId: Position id of the PDN vault in HomoraBank
-    /// @param pos: Farming position in Homora Bank
     /// @param pairInfo: Addresses in the pair
     /// @param leverageLevel: Target leverage * 10000
     /// @param slippage: Slippage in the swap, multiplied by 1e4, 0.1% => 10
@@ -896,12 +929,18 @@ library VaultLib {
     function rebalanceAdd(
         ContractInfo storage contractInfo,
         uint256 homoraPosId,
-        VaultPosition memory pos,
         PairInfo storage pairInfo,
         uint256 leverageLevel,
         uint256 slippage,
         uint256 pid
     ) external {
+        // Position info in Homora Bank
+        VaultPosition memory pos = getPositionInfo(
+            contractInfo.bank,
+            homoraPosId,
+            pairInfo
+        );
+
         AddHelper memory vars = populateAddHelper(
             pos,
             pairInfo.lpToken,
@@ -941,10 +980,10 @@ library VaultLib {
             pairInfo,
             vars.amtASupply,
             0,
+            0,
             vars.amtABorrow,
             vars.amtBBorrow,
-            pid,
-            0
+            pid
         );
     }
 
@@ -956,7 +995,7 @@ library VaultLib {
         VaultPosition memory pos,
         RemoveHelper memory vars
     ) internal pure returns (RemoveHelper memory) {
-        // Ka << 1, multiply by someLargeNumber 1e18
+        // Ka << 1, multiply by 2**112
         vars.Ka = SOME_LARGE_NUMBER.mulDiv(
             UNITY * (pos.debtB - pos.amtB),
             UNITY_MINUS_FEE * (vars.reserveB - pos.debtB),
@@ -1015,7 +1054,7 @@ library VaultLib {
         VaultPosition memory pos,
         RemoveHelper memory vars
     ) internal pure returns (RemoveHelper memory) {
-        // Ka << 1, multiply by someLargeNumber 1e18
+        // Ka << 1, multiply by 2**112
         vars.Ka = SOME_LARGE_NUMBER.mulDiv(
             UNITY_MINUS_FEE * (pos.amtB - pos.debtB),
             UNITY *
@@ -1195,39 +1234,55 @@ library VaultLib {
         return amounts[1];
     }
 
-    /// @notice Swap native AVAX into toToken
-    function swapAVAX(
+    /// @notice Swap reward tokens according to `path`
+    function swapReward(
         address router,
-        uint256 amount,
-        address toToken
-    ) external returns (uint256) {
-        IJoeRouter01 _router = IJoeRouter01(router);
-        address fromToken = _router.WAVAX();
-        address[] memory path = new address[](2);
-        (path[0], path[1]) = (fromToken, toToken);
-        uint256[] memory amounts = _router.getAmountsOut(amount, path);
-        // Reverted by TraderJoe if amounts[1] == 0
-        if (amounts[1] > 0) {
-            amounts = _router.swapExactAVAXForTokens{value: amount}(
+        address rewardToken,
+        address[] calldata path
+    ) external {
+        uint256 rewardAmt = IERC20(rewardToken).balanceOf(address(this));
+        if (rewardAmt > 0) {
+            IJoeRouter01 _router = IJoeRouter01(router);
+            IERC20(rewardToken).approve(router, rewardAmt);
+            _router.swapExactTokensForTokens(
+                rewardAmt,
                 0,
                 path,
                 address(this),
                 block.timestamp
             );
+            IERC20(rewardToken).approve(router, 0);
         }
-        return amounts[1];
     }
 
-    /// @notice Swap reward tokens into stable tokens
-    function swapReward(address router, PairInfo storage pairInfo) external {
-        uint256 rewardAmt = IERC20(pairInfo.rewardToken).balanceOf(
-            address(this)
+    /// @dev Predict the amount received after swapping reward tokens
+    function rewardETHValue(
+        address router,
+        address rewardToken,
+        address[] calldata path
+    ) external view returns (uint256 value) {
+        uint256[] memory amounts = IJoeRouter01(router).getAmountsOut(
+            IERC20(rewardToken).balanceOf(address(this)),
+            path
         );
-        if (rewardAmt > 0) {
+        value = amounts[amounts.length - 1];
+    }
+
+    /// @dev Handle AVAX conversions
+    function handleAVAX(
+        address router,
+        PairInfo storage pairInfo,
+        address WAVAX
+    ) external {
+        // Wrap any native AVAX
+        IWAVAX(WAVAX).deposit{value: address(this).balance}();
+
+        // In case AVAX is not in the pair
+        if (pairInfo.stableToken != WAVAX && pairInfo.assetToken != WAVAX) {
             swap(
                 router,
-                rewardAmt,
-                pairInfo.rewardToken,
+                IERC20(WAVAX).balanceOf(address(this)),
+                WAVAX,
                 pairInfo.stableToken
             );
         }
