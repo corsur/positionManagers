@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { AVAX_MAINNET_URL } = require("../../constants.js");
 const { homoraBankABI } = require("../abi/homoraBankABI.js");
 
 const ERC20_ABI = [
@@ -107,7 +108,9 @@ async function deployContract() {
   const adapterContractFactory = await ethers.getContractFactory(
     "HomoraAdapter"
   );
-  return await adapterContractFactory.connect(ownerWallet).deploy();
+  return await adapterContractFactory
+    .connect(ownerWallet)
+    .deploy(HOMORA_BANK_ADDRESS);
 }
 
 describe("HomoraPDNVault Initialization", function () {
@@ -115,6 +118,17 @@ describe("HomoraPDNVault Initialization", function () {
   var iUSDC = null; // USDC interface.
   var iSushiSpell = null;
   beforeEach("Setup before each test", async function () {
+    await network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: AVAX_MAINNET_URL,
+            blockNumber: 19079166,
+          },
+        },
+      ],
+    });
     await initialize();
     adapterContract = await deployContract();
     console.log(
@@ -162,7 +176,6 @@ describe("HomoraPDNVault Initialization", function () {
 
     // Set up adapter contract.
     await adapterContract.setCaller(ownerWallet.address, true);
-    await adapterContract.setTarget(homoraBank.address, true);
     await adapterContract.setTarget(USDC.address, true);
 
     // Set up HomoraBank whitelist & credit limit.
@@ -179,19 +192,23 @@ describe("HomoraPDNVault Initialization", function () {
     await adapterContract.doWork(USDC.address, /*value=*/ 0, usdcBytes);
 
     // Construct low level bytes for the call to HomoraBank.
-    const homoraBytes = homoraBank.interface.encodeFunctionData("execute", [
-      /*pos_id=*/ 0,
-      TJ_SPELLV3_WAVAX_USDC_ADDRESS,
-      iSushiSpell.encodeFunctionData("addLiquidityWMasterChef", [
+    const spellBytes = iSushiSpell.encodeFunctionData(
+      "addLiquidityWMasterChef",
+      [
         USDC_TOKEN_ADDRESS,
         WAVAX_TOKEN_ADDRESS,
         [400 * 1e6, 0, 0, 100, 0, 0, 0, 0],
         WAVAX_USDC_POOL_ID,
-      ]),
-    ]);
+      ]
+    );
 
     // Instruct adapter to call HomoraBank.
-    await adapterContract.doWork(homoraBank.address, /*value=*/ 0, homoraBytes);
+    await adapterContract.homoraExecute(
+      /*positionId=*/ 0,
+      TJ_SPELLV3_WAVAX_USDC_ADDRESS,
+      /*value=*/ 0,
+      spellBytes
+    );
   });
 
   it("Should be able to retrieve native token from adapter", async function () {
@@ -247,5 +264,17 @@ describe("HomoraPDNVault Initialization", function () {
     await expect(
       adapterContract.connect(tempWallet).setTarget(tempWallet.address, true)
     ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Should throw error for attempting to whitelist Homora bank as a target", async function () {
+    await expect(
+      adapterContract.connect(ownerWallet).setTarget(HOMORA_BANK_ADDRESS, true)
+    ).to.be.revertedWith("Disallow generic call to Homora bank");
+  });
+
+  it("Should throw error for attempting to directly call Homora bank using doWork", async function () {
+    await expect(
+      adapterContract.connect(ownerWallet).doWork(HOMORA_BANK_ADDRESS, 0, [])
+    ).to.be.revertedWith("unauthorized caller");
   });
 });

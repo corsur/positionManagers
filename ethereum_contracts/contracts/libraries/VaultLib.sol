@@ -691,15 +691,12 @@ library VaultLib {
         );
 
         // Call Homora's execute() along with any native token received.
-        homoraPosId = abi.decode(
-            adapter.homoraExecute(
-                contractInfo,
-                homoraPosId,
-                addLiquidityBytes,
-                pairInfo,
-                value
-            ),
-            (uint256)
+        homoraPosId = adapter.homoraExecute(
+            contractInfo,
+            homoraPosId,
+            addLiquidityBytes,
+            pairInfo,
+            value
         );
 
         // Cancel HomoraBank's allowance.

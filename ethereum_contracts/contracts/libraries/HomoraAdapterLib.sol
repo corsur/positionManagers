@@ -10,8 +10,6 @@ import "../libraries/VaultLib.sol";
 library HomoraAdapterLib {
     using SafeERC20 for IERC20;
 
-    bytes4 private constant HOMORA_EXECUTE_SIG =
-        bytes4(keccak256("execute(uint256,address,bytes)"));
     bytes4 private constant ERC20_APPROVE_SIG =
         bytes4(keccak256("approve(address,uint256)"));
     bytes4 private constant ERC20_TRANSFER_SIG =
@@ -76,18 +74,12 @@ library HomoraAdapterLib {
         bytes memory spellBytes,
         PairInfo storage pairInfo,
         uint256 value
-    ) external returns (bytes memory) {
-        bytes memory homoraExecuteBytes = abi.encodeWithSelector(
-            HOMORA_EXECUTE_SIG,
+    ) external returns (uint256) {
+        uint256 returnPosId = self.homoraExecute{value: value}(
             posId,
             contractInfo.spell,
-            spellBytes
-        );
-
-        bytes memory returndata = self.doWork{value: value}(
-            contractInfo.bank,
             value,
-            homoraExecuteBytes
+            spellBytes
         );
         address[] memory tokens = new address[](4);
         tokens[0] = pairInfo.stableToken;
@@ -95,6 +87,6 @@ library HomoraAdapterLib {
         tokens[2] = pairInfo.lpToken;
         tokens[3] = pairInfo.rewardToken;
         pullAllAssets(self, tokens);
-        return returndata;
+        return returnPosId;
     }
 }

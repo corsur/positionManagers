@@ -1,3 +1,4 @@
 [
-  "function doWork(address,uint256,bytes) payable returns (bytes)"
+  "function doWork(address,uint256,bytes) payable returns (bytes)",
+  "function homoraExecute(uint256,address,uint256,bytes) payable returns (uint256)"
 ]
