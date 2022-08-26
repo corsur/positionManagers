@@ -1,6 +1,9 @@
 [
+  "constructor(address)",
   "event OwnershipTransferred(address indexed,address indexed)",
   "function doWork(address,uint256,bytes) payable returns (bytes)",
+  "function homoraBank() view returns (address)",
+  "function homoraExecute(uint256,address,bytes) payable returns (uint256)",
   "function owner() view returns (address)",
   "function renounceOwnership()",
   "function setCaller(address,bool)",

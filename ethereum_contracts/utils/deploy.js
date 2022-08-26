@@ -48,14 +48,16 @@ async function deployApertureManager(ethers, signer, wormholeTokenBridgeAddr) {
   return apertureManagerProxy;
 }
 
-async function deployHomoraAdapter(ethers, signer) {
+async function deployHomoraAdapter(ethers, signer, homoraBankAddr) {
   const homoraAdapterFactory = await ethers.getContractFactory(
     "HomoraAdapter",
     signer
   );
 
   // Issue request to deploy.
-  const homoraAdapter = await homoraAdapterFactory.connect(signer).deploy();
+  const homoraAdapter = await homoraAdapterFactory
+    .connect(signer)
+    .deploy(homoraBankAddr);
   // Wait for deployment to be included.
   await homoraAdapter.deployed();
 
@@ -82,7 +84,11 @@ async function deployHomoraPDNVault(ethers, signer, vaultConfig, txOptions) {
   console.log("Aperture manager deployed at: ", managerContract.address);
 
   // Deploy Homora adapter contract.
-  const homoraAdapter = await deployHomoraAdapter(ethers, signer);
+  const homoraAdapter = await deployHomoraAdapter(
+    ethers,
+    signer,
+    homoraBankAddr
+  );
 
   // HomoraPDNVault contract.
   var library = await ethers.getContractFactory("HomoraAdapterLib");

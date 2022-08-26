@@ -484,7 +484,6 @@ describe("HomoraPDNVault Initialization", function () {
     // Set up Homora adapter contract.
     await homoraAdapter.setCaller(strategyContract.address, true);
     await homoraAdapter.setTarget(strategyContract.address, true);
-    await homoraAdapter.setTarget(homoraBank.address, true);
     await homoraAdapter.setTarget(USDC.address, true);
     await homoraAdapter.setTarget(WAVAX.address, true);
     await homoraAdapter.setTarget(JOE.address, true);

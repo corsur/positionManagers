@@ -308,7 +308,11 @@ library VaultLib {
 
     ///********* Oracle related functions *********///
 
-    function support(address oracle, address token) external view returns (bool) {
+    function support(address oracle, address token)
+        external
+        view
+        returns (bool)
+    {
         return IHomoraOracle(oracle).support(token);
     }
 
@@ -643,15 +647,12 @@ library VaultLib {
         );
 
         // Call Homora's execute() along with any native token received.
-        homoraPosId = abi.decode(
-            adapter.homoraExecute(
-                contractInfo,
-                homoraPosId,
-                addLiquidityBytes,
-                pairInfo,
-                value
-            ),
-            (uint256)
+        homoraPosId = adapter.homoraExecute(
+            contractInfo,
+            homoraPosId,
+            addLiquidityBytes,
+            pairInfo,
+            value
         );
 
         // Cancel HomoraBank's allowance.
