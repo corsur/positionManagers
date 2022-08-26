@@ -103,8 +103,7 @@ contract HomoraPDNVault is
         bytes32 indexed recipientAddr,
         uint256 withdrawShareAmount,
         uint256 stableTokenWithdrawAmount,
-        uint256 assetTokenWithdrawAmount,
-        uint256 avaxWithdrawAmount
+        uint256 assetTokenWithdrawAmount
     );
     event LogRebalance();
     event LogReinvest();
@@ -567,7 +566,7 @@ contract HomoraPDNVault is
         );
 
         // Actual withdraw actions
-        uint256[3] memory withdrawAmounts = VaultLib.withdraw(
+        uint256[2] memory withdrawAmounts = VaultLib.withdraw(
             contractInfo,
             homoraPosId,
             pairInfo,
@@ -591,33 +590,14 @@ contract HomoraPDNVault is
         AssetInfo[] memory assetInfos = new AssetInfo[](2);
         assetInfos[0] = AssetInfo(pairInfo.stableToken, withdrawAmounts[0]);
         assetInfos[1] = AssetInfo(pairInfo.assetToken, withdrawAmounts[1]);
-        IApertureManager(apertureManager).disburseAssets{
-            value: withdrawAmounts[2]
-        }(assetInfos, recipient);
+        IApertureManager(apertureManager).disburseAssets(assetInfos, recipient);
 
         // Slippage control
-        // WAVAX is refunded as native AVAX by Homora's Spell
-        if (pairInfo.stableToken == WAVAX) {
-            if (
-                withdrawAmounts[0] + withdrawAmounts[2] < minStableReceived ||
-                withdrawAmounts[1] < minAssetReceived
-            ) {
-                revert Insufficient_Token_Withdrawn();
-            }
-        } else if (pairInfo.assetToken == WAVAX) {
-            if (
-                withdrawAmounts[0] < minStableReceived ||
-                withdrawAmounts[1] + withdrawAmounts[2] < minAssetReceived
-            ) {
-                revert Insufficient_Token_Withdrawn();
-            }
-        } else {
-            if (
-                withdrawAmounts[0] < minStableReceived ||
-                withdrawAmounts[1] < minAssetReceived
-            ) {
-                revert Insufficient_Token_Withdrawn();
-            }
+        if (
+            withdrawAmounts[0] < minStableReceived ||
+            withdrawAmounts[1] < minAssetReceived
+        ) {
+            revert Insufficient_Token_Withdrawn();
         }
 
         // Check position equity after removing liquidity
@@ -643,8 +623,7 @@ contract HomoraPDNVault is
             recipient.recipientAddr,
             withdrawShareAmount,
             withdrawAmounts[0],
-            withdrawAmounts[1],
-            withdrawAmounts[2]
+            withdrawAmounts[1]
         );
     }
 
@@ -700,7 +679,7 @@ contract HomoraPDNVault is
         );
 
         // Handle AVAX conversions
-        VaultLib.handleAVAX(contractInfo.router, pairInfo, WAVAX);
+        VaultLib.handleAVAX(contractInfo.router, pairInfo);
 
         // Add liquidity with the current balance
         VaultLib.deposit(

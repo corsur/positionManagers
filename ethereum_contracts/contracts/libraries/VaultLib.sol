@@ -586,7 +586,7 @@ library VaultLib {
         uint256 withdrawShareRatio,
         uint256 minStableReceived,
         uint256 minAssetReceived
-    ) external returns (uint256[3] memory) {
+    ) external returns (uint256[2] memory) {
         uint256[2] memory debtAmounts;
         (debtAmounts[0], debtAmounts[1]) = getDebtAmounts(
             contractInfo.bank,
@@ -595,11 +595,13 @@ library VaultLib {
             pairInfo.assetToken
         );
 
+        // Handle AVAX conversions
+        handleAVAX(contractInfo.router, pairInfo);
+
         // Record the initial balance before removing liquidity.
-        uint256[3] memory balanceBefore = [
+        uint256[2] memory balanceBefore = [
             IERC20(pairInfo.stableToken).balanceOf(address(this)),
-            IERC20(pairInfo.assetToken).balanceOf(address(this)),
-            address(this).balance
+            IERC20(pairInfo.assetToken).balanceOf(address(this))
         ];
 
         // Calculate collSize to withdraw.
@@ -620,6 +622,9 @@ library VaultLib {
             minAssetReceived
         );
 
+        // Homora may refund native AVAX
+        handleAVAX(contractInfo.router, pairInfo);
+
         // Calculate token disbursement amount.
         return [
             // Stable token withdraw amount
@@ -631,12 +636,6 @@ library VaultLib {
             // Asset token withdraw amount
             IERC20(pairInfo.assetToken).balanceOf(address(this)) -
                 balanceBefore[1].mulDiv(
-                    SOME_LARGE_NUMBER - withdrawShareRatio,
-                    SOME_LARGE_NUMBER
-                ),
-            // AVAX withdraw amount
-            address(this).balance -
-                balanceBefore[2].mulDiv(
                     SOME_LARGE_NUMBER - withdrawShareRatio,
                     SOME_LARGE_NUMBER
                 )
@@ -1214,14 +1213,12 @@ library VaultLib {
         address router,
         uint256 amount,
         address fromToken,
-        address toToken
+        address[] memory path
     ) internal returns (uint256) {
         IJoeRouter01 _router = IJoeRouter01(router);
-        address[] memory path = new address[](2);
-        (path[0], path[1]) = (fromToken, toToken);
         uint256[] memory amounts = _router.getAmountsOut(amount, path);
         IERC20(fromToken).approve(router, amount);
-        if (amounts[1] > 0) {
+        if (amounts[amounts.length - 1] > 0) {
             amounts = _router.swapExactTokensForTokens(
                 amount,
                 0,
@@ -1231,7 +1228,7 @@ library VaultLib {
             );
         }
         IERC20(fromToken).approve(router, 0);
-        return amounts[1];
+        return amounts[amounts.length - 1];
     }
 
     /// @notice Swap reward tokens according to `path`
@@ -1242,16 +1239,7 @@ library VaultLib {
     ) external {
         uint256 rewardAmt = IERC20(rewardToken).balanceOf(address(this));
         if (rewardAmt > 0) {
-            IJoeRouter01 _router = IJoeRouter01(router);
-            IERC20(rewardToken).approve(router, rewardAmt);
-            _router.swapExactTokensForTokens(
-                rewardAmt,
-                0,
-                path,
-                address(this),
-                block.timestamp
-            );
-            IERC20(rewardToken).approve(router, 0);
+            swap(router, rewardAmt, rewardToken, path);
         }
     }
 
@@ -1269,22 +1257,24 @@ library VaultLib {
     }
 
     /// @dev Handle AVAX conversions
-    function handleAVAX(
-        address router,
-        PairInfo storage pairInfo,
-        address WAVAX
-    ) external {
-        // Wrap any native AVAX
-        IWAVAX(WAVAX).deposit{value: address(this).balance}();
+    function handleAVAX(address router, PairInfo storage pairInfo) public {
+        address WAVAX = IJoeRouter01(router).WAVAX();
+        uint256 balance = address(this).balance;
+        if (balance > 0) {
+            // Wrap any native AVAX
+            IWAVAX(WAVAX).deposit{value: balance}();
 
-        // In case AVAX is not in the pair
-        if (pairInfo.stableToken != WAVAX && pairInfo.assetToken != WAVAX) {
-            swap(
-                router,
-                IERC20(WAVAX).balanceOf(address(this)),
-                WAVAX,
-                pairInfo.stableToken
-            );
+            // In case AVAX is not in the pair
+            if (pairInfo.stableToken != WAVAX && pairInfo.assetToken != WAVAX) {
+                address[] memory path = new address[](2);
+                (path[0], path[1]) = (WAVAX, pairInfo.stableToken);
+                swap(
+                    router,
+                    IERC20(WAVAX).balanceOf(address(this)),
+                    WAVAX,
+                    path
+                );
+            }
         }
     }
 }
