@@ -23,6 +23,7 @@
   "function getETHPx(address,address) view returns (uint256)",
   "function getTokenETHValue(address,address,uint256) view returns (uint256)",
   "function isDebtRatioHealthy(address,uint256,uint256,uint256) view returns (bool)",
+  "function rewardETHValue(address,address,address[]) view returns (uint256)",
   "function support(address,address) view returns (bool)",
   "function supportLP(address,address) view returns (bool)"
 ]

@@ -77,7 +77,9 @@ contract HomoraPDNVault is
     uint256 public minDebtRatio; // minimum debt ratio * 10000
     uint256 public maxDebtRatio; // maximum debt ratio * 10000
     uint256 public deltaThreshold; // delta deviation threshold in percentage * 10000
+
     uint256 public reinvestThreshold; // estimated reinvest gas cost
+    address[] public rewardPath; // path to swap reward token to AVAX
 
     ApertureVaultLimits public vaultLimits;
     ApertureFeeConfig public feeConfig;
@@ -104,14 +106,14 @@ contract HomoraPDNVault is
         uint256 assetTokenWithdrawAmount,
         uint256 avaxWithdrawAmount
     );
-    event LogRebalance(uint256 equityBefore, uint256 equityAfter);
-    event LogReinvest(uint256 equityBefore, uint256 equityAfter);
+    event LogRebalance();
+    event LogReinvest();
     event SkipReinvest();
 
     // --- error ---
-    error HomoraPDNVault_PositionIsHealthy();
-    error HomoraPDNVault_DeltaNotNeutral();
-    error HomoraPDNVault_DebtRatioNotHealthy();
+    error Position_Is_Healthy();
+    error Delta_Not_Neutral();
+    error Debt_Ratio_Not_Healthy();
     error Vault_Limit_Exceeded();
     error Insufficient_Liquidity_Mint();
     error Zero_Withdrawal_Amount();
@@ -183,6 +185,7 @@ contract HomoraPDNVault is
     /// @param _debtRatioWidth: Deviation of debt ratio * 10000
     /// @param _deltaThreshold: Delta deviation threshold in percentage * 10000
     /// @param _reinvestThreshold: Estimated gas cost to reinvest
+    /// @param _rewardPath: Path to swap reward token to AVAX
     /// @param _feeConfig: Farming reward fee, withdrawal fee and management fee
     /// @param _vaultLimits: Max vault size, max amount per open and max amount per withdrawal
     function initializeConfig(
@@ -191,6 +194,7 @@ contract HomoraPDNVault is
         uint256 _debtRatioWidth,
         uint256 _deltaThreshold,
         uint256 _reinvestThreshold,
+        address[] calldata _rewardPath,
         ApertureFeeConfig calldata _feeConfig,
         ApertureVaultLimits calldata _vaultLimits
     ) external onlyOwner {
@@ -201,6 +205,7 @@ contract HomoraPDNVault is
             _deltaThreshold
         );
         setReinvestThreshold(_reinvestThreshold);
+        setRewardPath(_rewardPath);
         setFees(_feeConfig);
         setVaultLimits(_vaultLimits);
     }
@@ -296,6 +301,11 @@ contract HomoraPDNVault is
     /// @param _reinvestThreshold: Estimated gas cost to reinvest
     function setReinvestThreshold(uint256 _reinvestThreshold) public onlyOwner {
         reinvestThreshold = _reinvestThreshold;
+    }
+
+    /// @param _rewardPath: Path to swap reward token to AVAX
+    function setRewardPath(address[] calldata _rewardPath) public onlyOwner {
+        rewardPath = _rewardPath;
     }
 
     receive() external payable {}
@@ -453,9 +463,9 @@ contract HomoraPDNVault is
             pairInfo,
             stableDepositAmount,
             assetDepositAmount,
+            msg.value,
             leverageLevel,
-            pid,
-            msg.value
+            pid
         );
 
         // Position equity after adding liquidity
@@ -493,10 +503,10 @@ contract HomoraPDNVault is
 
         // Check if the PDN position is still healthy
         if (!isDeltaNeutral()) {
-            revert HomoraPDNVault_DeltaNotNeutral();
+            revert Delta_Not_Neutral();
         }
         if (!isDebtRatioHealthy()) {
-            revert HomoraPDNVault_DebtRatioNotHealthy();
+            revert Debt_Ratio_Not_Healthy();
         }
 
         emit LogDeposit(
@@ -564,7 +574,9 @@ contract HomoraPDNVault is
             VaultLib.SOME_LARGE_NUMBER.mulDiv(
                 withdrawShareAmount - withdrawFeeShare, // take into account withdrawal fees
                 totalShareAmount
-            )
+            ),
+            minStableReceived,
+            minAssetReceived
         );
 
         // Transfer fund to the recipient (possibly initiate cross-chain transfer).
@@ -619,10 +631,10 @@ contract HomoraPDNVault is
 
         // Check if the PDN position is still healthy
         if (!isDeltaNeutral()) {
-            revert HomoraPDNVault_DeltaNotNeutral();
+            revert Delta_Not_Neutral();
         }
         if (!isDebtRatioHealthy()) {
-            revert HomoraPDNVault_DebtRatioNotHealthy();
+            revert Debt_Ratio_Not_Healthy();
         }
 
         // Emit event.
@@ -653,27 +665,14 @@ contract HomoraPDNVault is
             return;
         }
 
-        // 1. Claim and swap rewards
+        // Claim rewards
         VaultLib.harvest(contractInfo, homoraPosId, pairInfo);
-        VaultLib.swapReward(contractInfo.router, pairInfo);
 
-        // 2. Swap any AVAX leftover
-        uint256 avaxBalance = address(this).balance;
-        if (avaxBalance > 0) {
-            VaultLib.swapAVAX(
-                contractInfo.router,
-                avaxBalance,
-                pairInfo.stableToken
-            );
-        }
-
-        uint256 stableBalance = IERC20(pairInfo.stableToken).balanceOf(
-            address(this)
-        );
-
-        uint256 rewardETHValue = getTokenETHValue(
-            pairInfo.stableToken,
-            stableBalance
+        // Predict the amount received after swapping reward tokens
+        uint256 rewardETHValue = VaultLib.rewardETHValue(
+            contractInfo.router,
+            pairInfo.rewardToken,
+            rewardPath
         );
 
         if (rewardETHValue < minReinvestETH) {
@@ -686,32 +685,36 @@ contract HomoraPDNVault is
             return;
         }
 
-        uint256 equityBefore = getEquityETHValue();
+        // Swap reward tokens to WAVAX
+        VaultLib.swapReward(
+            contractInfo.router,
+            pairInfo.rewardToken,
+            rewardPath
+        );
+
+        // Collect harvest fees
+        VaultLib.collectHarvestFee(
+            feeCollector,
+            address(this).balance,
+            feeConfig.harvestFee
+        );
+
+        // Handle AVAX conversions
+        VaultLib.handleAVAX(contractInfo.router, pairInfo, WAVAX);
 
         // Add liquidity with the current balance
         VaultLib.deposit(
             contractInfo,
             homoraPosId,
             pairInfo,
-            stableBalance,
+            IERC20(pairInfo.stableToken).balanceOf(address(this)),
+            IERC20(pairInfo.assetToken).balanceOf(address(this)),
             0,
             leverageLevel,
-            pid,
-            0
+            pid
         );
 
-        uint256 equityAfter = getEquityETHValue();
-
-        // Collect harvest fees
-        VaultLib.collectHarvestFee(
-            positions,
-            vaultState,
-            feeConfig.harvestFee,
-            equityBefore,
-            equityAfter
-        );
-
-        emit LogReinvest(equityBefore, equityAfter);
+        emit LogReinvest();
     }
 
     /// @dev Rebalance Homora Bank's farming position if delta is not neutral or debt ratio is not healthy
@@ -730,25 +733,14 @@ contract HomoraPDNVault is
     function rebalanceInternal(uint256 slippage) internal {
         // Check if the PDN position need rebalance
         if (isDeltaNeutral() && isDebtRatioHealthy()) {
-            revert HomoraPDNVault_PositionIsHealthy();
+            revert Position_Is_Healthy();
         }
-
-        // Equity before rebalance
-        uint256 equityBefore = getEquityETHValue();
-
-        // Position info in Homora Bank
-        VaultPosition memory pos = VaultLib.getPositionInfo(
-            contractInfo.bank,
-            homoraPosId,
-            pairInfo
-        );
 
         // Actual rebalance actions
         if (getDebtRatio() >= targetDebtRatio) {
             VaultLib.rebalanceRemove(
                 contractInfo,
                 homoraPosId,
-                pos,
                 pairInfo,
                 leverageLevel,
                 slippage
@@ -757,7 +749,6 @@ contract HomoraPDNVault is
             VaultLib.rebalanceAdd(
                 contractInfo,
                 homoraPosId,
-                pos,
                 pairInfo,
                 leverageLevel,
                 slippage,
@@ -767,13 +758,13 @@ contract HomoraPDNVault is
 
         // Check if the rebalance succeeded
         if (!isDeltaNeutral()) {
-            revert HomoraPDNVault_DeltaNotNeutral();
+            revert Delta_Not_Neutral();
         }
         if (!isDebtRatioHealthy()) {
-            revert HomoraPDNVault_DebtRatioNotHealthy();
+            revert Debt_Ratio_Not_Healthy();
         }
 
-        emit LogRebalance(equityBefore, getEquityETHValue());
+        emit LogRebalance();
     }
 
     /// @dev Check if the farming position is delta neutral

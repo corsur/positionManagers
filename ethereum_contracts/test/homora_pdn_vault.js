@@ -196,8 +196,8 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   // check if position state is healthy (no need to rebalance)
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
-  ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
-  console.log("Reverted with HomoraPDNVault_PositionIsHealthy.");
+  ).to.be.revertedWith("Position_Is_Healthy");
+  console.log("Reverted with Position_Is_Healthy.");
 
   let [reserve0, reserve1] = await pair.getReserves();
   console.log(
@@ -258,8 +258,8 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   // expect to be in delta-neutral after rebalance
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
-  ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
-  console.log("Reverted with HomoraPDNVault_PositionIsHealthy.");
+  ).to.be.revertedWith("Position_Is_Healthy");
+  console.log("Reverted with Position_Is_Healthy.");
 
   // Impersonate WAVAX holder.
   signer = await getImpersonatedSigner(
@@ -308,8 +308,8 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   await mine(1000, { interval: 2 });
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
-  ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
-  console.log("Reverted with HomoraPDNVault_PositionIsHealthy.");
+  ).to.be.revertedWith("Position_Is_Healthy");
+  console.log("Reverted with Position_Is_Healthy.");
 
   // Increase leverage to trigger rebalance
   await strategyContract.connect(mainWallet).setConfig(
@@ -326,8 +326,8 @@ async function testRebalance(managerContract, strategyContract, vaultLib) {
   // expect to be in delta-neutral after rebalance
   await expect(
     strategyContract.connect(wallets[0]).rebalance(10, 0, txOptions)
-  ).to.be.revertedWith("HomoraPDNVault_PositionIsHealthy");
-  console.log("Reverted with HomoraPDNVault_PositionIsHealthy.");
+  ).to.be.revertedWith("Position_Is_Healthy");
+  console.log("Reverted with Position_Is_Healthy.");
 }
 
 async function testReinvest(managerContract, strategyContract, vaultLib) {
@@ -505,7 +505,7 @@ async function testDepositAndWithdraw(
     );
 }
 
-describe.only("HomoraPDNVault Initialization", function () {
+describe("HomoraPDNVault Initialization", function () {
   var managerContract = undefined;
   var homoraAdapter = undefined;
   var strategyContract = undefined;
@@ -555,7 +555,8 @@ describe.only("HomoraPDNVault Initialization", function () {
       9231, // _targetDebtRatio
       100, // _debtRatioWidth
       300, // _deltaThreshold
-      BigNumber.from(2500000).mul(20e9), // _reinvestThreshold,
+      BigNumber.from(2500000).mul(20e9), // _reinvestThreshold
+      [JOE_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS], // initializeConfig
       [
         20, // withdrawFee
         1500, // harvestFee
