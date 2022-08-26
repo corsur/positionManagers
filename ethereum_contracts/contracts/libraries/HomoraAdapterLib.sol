@@ -15,19 +15,6 @@ library HomoraAdapterLib {
     bytes4 private constant ERC20_TRANSFER_SIG =
         bytes4(keccak256("transfer(address,uint256)"));
 
-    function adapterApproveHomoraBank(
-        IHomoraAdapter self,
-        address homoraBank,
-        address tokenAddr,
-        uint256 amount
-    ) public {
-        self.doWork(
-            tokenAddr,
-            0,
-            abi.encodeWithSelector(ERC20_APPROVE_SIG, homoraBank, amount)
-        );
-    }
-
     /// @dev fund adapter contract and approve HomoraBank to use the fund.
     /// @param tokenAddr the token to transfer and approve.
     /// @param amount the amount to transfer and approve.
@@ -38,7 +25,11 @@ library HomoraAdapterLib {
         uint256 amount
     ) external {
         IERC20(tokenAddr).safeTransfer(address(self), amount);
-        adapterApproveHomoraBank(self, homoraBank, tokenAddr, amount);
+        self.doWork(
+            tokenAddr,
+            0,
+            abi.encodeWithSelector(ERC20_APPROVE_SIG, homoraBank, amount)
+        );
     }
 
     function pullTokenFromAdapter(
@@ -63,27 +54,16 @@ library HomoraAdapterLib {
         self.doWork(address(this), amount, "");
     }
 
-    function pullAllAssets(
-        IHomoraAdapter self,
-        address tokenA,
-        address tokenB,
-        address rewardToken
-    ) public {
-        pullTokenFromAdapter(
-            self,
-            tokenA,
-            IERC20(tokenA).balanceOf(address(self))
-        );
-        pullTokenFromAdapter(
-            self,
-            tokenB,
-            IERC20(tokenB).balanceOf(address(self))
-        );
-        pullTokenFromAdapter(
-            self,
-            rewardToken,
-            IERC20(rewardToken).balanceOf(address(self))
-        );
+    function pullAllAssets(IHomoraAdapter self, address[] memory tokens)
+        public
+    {
+        for (uint256 i = 0; i < tokens.length; i++) {
+            pullTokenFromAdapter(
+                self,
+                tokens[i],
+                IERC20(tokens[i]).balanceOf(address(self))
+            );
+        }
         pullETHFromAdapter(self, address(self).balance);
     }
 
@@ -94,19 +74,19 @@ library HomoraAdapterLib {
         bytes memory spellBytes,
         PairInfo storage pairInfo,
         uint256 value
-    ) internal returns (uint256) {
+    ) external returns (uint256) {
         uint256 returnPosId = self.homoraExecute{value: value}(
             posId,
             contractInfo.spell,
             value,
             spellBytes
         );
-        pullAllAssets(
-            self,
-            pairInfo.stableToken,
-            pairInfo.assetToken,
-            pairInfo.rewardToken
-        );
+        address[] memory tokens = new address[](4);
+        tokens[0] = pairInfo.stableToken;
+        tokens[1] = pairInfo.assetToken;
+        tokens[2] = pairInfo.lpToken;
+        tokens[3] = pairInfo.rewardToken;
+        pullAllAssets(self, tokens);
         return returnPosId;
     }
 }
