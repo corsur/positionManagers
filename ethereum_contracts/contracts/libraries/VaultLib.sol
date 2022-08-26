@@ -751,18 +751,11 @@ library VaultLib {
 
     function collectWithdrawFee(
         mapping(uint16 => mapping(uint128 => Position)) storage positions,
-        VaultState storage vaultState,
-        PositionInfo memory position_info,
         uint256 withdrawShareAmount,
         uint256 withdrawFee
     ) external returns (uint256 withdrawFeeShare) {
         // Shares transferred to fee collector
         withdrawFeeShare = withdrawShareAmount.mulDiv(withdrawFee, UNITY);
-        // Update total share amount in the vault.
-        vaultState.totalShareAmount -= withdrawShareAmount - withdrawFeeShare;
-        // Update user position info
-        positions[position_info.chainId][position_info.positionId]
-            .shareAmount -= withdrawShareAmount;
         // Update fee collector's position state.
         positions[0][0].shareAmount += withdrawFeeShare;
     }

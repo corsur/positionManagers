@@ -554,16 +554,22 @@ contract HomoraPDNVault is
         uint256 equityBefore = getEquityETHValue();
 
         // Total share before withdrawal
-        uint256 totalShareAmount = vaultState.totalShareAmount;
+        uint256 totalShareAmountBeforeWithdrawal = vaultState.totalShareAmount;
 
-        // Collect withdrawal fees and update vault position state
+        // Collect withdrawal fees and update fee collector's position state
         uint256 withdrawFeeShare = VaultLib.collectWithdrawFee(
             positions,
-            vaultState,
-            position_info,
             withdrawShareAmount,
             feeConfig.withdrawFee
         );
+        // Update total share amount in the vault.
+        vaultState.totalShareAmount =
+            vaultState.totalShareAmount -
+            withdrawShareAmount +
+            withdrawFeeShare;
+        // Update user position info
+        positions[position_info.chainId][position_info.positionId]
+            .shareAmount -= withdrawShareAmount;
 
         // Actual withdraw actions
         uint256[2] memory withdrawAmounts = VaultLib.withdraw(
@@ -572,7 +578,7 @@ contract HomoraPDNVault is
             pairInfo,
             VaultLib.SOME_LARGE_NUMBER.mulDiv(
                 withdrawShareAmount - withdrawFeeShare, // take into account withdrawal fees
-                totalShareAmount
+                totalShareAmountBeforeWithdrawal
             ),
             minStableReceived,
             minAssetReceived
