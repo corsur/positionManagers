@@ -61,9 +61,10 @@ contract HomoraAdapter is Ownable {
     function homoraExecute(
         uint256 positionId,
         address spell,
+        uint256 value,
         bytes memory data
     ) external payable onlyWhitelistedCaller returns (uint256) {
-        return homoraBank.execute(positionId, spell, data);
+        return homoraBank.execute{value: value}(positionId, spell, data);
     }
 
     receive() external payable {}

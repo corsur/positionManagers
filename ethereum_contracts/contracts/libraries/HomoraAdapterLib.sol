@@ -98,6 +98,7 @@ library HomoraAdapterLib {
         uint256 returnPosId = self.homoraExecute{value: value}(
             posId,
             contractInfo.spell,
+            value,
             spellBytes
         );
         pullAllAssets(
