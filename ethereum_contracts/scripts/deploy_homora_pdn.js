@@ -79,10 +79,12 @@ async function main() {
   await homoraAdapter.setTarget(JOE_TOKEN_ADDRESS, true);
 
   await strategyContract.connect(mainWallet).initializeConfig(
-    3, // _leverageLevel
+    30000, // _leverageLevel
     9231, // _targetDebtRatio
     100, // _debtRatioWidth
     300, // _deltaThreshold
+    BigNumber.from(2500000).mul(20e9), // _reinvestThreshold
+    [JOE_TOKEN_ADDRESS, WAVAX_TOKEN_ADDRESS], // initializeConfig
     [
       20, // withdrawFee
       1500, // harvestFee
