@@ -37,6 +37,62 @@ pub struct RegisterChain<'info> {
     pub emitter_acc: Account<'info, EmitterAddrAccount>,
 }
 
+#[account]
+pub struct WormholeSettings {
+    // Address of the Wormhole token bridge contract.
+    pub token_bridge: Pubkey,
+    // Consistency level for published Aperture instruction message via Wormhole core bridge.
+    // The number of blocks to wait before Wormhole guardians consider a published message final.
+    pub consistency_level: u8,
+    pub bump: u8,
+}
+
+#[account]
+pub struct InferredWormholeSettings {
+    // Address of the Wormhole core bridge contract.
+    pub core_bridge: Pubkey,
+    // Address of WSOL used by Wormhole token bridge.
+    pub wsol: Pubkey,
+    // Wormhole chain id of this chain.
+    pub this_chain_id: u16,
+    pub bump: u8,
+}
+
+#[account]
+pub struct CrossChainFeeSettings {
+    // Cross-chain fee in basis points (i.e. 0.01% or 0.0001)
+    pub fee_bps: u32,
+    // Where collected cross-chain fees go.
+    pub fee_sink: Pubkey,
+    pub bump: u8,
+}
+
+#[derive(Accounts)]
+pub struct UpdateWormholeContext<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+    #[account(mut, seeds = [b"wormholesettings"], bump)]
+    pub wormhole_settings: Account<'info, WormholeSettings>,
+    #[account(mut, seeds = [b"inferredwormholesettings"], bump)]
+    pub inferred_wormhole_settings: Account<'info, InferredWormholeSettings>,
+    #[account(mut, seeds = [b"crosschainfeesettings"], bump)]
+    pub fee_settings: Account<'info, CrossChainFeeSettings>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeWormholeContext<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    pub system_program: Program<'info, System>,
+    #[account(init, payer = owner, space = 300, seeds = [b"wormholesettings"], bump)]
+    pub wormhole_settings: Account<'info, WormholeSettings>,
+    #[account(init, payer = owner, space = 300, seeds = [b"inferredwormholesettings"], bump)]
+    pub inferred_wormhole_settings: Account<'info, InferredWormholeSettings>,
+    #[account(init, payer = owner, space = 300, seeds = [b"crosschainfeesettings"], bump)]
+    pub fee_settings: Account<'info, CrossChainFeeSettings>,
+}
+
 #[derive(Accounts)]
 pub struct PublishExecuteStrategyInstruction<'info>{
     #[account(

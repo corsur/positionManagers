@@ -46,6 +46,7 @@ pub struct BridgeData {
     pub config: BridgeConfig,
 }
 
+
 #[derive(AnchorDeserialize, AnchorSerialize, Clone)]
 pub struct BridgeConfig {
     /// Period for how long a guardian set is valid after it has been replaced by a new one.  This

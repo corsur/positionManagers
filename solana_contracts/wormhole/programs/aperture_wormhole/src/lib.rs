@@ -4,6 +4,7 @@ use anchor_lang::solana_program::system_instruction::transfer;
 use anchor_lang::solana_program::borsh::try_from_slice_unchecked;
 use anchor_lang::solana_program::program::invoke_signed;
 
+
 use sha3::Digest;
 use byteorder::{
     BigEndian,
@@ -152,6 +153,26 @@ pub mod aperture_wormhole {
         let asset = &mut ctx.accounts.asset;
         asset.bump = *ctx.bumps.get("assetinfo").unwrap();
         asset.asset_address = address;
+        Ok(())
+    }
+
+    pub fn initialize_wormhole_settings(ctx: Context<InitializeWormholeContext>) -> Result<()> {
+        let wormhole_settings = &mut ctx.accounts.wormhole_settings;
+        wormhole_settings.bump = *ctx.bumps.get("wormholesettings").unwrap();
+        let inferred_wormhole_settings = &mut ctx.accounts.inferred_wormhole_settings;
+        inferred_wormhole_settings.bump = *ctx.bumps.get("inferredwormholesettings").unwrap();
+        let fee_settings = &mut ctx.accounts.fee_settings;
+        fee_settings.bump = *ctx.bumps.get("crosschainfeesettings").unwrap();
+        Ok(())
+    }
+
+    pub fn update_wormhole_settings(ctx: Context<UpdateWormholeContext>) -> Result<()> {
+        let wormhole_settings = &mut ctx.accounts.wormhole_settings;
+        wormhole_settings.bump = *ctx.bumps.get("wormholesettings").unwrap();
+        let inferred_wormhole_settings = &mut ctx.accounts.inferred_wormhole_settings;
+        inferred_wormhole_settings.bump = *ctx.bumps.get("inferredwormholesettings").unwrap();
+        let fee_settings = &mut ctx.accounts.fee_settings;
+        fee_settings.bump = *ctx.bumps.get("crosschainfeesettings").unwrap();
         Ok(())
     }
 }
