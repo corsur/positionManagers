@@ -146,6 +146,7 @@ pub mod aperture_wormhole {
             Ok(())
     }
 
+    // this is used when wrapping SOL so that wSOL can be added to the list of assets
     pub fn expand_asset_infos(
         ctx: Context<ExpandAssetInfos>,
         address: Pubkey,
@@ -157,22 +158,10 @@ pub mod aperture_wormhole {
     }
 
     pub fn initialize_wormhole_settings(ctx: Context<InitializeWormholeContext>) -> Result<()> {
-        let wormhole_settings = &mut ctx.accounts.wormhole_settings;
-        wormhole_settings.bump = *ctx.bumps.get("wormholesettings").unwrap();
-        let inferred_wormhole_settings = &mut ctx.accounts.inferred_wormhole_settings;
-        inferred_wormhole_settings.bump = *ctx.bumps.get("inferredwormholesettings").unwrap();
-        let fee_settings = &mut ctx.accounts.fee_settings;
-        fee_settings.bump = *ctx.bumps.get("crosschainfeesettings").unwrap();
         Ok(())
     }
 
     pub fn update_wormhole_settings(ctx: Context<UpdateWormholeContext>) -> Result<()> {
-        let wormhole_settings = &mut ctx.accounts.wormhole_settings;
-        wormhole_settings.bump = *ctx.bumps.get("wormholesettings").unwrap();
-        let inferred_wormhole_settings = &mut ctx.accounts.inferred_wormhole_settings;
-        inferred_wormhole_settings.bump = *ctx.bumps.get("inferredwormholesettings").unwrap();
-        let fee_settings = &mut ctx.accounts.fee_settings;
-        fee_settings.bump = *ctx.bumps.get("crosschainfeesettings").unwrap();
         Ok(())
     }
 }

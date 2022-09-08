@@ -24,6 +24,37 @@ describe("solana", () => {
       );
   }
 
+  it('Initializes and updates wormhole settings', async () => {
+
+    const [wormholeSettingsPDA, wormholeSettingsBump] = await getSingletonPDA("wormholesettings", program.programId);
+    const [inferredWormholeSettingsPDA, inferredWormholeSettingsBump] = await getSingletonPDA("inferredwormholesettings", program.programId);
+    const [crosschainFeeSettingsPDA, crosschainFeeSettingsBump] = await getSingletonPDA("crosschainfeesettings", program.programId);
+
+    console.log("Initializing wormhole settings");
+
+    const initializeTx = await program.methods
+      .initializeWormholeSettings()
+      .accounts({
+        wormholeSettings: wormholeSettingsPDA,
+        inferredWormholeSettings: inferredWormholeSettingsPDA,
+        feeSettings: crosschainFeeSettingsPDA
+      })
+      .rpc();
+    
+    console.log(initializeTx.toString());
+    
+    const updateTx =await program.methods
+    .updateWormholeSettings()
+    .accounts({
+      wormholeSettings: wormholeSettingsPDA,
+      inferredWormholeSettings: inferredWormholeSettingsPDA,
+      feeSettings: crosschainFeeSettingsPDA
+    })
+    .rpc();
+
+    console.log(updateTx.toString());
+  });
+
   it("Sending message to wormhole", async () => {
 
     const [wormholeConfigPDA, wormholeConfigBump] = await getSingletonPDA("Bridge", bridgeAddress);

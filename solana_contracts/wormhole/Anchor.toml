@@ -10,7 +10,7 @@ aperture_wormhole = "FVVVy4Uvdax5rjR4tiKq89TkgF8pByZfS7Xof6Z5bHQ2"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "keypairs/id.json"
 
 [scripts]
